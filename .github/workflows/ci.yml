@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # manual trigger for the live-network smoke job
+  schedule:
+    - cron: '0 6 * * 1'  # weekly Monday 06:00 UTC — live GLEIF smoke
+
+jobs:
+  test:
+    name: typecheck + offline test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+
+      - name: Run offline test suite
+        # DACS_LIVE_NETWORK is intentionally NOT set — CI runs only the deterministic
+        # offline tests. Live-network + chain-write tests gate on their own env vars.
+        run: npm test
+        env:
+          DACS_LIVE_NETWORK: ''
+          DACS_TEST_NETWORK: ''
+          DEMOS_MNEMONIC: ''
+
+      - name: Run csv-class example (offline)
+        run: SKIP_GLEIF=1 npx tsx examples/csv-class/run.mts
+
+  live-network-smoke:
+    name: live-network smoke (manual / scheduled only)
+    runs-on: ubuntu-latest
+    # Don't run on every push — gated on workflow_dispatch (manual trigger) or weekly cron.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Live GLEIF smoke
+        env:
+          DACS_LIVE_NETWORK: '1'
+        run: |
+          npx tsx --test test/integration/sdk-wiring.test.ts
