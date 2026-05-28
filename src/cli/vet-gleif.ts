@@ -22,18 +22,22 @@
 
 import { parseArgs } from 'node:util';
 import type { VerifyResult, VerifyDecision } from '../types/index.js';
+import { connectDemos, mnemonicFromEnv, dahrFetch } from '../demos/index.js';
 
 const USAGE = `
 pathos-dacs-vet-gleif — DACS-2 Vet via GLEIF consensus-backed-proxy
 
 Usage:
-  pathos-dacs-vet-gleif --lei <LEI> --jobId <uuid>
+  pathos-dacs-vet-gleif --lei <LEI> --jobId <uuid> [--mnemonic-env DEMOS_MNEMONIC] [--dry-run]
 
 Options:
-  --lei <LEI>      The ISO 17442 LEI to vet (20 hex characters)
-  --jobId <uuid>   The job/session id (per §7.5.1 VerifyResult schema)
-  --recipe-version <v>  Recipe version pin (default: "gleif-cbp:1")
-  --help           Show this message
+  --lei <LEI>            The ISO 17442 LEI to vet (20 hex characters)
+  --jobId <uuid>         The job/session id (per §7.5.1 VerifyResult schema)
+  --mnemonic-env <name>  Env var with Demos mnemonic for SR-2 anchoring (default: DEMOS_MNEMONIC)
+  --dry-run              Skip SR-2 anchoring (still fetches GLEIF live)
+  --rpc <url>            Demos node RPC URL (default: https://demosnode.discus.sh/)
+  --recipe-version <v>   Recipe version pin (default: "gleif-cbp:1")
+  --help                 Show this message
 
 Exit codes:
   0 = pass    1 = fail    2 = indeterminate    3 = usage error
@@ -41,7 +45,14 @@ Exit codes:
 DACS spec sections: §7.3.5 (consensus-backed-proxy), §7.5.1 (VerifyResult), §7.5.2 (AttestationRef)
 `;
 
-interface CliArgs { lei: string; jobId: string; recipeVersion: string }
+interface CliArgs {
+  lei: string;
+  jobId: string;
+  recipeVersion: string;
+  mnemonicEnv: string;
+  rpc: string;
+  dryRun: boolean;
+}
 
 function parseCliArgs(): CliArgs {
   const { values } = parseArgs({
@@ -49,6 +60,9 @@ function parseCliArgs(): CliArgs {
       'lei': { type: 'string' },
       'jobId': { type: 'string' },
       'recipe-version': { type: 'string', default: 'gleif-cbp:1' },
+      'mnemonic-env': { type: 'string', default: 'DEMOS_MNEMONIC' },
+      'rpc': { type: 'string', default: 'https://demosnode.discus.sh/' },
+      'dry-run': { type: 'boolean', default: false },
       'help': { type: 'boolean', default: false },
     },
     strict: true,
@@ -64,7 +78,14 @@ function parseCliArgs(): CliArgs {
     console.error(`Error: LEI "${lei}" is not a valid 20-character alphanumeric`);
     process.exit(3);
   }
-  return { lei, jobId: values.jobId as string, recipeVersion: values['recipe-version'] as string };
+  return {
+    lei,
+    jobId: values.jobId as string,
+    recipeVersion: values['recipe-version'] as string,
+    mnemonicEnv: values['mnemonic-env'] as string,
+    rpc: values['rpc'] as string,
+    dryRun: values['dry-run'] as boolean,
+  };
 }
 
 interface GleifLeiResponse {
@@ -78,57 +99,71 @@ interface GleifLeiResponse {
   errors?: { detail?: string }[];
 }
 
-async function fetchGleifLei(lei: string): Promise<{ ok: true; body: GleifLeiResponse } | { ok: false; error: string }> {
-  const url = `https://api.gleif.org/api/v1/lei-records/${lei}`;
-  try {
-    const res = await fetch(url, { headers: { Accept: 'application/vnd.api+json' } });
-    if (res.status === 404) {
-      const body = await res.json().catch(() => ({})) as GleifLeiResponse;
-      return { ok: true, body };
-    }
-    if (!res.ok) {
-      return { ok: false, error: `GLEIF HTTP ${res.status}` };
-    }
-    const body = await res.json() as GleifLeiResponse;
-    return { ok: true, body };
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-}
-
 async function main(): Promise<void> {
   const args = parseCliArgs();
   const runAt = new Date().toISOString();
+  const gleifUrl = `https://api.gleif.org/api/v1/lei-records/${args.lei}`;
 
+  // Connect to Demos for SR-2 anchoring unless --dry-run is set.
+  // Per Codex review #2: a failed connection MUST NOT silently degrade to stub
+  // anchoring. Either the operator asked for --dry-run (explicit stub), or we
+  // refuse to produce a misleading "anchored"-looking AttestationRef on a
+  // connection failure.
+  let handle: Awaited<ReturnType<typeof connectDemos>> | undefined;
+  if (!args.dryRun) {
+    try {
+      const mn = mnemonicFromEnv(args.mnemonicEnv);
+      handle = await connectDemos(mn, args.rpc);
+      console.error(`✓ Demos handle connected: address=${handle.address.slice(0, 10)}…`);
+    } catch (e) {
+      console.error(`Error: Demos connection failed (${(e as Error).message})`);
+      console.error('Pass --dry-run to explicitly skip anchoring, or fix the connection (DEMOS_MNEMONIC env, RPC URL).');
+      process.exit(2); // §7.5.1 indeterminate — verifier could not produce an anchored receipt
+    }
+  }
+
+  // DAHR-fetch the GLEIF endpoint. Even if anchoring is skipped, the AttestationRef
+  // is still produced with a stub locator (skipAnchor=true).
   let decision: VerifyDecision;
   let reason: string;
   let entityName: string | undefined;
   let regStatus: string | undefined;
+  let attestation: VerifyResult['attestation'];
 
-  const fetched = await fetchGleifLei(args.lei);
-  if (!fetched.ok) {
-    // §7.5.1 — CM-4: network error MUST NOT coerce to pass; map to indeterminate
-    decision = 'indeterminate';
-    reason = `GLEIF fetch failed: ${fetched.error}`;
-  } else if (fetched.body.errors && fetched.body.errors.length > 0) {
-    decision = 'fail';
-    reason = `LEI not found at GLEIF: ${fetched.body.errors[0]?.detail ?? 'no detail'}`;
-  } else if (!fetched.body.data) {
-    decision = 'indeterminate';
-    reason = 'GLEIF response had neither data nor errors — unparseable';
-  } else {
-    entityName = fetched.body.data.attributes?.entity?.legalName?.name;
-    regStatus = fetched.body.data.attributes?.registration?.status;
-    if (regStatus === 'ISSUED') {
-      decision = 'pass';
-      reason = `LEI active (ISSUED), entity="${entityName ?? 'unknown'}"`;
-    } else if (regStatus === 'LAPSED' || regStatus === 'RETIRED' || regStatus === 'ANNULLED') {
+  try {
+    const dahr = await dahrFetch(handle, gleifUrl, {
+      headers: { Accept: 'application/vnd.api+json' },
+      recipe: args.recipeVersion,
+      skipAnchor: args.dryRun || !handle,
+      anchorProgramName: `dacs2:gleif:${args.lei}`,
+    });
+    attestation = dahr.attestation;
+    const body = dahr.responseBody as GleifLeiResponse;
+
+    if (dahr.responseStatus === 404 || (body.errors && body.errors.length > 0)) {
       decision = 'fail';
-      reason = `LEI registration status=${regStatus}`;
-    } else {
+      reason = `LEI not found at GLEIF: ${body.errors?.[0]?.detail ?? 'HTTP 404'}`;
+    } else if (!body.data) {
       decision = 'indeterminate';
-      reason = `LEI registration status=${regStatus ?? '(absent)'} — neither ISSUED nor a known failure value`;
+      reason = 'GLEIF response had neither data nor errors — unparseable';
+    } else {
+      entityName = body.data.attributes?.entity?.legalName?.name;
+      regStatus = body.data.attributes?.registration?.status;
+      if (regStatus === 'ISSUED') {
+        decision = 'pass';
+        reason = `LEI active (ISSUED), entity="${entityName ?? 'unknown'}"`;
+      } else if (regStatus === 'LAPSED' || regStatus === 'RETIRED' || regStatus === 'ANNULLED') {
+        decision = 'fail';
+        reason = `LEI registration status=${regStatus}`;
+      } else {
+        decision = 'indeterminate';
+        reason = `LEI registration status=${regStatus ?? '(absent)'} — neither ISSUED nor a known failure value`;
+      }
     }
+  } catch (e) {
+    // §7.5.1 — CM-4: network/anchor error MUST NOT coerce to pass; map to indeterminate
+    decision = 'indeterminate';
+    reason = `DAHR fetch + anchor failed: ${(e as Error).message}`;
   }
 
   const result: VerifyResult = {
@@ -139,15 +174,19 @@ async function main(): Promise<void> {
     decision,
     reason,
     runAt,
-    freshnessSec: 60 * 60 * 24, // 24 h — same cadence GLEIF refreshes
-    // attestation: STUB — v0.2 will DAHR-anchor the GLEIF response on Demos
+    freshnessSec: 60 * 60 * 24,
+    attestation,
     supplementarySignals: { entityName, registrationStatus: regStatus },
   };
 
-  console.error(`pathos-dacs-vet-gleif — DACS-2 v0.1 (scaffold)`);
+  console.error(`pathos-dacs-vet-gleif — DACS-2 v0.2`);
   console.error(`  LEI: ${args.lei}`);
   console.error(`  decision: ${decision.toUpperCase()} — ${reason}`);
   if (entityName) console.error(`  entity: ${entityName}`);
+  if (attestation) {
+    console.error(`  attestation: ${attestation.type} @ ${attestation.anchor.locator}`);
+    console.error(`  contentHash: ${attestation.contentHash}`);
+  }
   console.error('');
 
   console.log(JSON.stringify(result, null, 2));

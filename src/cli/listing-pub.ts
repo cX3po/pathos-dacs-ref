@@ -20,12 +20,11 @@
  * (logs the would-be-anchored bytes; SDK call wired in v0.2).
  */
 
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import type { Listing, UnsignedListing } from '../types/index.js';
 import { jcsCanonical } from '../jcs.js';
-import { sign } from '../lib/sign.js';
-import { DOMAIN_SEPARATORS } from '../domain-sep.js';
+import { connectDemos, mnemonicFromEnv, anchor } from '../demos/index.js';
 
 const USAGE = `
 pathos-dacs-listing-pub — DACS-1 Listing publisher
@@ -120,31 +119,73 @@ async function main(): Promise<void> {
   }
   console.error(`✓ JCS canonical bytes: ${canonical.length} (< 16 KB cap)`);
 
-  // 4. Sign — STUB. Needs the seller's primary-claim ed25519 privkey, resolved from mnemonic
-  if (args.mnemonicEnv) {
-    const mn = process.env[args.mnemonicEnv];
-    if (!mn) {
-      throw new Error(`Env var ${args.mnemonicEnv} not set`);
-    }
-    console.error(`✓ Mnemonic source: env:${args.mnemonicEnv} (length=${mn.split(' ').length} words)`);
-    console.error(`  TODO v0.2: derive ed25519 keypair from mnemonic via Demos SDK; sign with sep="${DOMAIN_SEPARATORS.LISTING}"`);
-    // Demonstrate the sign() call path with a dummy key so the binding is exercised:
-    const dummyKey = new Uint8Array(32);
-    const sig = sign(DOMAIN_SEPARATORS.LISTING, canonical, dummyKey);
-    console.error(`  (dry signature with all-zeros key: ${sig.length}-byte ed25519 signature produced)`);
-  } else if (!args.dryRun) {
-    console.error('  ⚠ No --mnemonic-env supplied and --dry-run not set; signing skipped');
+  // 4. LP-2 scheme check — MUST run BEFORE dry-run exit (Codex re-review #1).
+  // A non-cci primary listing is invalid in v0.2 regardless of whether we
+  // actually anchor. Catch it here so dry-runs also enforce the constraint.
+  const sellerScheme = listing.seller.identity.primary.scheme;
+  if (sellerScheme !== 'cci') {
+    console.error(
+      `Error: listing.seller.identity.primary.scheme="${sellerScheme}" not supported in v0.2. ` +
+      `Only "cci"-scheme primaries are supported today; ERC-8004 and other schemes land in v0.3.`
+    );
+    process.exit(1);
   }
 
-  // 5. Anchor — STUB
+  // 5. Dry-run path — exits AFTER scheme validation so the rejection happens consistently
   if (args.dryRun) {
-    console.error('✓ Dry run — anchor step skipped');
-    console.log(JSON.stringify({ status: 'dry-run', canonicalBytes: canonical.length }, null, 2));
+    console.error('✓ Dry run — Demos connection + anchor step skipped (scheme + canonical bytes already validated)');
+    console.log(JSON.stringify({ status: 'dry-run', canonicalBytes: canonical.length, schemeValidated: true }, null, 2));
     process.exit(0);
   }
-  console.error(`  TODO v0.2: anchor ${canonical.length}-byte payload to Demos SR-2 via ${args.rpc}`);
-  console.error('  (anchor step not yet implemented in v0.1 scaffold)');
-  console.log(JSON.stringify({ status: 'scaffold-not-anchored', canonicalBytes: canonical.length }, null, 2));
+
+  // 6. Sign + Anchor via Demos SR-2
+  if (!args.mnemonicEnv) {
+    console.error('Error: --mnemonic-env required (or use --dry-run)');
+    process.exit(3);
+  }
+  const mn = mnemonicFromEnv(args.mnemonicEnv);
+  console.error(`✓ Mnemonic source: env:${args.mnemonicEnv} (${mn.split(/\s+/).length} words)`);
+
+  const handle = await connectDemos(mn, args.rpc);
+  console.error(`✓ Connected to Demos: ${handle.rpc}`);
+  console.error(`  Wallet address (CCI): ${handle.address}`);
+
+  // 7. LP-2 mismatch check — refuse to anchor for a different identity than the connected wallet.
+  const sellerCciId = listing.seller.identity.primary.identifier.toLowerCase();
+  const walletAddr = handle.address.toLowerCase();
+  if (sellerCciId !== walletAddr) {
+    console.error(
+      `Error: listing.seller.identity.primary (cci:${sellerCciId}) does not match connected wallet (${walletAddr}). ` +
+      `LP-2 forbids signing a listing for a different identity.`
+    );
+    process.exit(1);
+  }
+
+  // Anchor the JCS-canonical listing bytes to a Storage Program (SR-2)
+  // The listing IS the payload — published in canonical form so any reader can
+  // recompute its hash and verify it matches what they expect (LR-1).
+  console.error(`  Anchoring ${canonical.length} bytes to SR-2...`);
+  const result = await anchor(
+    handle,
+    `dacs1:listing:${listing.id}:v${listing.version}`,
+    new TextDecoder().decode(canonical), // SR-2 wants string or object; pass canonical string
+    { acl: 'public' }
+  );
+
+  console.error(`✓ Anchored:`);
+  console.error(`    storageAddress: ${result.storageAddress}`);
+  console.error(`    txHash:         ${result.txHash}`);
+  console.error(`    sizeBytes:      ${result.sizeBytes}`);
+
+  console.log(JSON.stringify({
+    status: 'anchored',
+    listingId: listing.id,
+    version: listing.version,
+    canonicalBytes: canonical.length,
+    storageAddress: result.storageAddress,
+    txHash: result.txHash,
+    anchoredAt: result.anchoredAt,
+  }, null, 2));
   process.exit(0);
 }
 

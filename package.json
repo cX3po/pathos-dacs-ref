@@ -9,7 +9,7 @@
     "listing-pub": "tsx src/cli/listing-pub.ts",
     "verify": "tsx src/cli/verify.ts",
     "vet-gleif": "tsx src/cli/vet-gleif.ts",
-    "test": "tsx --test test/vectors/*.test.ts"
+    "test": "tsx --test test/vectors/*.test.ts test/integration/*.test.ts"
   },
   "dependencies": {
     "@kynesyslabs/demosdk": "^4.0.0",
@@ -17,6 +17,7 @@
     "@noble/hashes": "^1.5.0",
     "canonicalize": "^2.0.0"
   },
+  "_deps_note": "@noble/hashes is a direct dep (imported by src/demos/dahr.ts, src/demos/storage.ts, src/jcs.ts) AND a transitive dep of @noble/ed25519; declared here to make the direct import explicit.",
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsx": "^4.21.0",
