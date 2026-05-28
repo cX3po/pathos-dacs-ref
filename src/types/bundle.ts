@@ -108,6 +108,16 @@ export interface VerifyVerdict {
 /** A single step in the verifier's walk. */
 export interface VerifyStep {
   step: string;
-  outcome: 'pass' | 'fail' | 'indeterminate';
+  /**
+   * `pass` | `fail` | `indeterminate` — the three §7.5.1 decision values that
+   * roll up into the final verdict (any fail → fail; else any indeterminate → indeterminate; else pass).
+   *
+   * `skipped` — informational only; recorded in the step log so the user sees
+   * that a check was deliberately not run, but does NOT affect the rollup decision.
+   * Used when the caller explicitly opts out of a check (e.g. skipTwoSidedLookup=true
+   * for offline file verification). The verifier still surfaces the scope limit in
+   * the detail so downstream consumers can choose how to treat it.
+   */
+  outcome: 'pass' | 'fail' | 'indeterminate' | 'skipped';
   detail: string;
 }
