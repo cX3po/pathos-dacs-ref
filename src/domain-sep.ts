@@ -44,12 +44,31 @@ export const DOMAIN_SEPARATORS = {
   SESSION_RECORD: 'dacs-session-record:v1:',                // signed_bytes = sep || JCS(sessionRecord)
 } as const;
 
-export type DomainSeparator = (typeof DOMAIN_SEPARATORS)[keyof typeof DOMAIN_SEPARATORS];
+/**
+ * PATH-OS Labs extension separators — NOT part of the normative DACS v0.7 §7.7
+ * closed registry, kept in a sibling map so the "exactly 17 spec separators"
+ * invariant stays meaningful. These are admitted by assertKnownSeparator() and
+ * usable by sign()/verify() exactly like spec separators, but a verifier auditing
+ * spec-conformance can distinguish them by their map of origin.
+ *
+ * CROSS_VPS_ATTESTATION closes the DAHR single-node-relay trust gap (src/demos/dahr.ts):
+ * one independent node signs its OWN response hash so an n-of-m quorum can agree.
+ */
+export const PATHOS_EXTENSION_SEPARATORS = {
+  CROSS_VPS_ATTESTATION: 'dacs-cross-vps-attestation:v1:',  // signed_bytes = sep || utf8(responseHashHex)
+} as const;
+
+export type DomainSeparator =
+  | (typeof DOMAIN_SEPARATORS)[keyof typeof DOMAIN_SEPARATORS]
+  | (typeof PATHOS_EXTENSION_SEPARATORS)[keyof typeof PATHOS_EXTENSION_SEPARATORS];
 export type DomainSeparatorKey = keyof typeof DOMAIN_SEPARATORS;
 
-/** §7.7 closure rule. Throws on unknown separator. */
+/** §7.7 closure rule (extended to admit PATH-OS Labs extension separators). Throws on unknown separator. */
 export function assertKnownSeparator(sep: string): asserts sep is DomainSeparator {
-  const known: string[] = Object.values(DOMAIN_SEPARATORS);
+  const known: string[] = [
+    ...Object.values(DOMAIN_SEPARATORS),
+    ...Object.values(PATHOS_EXTENSION_SEPARATORS),
+  ];
   if (!known.includes(sep)) {
     throw new Error(
       `Unknown domain separator: "${sep}". DACS §7.7 declares a closed v1 registry. ` +
