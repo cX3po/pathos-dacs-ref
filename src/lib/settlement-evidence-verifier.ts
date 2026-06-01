@@ -234,6 +234,27 @@ function commitmentBody(commitment: ReleaseCommitment): Uint8Array {
 /*  Verify                                                                     */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * True iff the canonical amount is strictly positive — neither negative (leading '-')
+ * nor zero (/^0(\.0*)?$/). A monetary release/deposit amount MUST be > 0: a negative or
+ * zero amount is contradictory value evidence. Critically, a NEGATIVE release amount that
+ * "matches" an equally-negative deposit-proof amount would otherwise sail through the
+ * priceEqual binding check — so this guard MUST run BEFORE priceEqual on both amounts.
+ * Returns false on any non-canonicalisable amount so the caller treats it as a reject.
+ * (Mirrors tank-lock-evidence.ts::isPositiveAmount exactly.)
+ */
+function isPositiveAmount(p: PriceTerm): boolean {
+  let c: string;
+  try {
+    c = canonicalPrice(p);
+  } catch {
+    return false;
+  }
+  if (c.startsWith('-')) return false;
+  if (/^0(\.0*)?$/.test(c)) return false;
+  return true;
+}
+
 /** Compare two PriceTerms by canonical amount + asset (finding #27 — no float drift). */
 function priceEqual(a: PriceTerm, b: PriceTerm): boolean {
   if (a.asset !== b.asset) return false;
@@ -300,6 +321,17 @@ export function verifyBridgeRelease(
     }
   }
 
+  // Reject-first: the released amount MUST be a positive monetary value. A negative or
+  // zero amount is contradictory value evidence — and must be rejected BEFORE any
+  // priceEqual binding compare, so a negative release amount that "matches" an equally-
+  // negative deposit amount can never reach (and pass) the equality check.
+  if (!isPositiveAmount(evidence.amount)) {
+    return fail(
+      `release amount must be a positive value (got "${evidence.amount.amount} ${evidence.amount.asset}") ` +
+      `— a bridge release cannot release a negative or zero amount`
+    );
+  }
+
   const proof = evidence.source_chain_deposit_proof;
 
   /* ---- Guarantee (a): confirmed deposit that binds to bridge_id + amount ---- */
@@ -324,6 +356,15 @@ export function verifyBridgeRelease(
   if (proof.bridge_id !== evidence.bridge_id) {
     return fail(
       `deposit proof bridge_id="${proof.bridge_id}" does not bind to release bridge_id="${evidence.bridge_id}"`
+    );
+  }
+  // Guard the deposit-proof amount before the equality compare: a negative/zero deposit
+  // amount cannot back a release, and a negative deposit amount that equals an equally-
+  // negative release amount must never satisfy priceEqual.
+  if (!isPositiveAmount(proof.amount)) {
+    return fail(
+      `deposit proof amount must be a positive value (got "${proof.amount.amount} ${proof.amount.asset}") ` +
+      `— a negative or zero deposit amount cannot back a bridge release`
     );
   }
   if (!priceEqual(proof.amount, evidence.amount)) {

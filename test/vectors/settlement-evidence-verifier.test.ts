@@ -343,6 +343,69 @@ test('binding — signatures over a DIFFERENT commitment do not count (replay pr
   assert.match(result.reason, /sub-quorum/);
 });
 
+test('negative release amount → FAIL (matching negative deposit cannot pass equality)', () => {
+  // Both the release amount AND the deposit-proof amount are equally negative, so the
+  // priceEqual binding check would PASS — proving the positive-amount guard must run
+  // first. A negative monetary release is contradictory value evidence.
+  const NEG: PriceTerm = { amount: '-100.000000', asset: 'USDC', decimals: 6 };
+  const evidence = makeEvidence({
+    amount: NEG,
+    source_chain_deposit_proof: makeConfirmedDeposit({ amount: NEG }),
+  });
+  const { sigs, signerHexes } = signWithKeys(evidence, REQUIRED_QUORUM);
+  evidence.shard_quorum_signatures = sigs;
+
+  const result = verifyBridgeRelease(evidence, {
+    requiredQuorum: REQUIRED_QUORUM,
+    shardSetSize: SHARD_SET_SIZE,
+    consumedDepositLedger: [],
+    authorizedShardSet: signerHexes,
+  });
+  assert.equal(result.decision, 'fail', result.reason);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /positive/);
+});
+
+test('zero release amount → FAIL (a release of zero moves no value)', () => {
+  const ZERO: PriceTerm = { amount: '0.000000', asset: 'USDC', decimals: 6 };
+  const evidence = makeEvidence({
+    amount: ZERO,
+    source_chain_deposit_proof: makeConfirmedDeposit({ amount: ZERO }),
+  });
+  const { sigs, signerHexes } = signWithKeys(evidence, REQUIRED_QUORUM);
+  evidence.shard_quorum_signatures = sigs;
+
+  const result = verifyBridgeRelease(evidence, {
+    requiredQuorum: REQUIRED_QUORUM,
+    shardSetSize: SHARD_SET_SIZE,
+    consumedDepositLedger: [],
+    authorizedShardSet: signerHexes,
+  });
+  assert.equal(result.decision, 'fail', result.reason);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /positive/);
+});
+
+test('negative deposit-proof amount (positive release) → FAIL on the deposit guard', () => {
+  // Release amount is positive but the backing deposit amount is negative — the deposit
+  // guard rejects before priceEqual (and the amounts wouldn't match anyway). Proves the
+  // proof.amount guard is wired independently of the release-amount guard.
+  const evidence = makeEvidence({
+    source_chain_deposit_proof: makeConfirmedDeposit({ amount: { amount: '-100.000000', asset: 'USDC', decimals: 6 } }),
+  });
+  const { sigs, signerHexes } = signWithKeys(evidence, REQUIRED_QUORUM);
+  evidence.shard_quorum_signatures = sigs;
+
+  const result = verifyBridgeRelease(evidence, {
+    requiredQuorum: REQUIRED_QUORUM,
+    shardSetSize: SHARD_SET_SIZE,
+    consumedDepositLedger: [],
+    authorizedShardSet: signerHexes,
+  });
+  assert.equal(result.decision, 'fail', result.reason);
+  assert.match(result.reason, /deposit proof amount must be a positive value/);
+});
+
 test('config — requiredQuorum below true majority of shardSetSize is rejected', () => {
   const evidence = makeEvidence();
   evidence.shard_quorum_signatures = signWith(evidence, 2);

@@ -61,6 +61,25 @@ function normalisePrice(price: PriceTerm): PriceTerm {
   return { ...price, amount: canonicalPrice(price) };
 }
 
+/**
+ * True iff the canonical amount is strictly positive — neither negative (leading '-')
+ * nor zero (/^0(\.0*)?$/). An HTLC settles a monetary `price`; a negative or zero
+ * settled amount is contradictory value evidence. Returns false on any non-canonicalisable
+ * amount so the verify walk treats it as a reject (fail-closed). Mirrors
+ * tank-lock-evidence.ts::isPositiveAmount exactly.
+ */
+function isPositiveAmount(p: PriceTerm): boolean {
+  let c: string;
+  try {
+    c = canonicalPrice(p);
+  } catch {
+    return false;
+  }
+  if (c.startsWith('-')) return false;
+  if (/^0(\.0*)?$/.test(c)) return false;
+  return true;
+}
+
 /** sha256(preimageBytes) as hex, comparing case-insensitively against a stored hashlock. */
 function hashlockFor(preimageHex: string): string {
   return bytesToHex(sha256(hexToBytes(preimageHex)));
@@ -241,6 +260,18 @@ export function verifyHtlcSettlementEvidence(
   } catch (e) {
     add('price-canonical', 'fail', `price.amount failed canonicalisation: ${(e as Error).message}`);
   }
+
+  // 3.5 — settled amount must be strictly positive. The HTLC settles `price`; a
+  // negative or zero settled amount is contradictory value evidence (a settlement that
+  // moves no — or negative — value). Mirrors the positive-amount guard the tank/bridge
+  // verifiers enforce. Reject on any non-canonicalisable amount (fail-closed).
+  const pricePositive = isPositiveAmount(evidence.price);
+  add('price-positive',
+    pricePositive ? 'pass' : 'fail',
+    pricePositive
+      ? `settled amount "${evidence.price.amount}" ${evidence.price.asset} is positive`
+      : `htlc settlement amount must be positive (got "${evidence.price.amount} ${evidence.price.asset}") ` +
+        `— a negative or zero HTLC settlement is contradictory`);
 
   // 4 — lock + hashlock consistency
   const lock = evidence.txRefs.find((t): t is HtlcLockTxRef => t.phase === 'htlc-lock');

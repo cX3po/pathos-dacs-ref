@@ -311,6 +311,50 @@ test('build/verify symmetry — builder rejects a late reveal observedAt the ver
   assert.equal(refundTimelock.outcome, 'pass');
 });
 
+test('negative settlement amount → verify FAIL on price-positive (contradictory value)', () => {
+  // A validly-signed settled evidence whose settled price.amount is negative. A negative
+  // HTLC settlement moves negative value — contradictory. Constructed like the other
+  // fail-closed vectors (signUnsigned), so the signature itself verifies and the
+  // price-positive check is the load-bearing rejection.
+  const { privKey, pubKey } = generateKeypair();
+  const NEG_PRICE: PriceTerm = { amount: '-1.500000', asset: 'USDC', decimals: 6 };
+  const unsigned = {
+    v: 'dacs-4-settlement-evidence:0.1', jobId: 'job-htlc-neg-amount-1', method: 'htlc',
+    rail: RailAvailability.Mocked, price: NEG_PRICE, settler: 'seller',
+    settlerPubkey: bytesToHex(pubKey),
+    outcome: 'settled',
+    txRefs: [
+      makeLock('2026-05-28T06:00:00Z'),
+      makeReveal('2026-05-28T05:00:00Z', '2026-05-28T04:30:00Z'),
+    ], settledAt: '2026-05-28T05:01:00Z',
+  };
+  const result = verifyHtlcSettlementEvidence(signUnsigned(unsigned, privKey), pubKey);
+  assert.equal(result.decision, 'fail', JSON.stringify(result.checks, null, 2));
+  const pp = result.checks.find(c => c.check === 'price-positive');
+  assert.ok(pp && pp.outcome === 'fail', 'expected price-positive to fail on a negative settlement amount');
+  assert.match(pp.detail, /positive/);
+});
+
+test('zero settlement amount → verify FAIL on price-positive (settles no value)', () => {
+  const { privKey, pubKey } = generateKeypair();
+  const ZERO_PRICE: PriceTerm = { amount: '0.000000', asset: 'USDC', decimals: 6 };
+  const unsigned = {
+    v: 'dacs-4-settlement-evidence:0.1', jobId: 'job-htlc-zero-amount-1', method: 'htlc',
+    rail: RailAvailability.Mocked, price: ZERO_PRICE, settler: 'seller',
+    settlerPubkey: bytesToHex(pubKey),
+    outcome: 'settled',
+    txRefs: [
+      makeLock('2026-05-28T06:00:00Z'),
+      makeReveal('2026-05-28T05:00:00Z', '2026-05-28T04:30:00Z'),
+    ], settledAt: '2026-05-28T05:01:00Z',
+  };
+  const result = verifyHtlcSettlementEvidence(signUnsigned(unsigned, privKey), pubKey);
+  assert.equal(result.decision, 'fail', JSON.stringify(result.checks, null, 2));
+  const pp = result.checks.find(c => c.check === 'price-positive');
+  assert.ok(pp && pp.outcome === 'fail', 'expected price-positive to fail on a zero settlement amount');
+  assert.match(pp.detail, /positive/);
+});
+
 test('canonical price — a non-canonical amount fails the finding-#27 check', () => {
   const { privKey, pubKey } = generateKeypair();
   const evidence = buildHtlcSettlementEvidence({
