@@ -56,6 +56,7 @@ export const DOMAIN_SEPARATORS = {
  */
 export const PATHOS_EXTENSION_SEPARATORS = {
   CROSS_VPS_ATTESTATION: 'dacs-cross-vps-attestation:v1:',  // signed_bytes = sep || utf8(responseHashHex)
+  BRIDGE_RELEASE_ATTESTATION: 'dacs-bridge-release-attestation:v1:', // signed_bytes = sep || utf8(sha256-hex(JCS(releaseCommitment)))
 } as const;
 
 export type DomainSeparator =
