@@ -31,13 +31,21 @@
  *     deposit window closed — i.e. the release raced a refund-eligible deposit),
  *   - a deposit whose bound bridge_id/amount does not match the release.
  *
+ * Double-spend ledger is AUTHORITATIVE, never evidence-supplied. The set of
+ * already-consumed deposit_ids is the one fact the evidence producer must NOT be
+ * trusted to report — a malicious producer would simply omit its own deposit from
+ * a self-supplied ledger to replay it. The ledger therefore arrives through
+ * VerifyBridgeReleaseOptions (verifier-controlled state), and if NO authoritative
+ * ledger is supplied the verifier CANNOT assert the not-already-consumed guarantee:
+ * it returns decision='indeterminate' (§7.5.1 three-state — NEVER coerced to 'pass').
+ *
  * Signed-bytes discipline (repo invariant, mirrors htlc-evidence.ts):
  *   signed_bytes := domain_separator || utf8( sha256-hex( JCS(releaseCommitment) ) )
  * where releaseCommitment is the deterministic { bridge_id, amount, deposit_id,
  * release_tx } tuple every shard signs. Signing the COMMITMENT (not just the
  * bridge_id) is what makes a signature non-replayable across amounts/releases.
  *
- * decision ∈ {'pass','fail'} is never coerced (sibling to §7.5.1).
+ * decision ∈ {'pass','fail','indeterminate'} is never coerced (sibling to §7.5.1).
  */
 
 import { jcsHashHex } from '../jcs.js';
@@ -131,12 +139,6 @@ export interface BridgeReleaseEvidence {
   shard_quorum_signatures: ShardSignature[];
   /** The destination-chain release transaction. */
   release_tx: BridgeReleaseTx;
-  /**
-   * Optional ledger of deposit_ids already consumed by a prior release through this
-   * bridge_id. A deposit_id appearing here that equals this release's deposit means
-   * the deposit is being DOUBLE-confirmed / double-spent → reject.
-   */
-  consumedDepositLedger?: string[];
 }
 
 /** Options bag — at minimum the majority threshold the caller demands. */
@@ -148,12 +150,43 @@ export interface VerifyBridgeReleaseOptions {
   requiredQuorum: number;
   /** Total shard-set size, if known — lets the verifier sanity-check requiredQuorum is a true majority. */
   shardSetSize?: number;
+  /**
+   * The KNOWN, AUTHORIZED bridge shard signer pubkeys (hex). Only signatures whose
+   * signer is a MEMBER of this set count toward `requiredQuorum`; a cryptographically
+   * valid signature from a NON-member is rejected (does NOT count). This closes the
+   * Codex-flagged hole where quorum counted "any distinct valid key" — an attacker
+   * could otherwise mint a quorum by generating N fresh keypairs and signing the
+   * commitment with each. Authorisation is not "the signature verifies"; it is
+   * "the signature verifies AND the signer is a registered shard".
+   *
+   * Membership is matched on the normalised (lower-cased) 32-byte hex pubkey, so a
+   * member listed in mixed case still matches its lower-cased signature entry.
+   *
+   * If this is OMITTED, the verifier cannot establish that signers are authorised
+   * shards and MUST return decision='indeterminate' (never 'pass') — same §7.5.1
+   * three-state discipline as the consumed-deposit ledger: an unprovable trust
+   * property is NEVER coerced to a pass.
+   */
+  authorizedShardSet?: Iterable<string>;
+  /**
+   * AUTHORITATIVE ledger of deposit_ids already consumed by a prior release through
+   * this bridge_id. This is verifier-controlled state (NOT supplied by the evidence
+   * object), because the producer cannot be trusted to disclose a deposit it intends
+   * to replay. A deposit_id present here that equals this release's deposit means the
+   * deposit is being DOUBLE-confirmed / double-spent → fail.
+   *
+   * If this is OMITTED, the verifier cannot assert the not-already-consumed
+   * guarantee and MUST return decision='indeterminate' (never 'pass'). Supply an
+   * empty array to assert "the authoritative ledger is known and this deposit has
+   * not been consumed".
+   */
+  consumedDepositLedger?: readonly string[];
 }
 
 /** VerifyResult-style outcome (sibling to types/verify-result.ts + cross-vps-attest.ts). */
 export interface VerifyResult {
   ok: boolean;
-  decision: 'pass' | 'fail';
+  decision: 'pass' | 'fail' | 'indeterminate';
   reason: string;
 }
 
@@ -221,14 +254,31 @@ function strictlyBefore(a: string, b: string): boolean | null {
  *
  * Returns { ok:false, decision:'fail', reason } on the FIRST failed guarantee so
  * the caller sees exactly which negative-evidence check rejected the release.
+ *
+ * If `options.consumedDepositLedger` is omitted, the double-spend guarantee cannot
+ * be asserted and the verifier returns { ok:false, decision:'indeterminate' } —
+ * never 'pass'. Pass an empty array to assert a known, empty authoritative ledger.
  */
 export function verifyBridgeRelease(
   evidence: BridgeReleaseEvidence,
   options: VerifyBridgeReleaseOptions
 ): VerifyResult {
   const fail = (reason: string): VerifyResult => ({ ok: false, decision: 'fail', reason });
+  const indeterminate = (reason: string): VerifyResult => ({ ok: false, decision: 'indeterminate', reason });
 
-  const { requiredQuorum, shardSetSize } = options;
+  const { requiredQuorum, shardSetSize, consumedDepositLedger, authorizedShardSet } = options;
+
+  // Normalise the authorized shard pubkey set once (lower-cased hex). undefined ⇒
+  // the caller did not declare a shard set; we cannot establish that signers are
+  // authorised shards (see the indeterminate guard in guarantee (b)).
+  let authorizedShards: Set<string> | undefined;
+  if (authorizedShardSet !== undefined) {
+    authorizedShards = new Set<string>();
+    for (const k of authorizedShardSet) {
+      const norm = k.toLowerCase().replace(/^0x/, '');
+      if (norm.length > 0) authorizedShards.add(norm);
+    }
+  }
 
   // Guard: a non-positive quorum would vacuously "pass" the majority check — reject the config.
   if (!Number.isInteger(requiredQuorum) || requiredQuorum < 1) {
@@ -276,10 +326,20 @@ export function verifyBridgeRelease(
   }
 
   // Double-confirm / double-spend: this deposit was already consumed by a prior
-  // release through this same bridge_id.
-  if (evidence.consumedDepositLedger?.includes(proof.deposit_id)) {
+  // release through this same bridge_id. The ledger is AUTHORITATIVE (verifier-
+  // supplied via options), never read from the evidence object — a producer cannot
+  // be trusted to disclose a deposit it intends to replay. With no authoritative
+  // ledger we cannot assert the not-already-consumed guarantee → indeterminate
+  // (§7.5.1: NEVER coerce a missing-evidence state to 'pass').
+  if (consumedDepositLedger === undefined) {
+    return indeterminate(
+      `no authoritative consumedDepositLedger supplied for bridge_id="${evidence.bridge_id}" ` +
+      `— cannot assert deposit_id="${proof.deposit_id}" was not already consumed (double-spend guarantee unprovable)`
+    );
+  }
+  if (consumedDepositLedger.includes(proof.deposit_id)) {
     return fail(
-      `deposit_id="${proof.deposit_id}" is already in the consumed ledger for bridge_id="${evidence.bridge_id}" ` +
+      `deposit_id="${proof.deposit_id}" is already in the authoritative consumed ledger for bridge_id="${evidence.bridge_id}" ` +
       `— double-confirm / double-spend`
     );
   }
@@ -309,10 +369,24 @@ export function verifyBridgeRelease(
     return fail('shard_quorum_signatures is empty — no shard authorised the release');
   }
 
+  // The authorized shard set is the trust anchor for quorum: a signature is only
+  // authorising if it BOTH verifies AND comes from a registered shard. With no
+  // declared set we cannot establish that any signer is an authorised shard, so the
+  // majority-of-shard guarantee is unprovable → indeterminate (§7.5.1: an unprovable
+  // trust property is NEVER coerced to 'pass'). This closes the Codex-flagged hole
+  // where an attacker could mint a quorum from N fresh, self-generated keys.
+  if (authorizedShards === undefined) {
+    return indeterminate(
+      `no authorizedShardSet supplied for bridge_id="${evidence.bridge_id}" — cannot establish that signers ` +
+      `are registered shards (majority-of-shard guarantee unprovable; a valid signature is not an authorised one)`
+    );
+  }
+
   const commitment = buildReleaseCommitment(evidence);
   const body = commitmentBody(commitment);
 
   const validSigners = new Set<string>();
+  let rejectedNonMembers = 0;
   for (const s of sigs) {
     let pubKey: Uint8Array;
     try {
@@ -331,17 +405,26 @@ export function verifyBridgeRelease(
     }
     if (sig.length !== 64) continue; // ed25519 signatures are 64 bytes
     const ok = edVerify(PATHOS_EXTENSION_SEPARATORS.BRIDGE_RELEASE_ATTESTATION, sig, body, pubKey);
-    if (ok) {
-      // DISTINCTness keyed on the normalised signer hex — the same signer signing
-      // twice counts ONCE (defeats sub-quorum-via-duplication).
-      validSigners.add(bytesToHex(pubKey).toLowerCase());
+    if (!ok) continue;
+    const normSigner = bytesToHex(pubKey).toLowerCase();
+    // AUTHORIZATION: a cryptographically valid signature from a NON-member shard is
+    // rejected — it does NOT count toward quorum (defeats forge-N-fresh-keys).
+    if (!authorizedShards.has(normSigner)) {
+      rejectedNonMembers++;
+      continue;
     }
+    // DISTINCTness keyed on the normalised signer hex — the same authorised signer
+    // signing twice counts ONCE (defeats sub-quorum-via-duplication).
+    validSigners.add(normSigner);
   }
 
   if (validSigners.size < requiredQuorum) {
     return fail(
-      `sub-quorum: ${validSigners.size} distinct valid shard signer(s) over the release commitment ` +
-      `< requiredQuorum=${requiredQuorum}`
+      `sub-quorum: ${validSigners.size} distinct AUTHORIZED valid shard signer(s) over the release commitment ` +
+      `< requiredQuorum=${requiredQuorum}` +
+      (rejectedNonMembers > 0
+        ? ` (${rejectedNonMembers} valid signature(s) rejected as non-members of the authorized shard set)`
+        : '')
     );
   }
 
@@ -351,7 +434,7 @@ export function verifyBridgeRelease(
     reason:
       `confirmed deposit ${proof.deposit_id} binds to bridge_id="${evidence.bridge_id}" + amount ` +
       `${commitment.amount.amount} ${commitment.amount.asset}; ` +
-      `${validSigners.size}-of-${sigs.length} distinct valid shard signatures (>= ${requiredQuorum} required)`,
+      `${validSigners.size}-of-${sigs.length} distinct AUTHORIZED valid shard signatures (>= ${requiredQuorum} required)`,
   };
 }
 

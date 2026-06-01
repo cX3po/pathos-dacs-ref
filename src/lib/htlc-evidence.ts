@@ -98,7 +98,11 @@ export interface BuildHtlcEvidenceInput {
  *     `rail === Failed` with neither (a lock-only failure record)
  *   - every txRef carries the SAME hashlock as the lock
  *   - reveal.preimage hashes to that hashlock
- *   - timelock asymmetry (reveal strictly before lock.timelockExpiry; refund at/after it)
+ *   - timelock asymmetry, checking the SAME fields the verifier does: on the happy
+ *     path BOTH reveal.revealDeadline AND reveal.observedAt strictly before
+ *     lock.timelockExpiry; on the refund path BOTH refund.refundedAfter AND
+ *     refund.observedAt at/after it. (Build/verify symmetry — a builder that checked
+ *     fewer fields could mint evidence its own verifier rejects.)
  */
 export function buildHtlcSettlementEvidence(input: BuildHtlcEvidenceInput): SettlementEvidence {
   const { jobId, rail, settler, lock, reveal, refund } = input;
@@ -257,6 +261,12 @@ export function verifyHtlcSettlementEvidence(
   const refund = evidence.txRefs.find((t): t is HtlcRefundTxRef => t.phase === 'htlc-refund');
 
   if (evidence.outcome === 'settled') {
+    if (refund) {
+      // Mutual exclusion (mirrors buildHtlcSettlementEvidence's reveal&&refund rejection):
+      // a settled outcome MUST NOT carry a refund txRef — lock+reveal+refund is contradictory.
+      add('settled-no-refund', 'fail',
+        'outcome=settled but a htlc-refund txRef rides along — contradictory settle+refund evidence');
+    }
     if (!reveal) {
       add('settled-has-reveal', 'fail', 'outcome=settled but no htlc-reveal txRef');
     } else if (lock) {
@@ -298,11 +308,22 @@ export function verifyHtlcSettlementEvidence(
           : `UNSAFE: refund did not wait until source timelock ${lock.timelockExpiry} expired`);
     }
   } else if (evidence.outcome === 'failed') {
+    // failed evidence is lock-only (mirrors the builder, lines 128-137): a reveal or refund
+    // txRef riding along is contradictory and must fail closed — do not pass on rail alone.
+    if (reveal || refund) {
+      add('failed-lock-only', 'fail',
+        'outcome=failed but a htlc-reveal/htlc-refund txRef rides along — failed evidence must be lock-only');
+    }
     if (evidence.rail !== RailAvailability.Failed) {
       add('failed-rail', 'fail', `outcome=failed but rail="${evidence.rail}" (expected "${RailAvailability.Failed}")`);
     } else {
       add('failed-rail', 'pass', 'outcome=failed with rail=failed');
     }
+  } else {
+    // Fail CLOSED on any unrecognised outcome — a signed runtime object with an unknown
+    // outcome must never skip the outcome-specific checks and fall through to 'pass'.
+    add('unknown-outcome', 'fail',
+      'unrecognised outcome — verifier fails closed on unknown evidence.outcome values');
   }
 
   const decision: 'pass' | 'fail' = checks.some(c => c.outcome === 'fail') ? 'fail' : 'pass';
@@ -328,10 +349,22 @@ function assertPreimageMatchesHashlock(reveal: HtlcRevealTxRef): void {
   }
 }
 
+// Builder-side timelock checks are kept IDENTICAL to the verifier's (§5 of
+// verifyHtlcSettlementEvidence): both revealDeadline AND observedAt must land
+// strictly before the source timelock on the happy path, and both refundedAfter
+// AND observedAt must land at/after it on the refund path. If the builder checked
+// fewer fields than the verifier, a producer could mint evidence its OWN verifier
+// rejects — the build/verify asymmetry this closes.
 function assertRevealBeforeTimelock(lock: HtlcLockTxRef, reveal: HtlcRevealTxRef): void {
   if (!isStrictlyBefore(reveal.revealDeadline, lock.timelockExpiry)) {
     throw new Error(
       `HTLC timelock-asymmetry violation: reveal deadline ${reveal.revealDeadline} ` +
+      `is not strictly before source lock timelock ${lock.timelockExpiry}`
+    );
+  }
+  if (!isStrictlyBefore(reveal.observedAt, lock.timelockExpiry)) {
+    throw new Error(
+      `HTLC timelock-asymmetry violation: reveal observedAt ${reveal.observedAt} ` +
       `is not strictly before source lock timelock ${lock.timelockExpiry}`
     );
   }
@@ -341,6 +374,11 @@ function assertRefundAfterTimelock(lock: HtlcLockTxRef, refund: HtlcRefundTxRef)
   if (isStrictlyBefore(refund.refundedAfter, lock.timelockExpiry)) {
     throw new Error(
       `HTLC refund waited until ${refund.refundedAfter}, which is before the source lock timelock ${lock.timelockExpiry}`
+    );
+  }
+  if (isStrictlyBefore(refund.observedAt, lock.timelockExpiry)) {
+    throw new Error(
+      `HTLC refund observedAt ${refund.observedAt} is before the source lock timelock ${lock.timelockExpiry}`
     );
   }
 }

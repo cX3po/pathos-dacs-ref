@@ -6,20 +6,25 @@
  *   - tamper: mutate a txHash AFTER signing → verify FAIL (signature breaks)
  *   - refund path: build (refunded, lock+refund) → verify PASS
  *   - timelock-asymmetry: reveal at/after source timelock is rejected at build time
+ *   - build/verify symmetry: the builder checks observedAt (not just the deadline),
+ *     identical to the verifier — a builder cannot mint evidence its verifier rejects
  *   - canonical price: a non-canonical amount fails the finding-#27 check
  */
 
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { sha256 } from '@noble/hashes/sha2';
-import { generateKeypair } from '../../src/lib/sign.js';
+import { generateKeypair, sign } from '../../src/lib/sign.js';
 import { bytesToHex, hexToBytes } from '../../src/lib/verify-bundle.js';
+import { jcsHashHex } from '../../src/jcs.js';
+import { DOMAIN_SEPARATORS } from '../../src/domain-sep.js';
 import {
   buildHtlcSettlementEvidence,
   verifyHtlcSettlementEvidence,
 } from '../../src/lib/htlc-evidence.js';
 import {
   RailAvailability,
+  type SettlementEvidence,
   type PriceTerm,
   type HtlcLockTxRef,
   type HtlcRevealTxRef,
@@ -122,6 +127,67 @@ test('tamper — mutating a txHash after signing breaks verification', () => {
   assert.equal(sigCheck.outcome, 'fail');
 });
 
+/** Sign an arbitrary unsigned-evidence object exactly as buildHtlcSettlementEvidence does,
+ *  so these vectors carry a VALID signature and isolate the verifier's outcome logic. */
+function signUnsigned(unsigned: Record<string, unknown>, privKey: Uint8Array): SettlementEvidence {
+  const body = new TextEncoder().encode(jcsHashHex(unsigned));
+  const sig = sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, body, privKey);
+  return { ...unsigned, signature: Buffer.from(sig).toString('base64') } as unknown as SettlementEvidence;
+}
+
+test('fail-closed — a validly-signed evidence with an UNKNOWN outcome verifies FAIL', () => {
+  const { privKey, pubKey } = generateKeypair();
+  const unsigned = {
+    v: 'dacs-4-settlement-evidence:0.1', jobId: 'job-htlc-neg-1', method: 'htlc',
+    rail: RailAvailability.Mocked, price: PRICE, settler: 'seller',
+    settlerPubkey: bytesToHex(pubKey),
+    outcome: 'bogus', // not settled/refunded/failed — verifier must NOT fall through to pass
+    txRefs: [makeLock('2026-05-28T06:00:00Z')], settledAt: '2026-05-28T05:01:00Z',
+  };
+  const result = verifyHtlcSettlementEvidence(signUnsigned(unsigned, privKey), pubKey);
+  assert.equal(result.decision, 'fail', JSON.stringify(result.checks, null, 2));
+  const uo = result.checks.find(c => c.check === 'unknown-outcome');
+  assert.ok(uo && uo.outcome === 'fail', 'expected unknown-outcome to fail closed');
+});
+
+test('mutual exclusion — outcome=settled with a refund txRef riding along verifies FAIL', () => {
+  const { privKey, pubKey } = generateKeypair();
+  const unsigned = {
+    v: 'dacs-4-settlement-evidence:0.1', jobId: 'job-htlc-neg-2', method: 'htlc',
+    rail: RailAvailability.Mocked, price: PRICE, settler: 'seller',
+    settlerPubkey: bytesToHex(pubKey),
+    outcome: 'settled',
+    // contradictory: a reveal (settled) AND a refund both present on one HTLC
+    txRefs: [
+      makeLock('2026-05-28T06:00:00Z'),
+      makeReveal('2026-05-28T05:00:00Z', '2026-05-28T04:30:00Z'),
+      makeRefund('2026-05-28T07:00:00Z', '2026-05-28T07:30:00Z'),
+    ], settledAt: '2026-05-28T05:01:00Z',
+  };
+  const result = verifyHtlcSettlementEvidence(signUnsigned(unsigned, privKey), pubKey);
+  assert.equal(result.decision, 'fail', JSON.stringify(result.checks, null, 2));
+  const mx = result.checks.find(c => c.check === 'settled-no-refund');
+  assert.ok(mx && mx.outcome === 'fail', 'expected settled-no-refund mutual-exclusion to fail');
+});
+
+test('fail-closed — outcome=failed with a reveal txRef riding along verifies FAIL (lock-only)', () => {
+  const { privKey, pubKey } = generateKeypair();
+  const unsigned = {
+    v: 'dacs-4-settlement-evidence:0.1', jobId: 'job-htlc-neg-3', method: 'htlc',
+    rail: RailAvailability.Failed, price: PRICE, settler: 'seller',
+    settlerPubkey: bytesToHex(pubKey),
+    outcome: 'failed', // failed must be lock-only — a reveal must not let it pass on rail alone
+    txRefs: [
+      makeLock('2026-05-28T06:00:00Z'),
+      makeReveal('2026-05-28T05:00:00Z', '2026-05-28T04:30:00Z'),
+    ], settledAt: '2026-05-28T05:01:00Z',
+  };
+  const result = verifyHtlcSettlementEvidence(signUnsigned(unsigned, privKey), pubKey);
+  assert.equal(result.decision, 'fail', JSON.stringify(result.checks, null, 2));
+  const lo = result.checks.find(c => c.check === 'failed-lock-only');
+  assert.ok(lo && lo.outcome === 'fail', 'expected failed-lock-only to fail closed');
+});
+
 test('refund path — build refunded (lock+refund) then verify PASS', () => {
   const { privKey, pubKey } = generateKeypair();
   const evidence = buildHtlcSettlementEvidence({
@@ -164,6 +230,85 @@ test('timelock-asymmetry — reveal not strictly before source timelock is rejec
       }),
     /timelock-asymmetry/
   );
+});
+
+test('build/verify symmetry — builder rejects a late reveal observedAt the verifier would also reject', () => {
+  const { privKey, pubKey } = generateKeypair();
+
+  // revealDeadline is strictly before the source timelock (would pass the OLD
+  // builder), but observedAt lands AT/AFTER it. The verifier checks observedAt and
+  // would reject such evidence — so a symmetric builder MUST refuse to mint it.
+  assert.throws(
+    () =>
+      buildHtlcSettlementEvidence({
+        jobId: 'job-htlc-006',
+        rail: RailAvailability.Mocked,
+        price: PRICE,
+        settler: 'seller',
+        settlerPrivKey: privKey,
+        settlerPubkey: pubKey,
+        lock: makeLock('2026-05-28T06:00:00Z'),
+        // deadline safe (05:00 < 06:00) but observed AT the timelock — unsafe
+        reveal: makeReveal('2026-05-28T05:00:00Z', '2026-05-28T06:00:00Z'),
+      }),
+    /timelock-asymmetry/,
+    'builder must reject a reveal whose observedAt is not strictly before the timelock'
+  );
+
+  // Symmetry the other direction (refund path): a refund observed BEFORE the
+  // timelock must be rejected at build time too, matching the verifier.
+  assert.throws(
+    () =>
+      buildHtlcSettlementEvidence({
+        jobId: 'job-htlc-007',
+        rail: RailAvailability.Mocked,
+        price: PRICE,
+        settler: 'buyer',
+        settlerPrivKey: privKey,
+        settlerPubkey: pubKey,
+        lock: makeLock('2026-05-28T06:00:00Z'),
+        // refundedAfter satisfies at/after, but observed BEFORE the timelock — unsafe
+        refund: makeRefund('2026-05-28T06:00:00Z', '2026-05-28T05:30:00Z'),
+      }),
+    /before the source lock timelock/,
+    'builder must reject a refund whose observedAt is before the timelock'
+  );
+
+  // Positive symmetry: a build that the builder accepts must ALSO verify cleanly —
+  // build-then-verify round-trip with both observedAt values on the safe side.
+  const safeReveal = buildHtlcSettlementEvidence({
+    jobId: 'job-htlc-008',
+    rail: RailAvailability.Mocked,
+    price: PRICE,
+    settler: 'seller',
+    settlerPrivKey: privKey,
+    settlerPubkey: pubKey,
+    lock: makeLock('2026-05-28T06:00:00Z'),
+    reveal: makeReveal('2026-05-28T05:00:00Z', '2026-05-28T04:30:00Z'),
+    settledAt: '2026-05-28T05:01:00Z',
+  });
+  const revealResult = verifyHtlcSettlementEvidence(safeReveal);
+  assert.equal(revealResult.decision, 'pass', JSON.stringify(revealResult.checks, null, 2));
+  const revealTimelock = revealResult.checks.find(c => c.check === 'timelock-asymmetry');
+  assert.ok(revealTimelock);
+  assert.equal(revealTimelock.outcome, 'pass');
+
+  const safeRefund = buildHtlcSettlementEvidence({
+    jobId: 'job-htlc-009',
+    rail: RailAvailability.Mocked,
+    price: PRICE,
+    settler: 'buyer',
+    settlerPrivKey: privKey,
+    settlerPubkey: pubKey,
+    lock: makeLock('2026-05-28T06:00:00Z'),
+    refund: makeRefund('2026-05-28T06:00:00Z', '2026-05-28T06:05:00Z'),
+    settledAt: '2026-05-28T06:06:00Z',
+  });
+  const refundResult = verifyHtlcSettlementEvidence(safeRefund);
+  assert.equal(refundResult.decision, 'pass', JSON.stringify(refundResult.checks, null, 2));
+  const refundTimelock = refundResult.checks.find(c => c.check === 'timelock-asymmetry');
+  assert.ok(refundTimelock);
+  assert.equal(refundTimelock.outcome, 'pass');
 });
 
 test('canonical price — a non-canonical amount fails the finding-#27 check', () => {
