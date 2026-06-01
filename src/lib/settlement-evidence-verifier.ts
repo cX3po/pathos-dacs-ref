@@ -86,6 +86,14 @@ export interface SourceChainDepositProof {
   confirmations?: number;
   /** Confirmation depth the bridge requires before a release may be authorised. */
   requiredConfirmations?: number;
+  /**
+   * The original depositor's address on the source chain (opaque). When present, a
+   * refund verifier can structurally require the refund recipient to equal it — a
+   * refund MUST return funds to whoever deposited them, not to an arbitrary address.
+   * Optional on this proof so existing release-side callers are unaffected; the
+   * tank-refund verifier treats its ABSENCE as a reject (cannot prove the binding).
+   */
+  depositor?: string;
   /** When the deposit was first observed on the source chain (ISO 8601). */
   observedAt: string;
   /** When the deposit reached confirmed/final status (ISO 8601). Absent ⇒ not confirmed. */
