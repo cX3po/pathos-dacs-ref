@@ -1,0 +1,86 @@
+{
+  "bundleVersion": "1",
+  "jobId": "DACS-VERIFY-0004",
+  "outcome": "failed-counterparty",
+  "listingRef": {
+    "listingId": "listing-dacs-verify-0004",
+    "version": 1,
+    "contentHash": "523fd847aa12527534937d20d2f73453d9efa65242b2302994534020a21dc3e0"
+  },
+  "agreementRef": {
+    "kind": "dacs-3-agreement",
+    "id": "agreement-dacs-verify-0004",
+    "contentHash": "0aa1c81b07e746755bcbb496da6bcb75b9c25ecc15d7bed9e32105780001898d"
+  },
+  "parties": [
+    {
+      "role": "buyer",
+      "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+      "primaryClaim": "did:demos:buyer"
+    },
+    {
+      "role": "seller",
+      "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+      "primaryClaim": "did:demos:seller"
+    }
+  ],
+  "phaseSummary": [
+    {
+      "index": 0,
+      "kind": "vet-counterparty",
+      "outcome": "ok",
+      "attestationRef": {
+        "kind": "dacs-4-evidence",
+        "id": "vet-dacs-verify-0004",
+        "contentHash": "d8a683311ffd2a5e2d01fede4b7501a089758b1fea7b84066af1ed45f8d48eb8"
+      }
+    },
+    {
+      "index": 1,
+      "kind": "settle-testnet",
+      "outcome": "fail",
+      "errorClass": "counterparty",
+      "txRefs": [
+        {
+          "rail": "demos-testnet",
+          "txHash": "demos-testnet:tx-dacs-verify-0004-seller-fail",
+          "kind": "settlement-fail"
+        }
+      ],
+      "attestationRef": {
+        "kind": "dacs-4-evidence",
+        "id": "settlement-dacs-verify-0004-seller",
+        "contentHash": "76083c8244ab27566fb3ae087bd98ecb26d98d1a3634662e3b1c010f0dcd3236"
+      }
+    }
+  ],
+  "vetRecords": [
+    {
+      "kind": "dacs-4-evidence",
+      "id": "vet-dacs-verify-0004",
+      "contentHash": "d8a683311ffd2a5e2d01fede4b7501a089758b1fea7b84066af1ed45f8d48eb8"
+    }
+  ],
+  "settlementEvidence": [
+    {
+      "kind": "dacs-4-evidence",
+      "id": "settlement-dacs-verify-0004-seller",
+      "contentHash": "76083c8244ab27566fb3ae087bd98ecb26d98d1a3634662e3b1c010f0dcd3236"
+    }
+  ],
+  "recipeRegistryVersion": 1,
+  "railRegistryVersion": 1,
+  "finalisedAt": 1780004000000,
+  "signatures": [
+    {
+      "party": "did:demos:buyer",
+      "algorithm": "ed25519",
+      "value": "dIGs7qPngVTOyzQqzKDWubms10GoDeysOatoPVpyA4lZ3_0E3kliuNqVv1-sY8SwcSH04n8DFSx2ejF1Fze_Bg"
+    },
+    {
+      "party": "did:demos:seller",
+      "algorithm": "ed25519",
+      "value": "miL9bq1RNRRGIOzxmMF1Hm2aSsJNs5bwSN6nYJS_RYcDpqVhTYr6IB5fWJ9fSjJMEZ3fj_gKSjZ2LHDxao4dAA"
+    }
+  ]
+}

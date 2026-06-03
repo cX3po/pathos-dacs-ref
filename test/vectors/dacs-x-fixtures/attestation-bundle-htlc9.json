@@ -1,0 +1,91 @@
+{
+  "bundleVersion": "1",
+  "jobId": "DACS-VERIFY-HTLC9",
+  "outcome": "failed-substrate",
+  "listingRef": {
+    "listingId": "listing-dacs-verify-htlc9",
+    "version": 1,
+    "contentHash": "f39fe1c789e4c32ee9a9635730192b84b4f1aa90398c5b61351acaf6262d5449"
+  },
+  "agreementRef": {
+    "kind": "dacs-3-agreement",
+    "id": "agreement-dacs-verify-htlc9",
+    "contentHash": "a942e22b9aa8cae92c72cd647daa2467c7af8b6f67293d355efbb156aee8a01b"
+  },
+  "parties": [
+    {
+      "role": "buyer",
+      "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+      "primaryClaim": "did:demos:buyer"
+    },
+    {
+      "role": "seller",
+      "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+      "primaryClaim": "did:demos:seller"
+    }
+  ],
+  "phaseSummary": [
+    {
+      "index": 0,
+      "kind": "vet-counterparty",
+      "outcome": "ok",
+      "attestationRef": {
+        "kind": "dacs-4-evidence",
+        "id": "vet-dacs-verify-htlc9",
+        "contentHash": "8262a5b6929de6374182eb409a59a1ae5816ab5d9f411b2e2de98e8ca302b3a3"
+      }
+    },
+    {
+      "index": 1,
+      "kind": "pay-cross-chain-htlc",
+      "outcome": "fail",
+      "errorClass": "settlement-atomicity",
+      "txRefs": [
+        {
+          "rail": "polygon-amoy",
+          "txHash": "polygon-amoy:0xreveal9c1a-htlc-reveal",
+          "kind": "htlc-reveal"
+        },
+        {
+          "rail": "ethereum-sepolia",
+          "txHash": "ethereum-sepolia:0xsource-unclaimed-htlc9",
+          "kind": "source-claim-unclaimed"
+        }
+      ],
+      "attestationRef": {
+        "kind": "dacs-4-evidence",
+        "id": "settlement-dacs-verify-htlc9",
+        "contentHash": "07f3577396f8a11bf8711cf6d4b745fa7ae83c3dce9f8ac97add0c785f5ea82b"
+      }
+    }
+  ],
+  "vetRecords": [
+    {
+      "kind": "dacs-4-evidence",
+      "id": "vet-dacs-verify-htlc9",
+      "contentHash": "8262a5b6929de6374182eb409a59a1ae5816ab5d9f411b2e2de98e8ca302b3a3"
+    }
+  ],
+  "settlementEvidence": [
+    {
+      "kind": "dacs-4-evidence",
+      "id": "settlement-dacs-verify-htlc9",
+      "contentHash": "07f3577396f8a11bf8711cf6d4b745fa7ae83c3dce9f8ac97add0c785f5ea82b"
+    }
+  ],
+  "recipeRegistryVersion": 1,
+  "railRegistryVersion": 1,
+  "finalisedAt": 1780009000000,
+  "signatures": [
+    {
+      "party": "did:demos:buyer",
+      "algorithm": "ed25519",
+      "value": "69bfp9UCoulGTkcNfwGZxizG5Je6BpPi0mgyj1600dThOEjjFNtOjqDzo83I463pwtnREGMXwu8wUtCnJcV9Bw"
+    },
+    {
+      "party": "did:demos:seller",
+      "algorithm": "ed25519",
+      "value": "NgV0IklnDmNzHs1cDWtGqfM6VRq2yJV7-YFhQYItQ9uMWui9LHFllEIsal4aJbguf0jmMxl7A05NuFh7EjPMCA"
+    }
+  ]
+}
