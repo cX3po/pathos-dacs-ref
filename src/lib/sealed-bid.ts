@@ -39,6 +39,7 @@
  */
 
 import { sha256 } from '@noble/hashes/sha2';
+import { jcsCanonical } from '../jcs.js';
 
 /**
  * A price term on a SealedBid.
@@ -119,8 +120,7 @@ function hexToBytes(hex: string): Uint8Array {
  *   JCS(bid) || 0x00 || salt
  *
  * Pulled out so commit and verifyReveal hash identical bytes and tests can assert
- * the construction directly. Imports jcsCanonical lazily via dynamic import-free
- * static import to keep the module self-contained.
+ * the construction directly.
  */
 function buildCommitmentPreimage(jcsBytes: Uint8Array, salt: Uint8Array): Uint8Array {
   const out = new Uint8Array(jcsBytes.length + 1 + salt.length);
@@ -133,25 +133,17 @@ function buildCommitmentPreimage(jcsBytes: Uint8Array, salt: Uint8Array): Uint8A
 /**
  * JCS-canonicalize a SealedBid to UTF-8 bytes.
  *
- * Inlined RFC 8785 canonicalization via the `canonicalize` dep — the same surface
- * src/jcs.ts uses. Kept local so this module is self-contained (no cross-module
- * import beyond the shared dependency), matching the integration brief.
+ * Delegates to the shared §7.2-conformant canonicalizer (`src/jcs.ts`) so sealed-bid
+ * commitments match the rest of the codebase byte-for-byte — NFC normalisation,
+ * safe-integer enforcement, and JSON value-omission all apply. An NFC/decomposed bid
+ * MUST produce the same bidHash as its precomposed twin.
  */
 function jcsBid(bid: SealedBid): Uint8Array {
-  // The `canonicalize` package is the RFC 8785 implementation used across the repo.
-  // Static import at top would also work; using a require-free static import here.
   return jcsCanonicalLocal(bid);
 }
 
-// Local JCS — mirrors src/jcs.ts::jcsCanonical exactly so the bytes match the rest
-// of the codebase, while keeping this module independently auditable.
-import canonicalize from 'canonicalize';
 function jcsCanonicalLocal(value: unknown): Uint8Array {
-  const canonical = canonicalize(value);
-  if (canonical === undefined) {
-    throw new Error('JCS canonicalization failed — SealedBid is not JSON-encodable');
-  }
-  return new TextEncoder().encode(canonical);
+  return jcsCanonical(value);
 }
 
 /**

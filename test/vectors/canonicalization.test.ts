@@ -45,3 +45,114 @@ test('JCS — same input always yields same hash (idempotent)', () => {
   const h2 = jcsHashHex({ c: { e: [5, 6], d: 4 }, b: 2, a: 1 }); // same structure, different declaration order
   assert.equal(h1, h2, 'JCS hash MUST be invariant under key reordering');
 });
+
+// --- 7.2 conformance: CF-1 NFC normalisation + numeric safe-integer constraint (2026-06-03) ---
+// Strings from explicit code points so decomposed vs precomposed are genuinely distinct.
+
+const CAFE_PRE = 'caf\u00e9';      // precomposed e-acute (U+00E9)
+const CAFE_DEC = 'cafe\u0301';     // decomposed e + combining acute (U+0301)
+
+test('CF-1 - decomposed and precomposed strings hash identically (NFC)', () => {
+  assert.equal(jcsHashHex({ v: CAFE_PRE }), jcsHashHex({ v: CAFE_DEC }));
+});
+
+test('CF-1 - NFC applies to object keys too', () => {
+  const a: Record<string, number> = {}; a[CAFE_PRE] = 1;
+  const b: Record<string, number> = {}; b[CAFE_DEC] = 1;
+  assert.equal(jcsHashHex(a), jcsHashHex(b));
+});
+
+test('CF-1 - NFC key collision is rejected (reproducibility)', () => {
+  const o: Record<string, number> = {}; o[CAFE_PRE] = 1; o[CAFE_DEC] = 2;
+  assert.equal(Object.keys(o).length, 2);
+  assert.throws(() => jcsCanonical(o), /NFC key collision/);
+});
+
+test('CF-1 - undefined-valued key is omitted, so no false collision with its NFC twin', () => {
+  const o: Record<string, unknown> = {}; o[CAFE_PRE] = undefined; o[CAFE_DEC] = 1;
+  assert.equal(new TextDecoder().decode(jcsCanonical(o)), '{"café":1}');
+});
+
+test('7.2 - JSON number above 2^53-1 is rejected', () => {
+  assert.throws(() => jcsCanonical({ tokenId: 9007199254740993 }), /safe-integer range/);
+});
+
+test('7.2 - safe-integer boundary (2^53-1) is accepted', () => {
+  assert.equal(new TextDecoder().decode(jcsCanonical({ n: 9007199254740991 })), '{"n":9007199254740991}');
+});
+
+test('7.2 - fractional number within range is allowed', () => {
+  assert.equal(new TextDecoder().decode(jcsCanonical({ p: 1.5 })), '{"p":1.5}');
+});
+
+test('7.2 - an own __proto__ key (from parsed JSON) is preserved, not dropped or poisoned', () => {
+  const parsed = JSON.parse('{"__proto__":1,"a":2}');
+  assert.ok(Object.prototype.hasOwnProperty.call(parsed, '__proto__'));
+  const text = new TextDecoder().decode(jcsCanonical(parsed));
+  assert.ok(text.includes('__proto__'), 'the __proto__ key must survive into the canonical form');
+  assert.equal(Object.getPrototypeOf({}), Object.prototype, 'global prototype must be untouched');
+});
+
+test('toJSON-bearing objects (Date) serialise via toJSON, not as {}', () => {
+  const d = new Date('2026-06-03T00:00:00.000Z');
+  assert.equal(new TextDecoder().decode(jcsCanonical({ when: d })), '{"when":"2026-06-03T00:00:00.000Z"}');
+});
+
+test('toJSON returning another toJSON-bearing object (Wrapper -> Date) resolves fully', () => {
+  class Wrapper { toJSON() { return new Date('2026-06-03T00:00:00.000Z'); } }
+  assert.equal(new TextDecoder().decode(jcsCanonical({ w: new Wrapper() })), '{"w":"2026-06-03T00:00:00.000Z"}');
+});
+
+test('self-returning toJSON is rejected (hop guard), not infinite loop', () => {
+  const evil: { toJSON: () => unknown } = { toJSON() { return evil; } };
+  assert.throws(() => jcsCanonical({ x: evil }), /toJSON chain too long/);
+});
+
+test('JSON value-omission mirrored — function/symbol/undefined array elements become null', () => {
+  const arr = [1, undefined, function () {}, Symbol('s'), 'x'];
+  assert.equal(new TextDecoder().decode(jcsCanonical({ a: arr })), '{"a":[1,null,null,null,"x"]}');
+});
+
+test('JSON value-omission mirrored — sparse array holes become null', () => {
+  const sparse = [1, , 3]; // eslint-disable-line no-sparse-arrays
+  assert.equal(new TextDecoder().decode(jcsCanonical({ s: sparse })), '{"s":[1,null,3]}');
+});
+
+test('toJSON returning undefined — property omitted, no false NFC collision with twin', () => {
+  const o: Record<string, unknown> = {};
+  o['café'] = { toJSON() { return undefined; } };
+  o['café'] = 1;
+  assert.equal(new TextDecoder().decode(jcsCanonical(o)), '{"café":1}');
+});
+
+test('boxed primitives serialise as their primitive value (JSON.stringify parity)', () => {
+  const input = { n: new Number(3), s: new String('x'), b: new Boolean(true) };
+  assert.equal(new TextDecoder().decode(jcsCanonical(input)), '{"b":true,"n":3,"s":"x"}');
+});
+
+test('7.2 - lone UTF-16 surrogate (from parsed JSON) is rejected', () => {
+  const high = JSON.parse('{"s":"\\ud800"}');       // lone high surrogate
+  const low = JSON.parse('{"s":"\\udc00"}');        // lone low surrogate
+  assert.throws(() => jcsCanonical(high), /unpaired UTF-16 surrogate/);
+  assert.throws(() => jcsCanonical(low), /unpaired UTF-16 surrogate/);
+});
+
+test('7.2 - lone surrogate in an object KEY is rejected', () => {
+  const o = JSON.parse('{"\\ud800":1}');
+  assert.throws(() => jcsCanonical(o), /unpaired UTF-16 surrogate/);
+});
+
+test('7.2 - valid surrogate pair (astral char) is accepted', () => {
+  const o = JSON.parse('{"s":"\\ud83d\\ude80"}');   // U+1F680 rocket
+  assert.doesNotThrow(() => jcsCanonical(o));
+});
+
+test('7.2 - lone surrogate in a key is rejected even when the value is omitted (fail-closed)', () => {
+  const o: Record<string, unknown> = {}; o['\ud800'] = undefined;
+  assert.throws(() => jcsCanonical(o), /unpaired UTF-16 surrogate/);
+});
+
+test('7.2 - BigInt (bare and boxed) is rejected, not silently serialised', () => {
+  assert.throws(() => jcsCanonical({ n: 1n }), /BigInt is not JSON-encodable/);
+  assert.throws(() => jcsCanonical({ n: Object(1n) }), /BigInt is not JSON-encodable/);
+});

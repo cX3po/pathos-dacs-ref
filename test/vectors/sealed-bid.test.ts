@@ -103,3 +103,10 @@ test('malformed salt hex FAILs reveal without throwing', () => {
   const commitment = commitSealedBid(BID, SALT_A);
   assert.equal(verifyReveal(commitment, BID, 'zz-not-hex'), false);
 });
+
+test('sealed-bid commitment is NFC-stable — decomposed and precomposed deliverable hash identically (§7.2 CF-1)', () => {
+  const pre: SealedBid = { ...BID, deliverable: 'caf\u00e9 promo' };   // precomposed
+  const dec: SealedBid = { ...BID, deliverable: 'cafe\u0301 promo' };  // decomposed
+  assert.notEqual('café promo', 'café promo'); // genuinely distinct inputs
+  assert.equal(commitSealedBid(pre, SALT_A).bidHash, commitSealedBid(dec, SALT_A).bidHash);
+});
