@@ -77,6 +77,85 @@ export interface AttestationBundle {
   orchestratorSignature?: string;
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// DACS v0.1 §10.4 conformant bundle shape — MIGRATION TARGET (2026-06-03).
+// The `AttestationBundle` above predates the §10.4 freeze and has drifted (see
+// memory/reports/dacs-baseline-review-2026-06-03.md §C). These types match current
+// spec §10.4 exactly. Migration in progress: verify-bundle + the DACS-VERIFY-0004
+// emitter move onto these, then the legacy shape is removed. Additive for now so the
+// existing suite stays green through the migration.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** §10.4 terminal bundle outcome (distinct from the live SessionState). */
+export type BundleOutcome =
+  | 'completed'
+  | 'failed-perm'
+  | 'failed-counterparty'
+  | 'failed-substrate'
+  | 'aborted-by-self'
+  | 'aborted-by-other';
+
+/** §10.3 live session state (spec names; replaces the legacy SessionState above). */
+export type SessionStateV1 =
+  | 'draft'
+  | 'vet-pending' | 'vet-completed' | 'vet-failed'
+  | 'negotiate-pending' | 'negotiate-completed' | 'negotiate-failed'
+  | 'commit-pending' | 'commit-completed' | 'commit-failed'
+  | 'settle-pending' | 'settle-completed' | 'settle-failed'
+  | 'rate-pending' | 'rate-completed'
+  | 'finalised'
+  | 'aborted-by-self' | 'aborted-by-other'
+  | 'substrate-failure-paused' | 'failed-substrate';
+
+/** §10.4 chain transaction reference. */
+export interface ChainTxRef {
+  chainId: string;
+  txHash: string;
+}
+
+/** §10.4 BundleParty — one entry per signing party. */
+export interface BundleParty {
+  role: 'buyer' | 'seller' | 'orchestrator';
+  bundleHash: string;
+  primaryClaim: ClaimRef;
+}
+
+/** §10.4 BundlePhaseEntry — per-phase summary (phase-level outcome is ok|fail). */
+export interface BundlePhaseEntry {
+  index: number;
+  kind: string; // PhaseType — closed set across DACS-2..5
+  outcome: 'ok' | 'fail';
+  errorClass?: 'permanent' | 'transient' | 'counterparty' | 'substrate' | 'settlement-atomicity';
+  txRefs?: ChainTxRef[];
+  attestationRef?: AttestationRef;
+}
+
+/** §10.4 BundleSignature — structured per signer (vs the legacy scalar sig fields). */
+export interface BundleSignature {
+  party: ClaimRef; // primary claim of the signer
+  algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate';
+  value: string; // signature over the "dacs-bundle:v1:" || bundleHash payload (§10.4.1)
+}
+
+/** §10.4 AttestationBundle (v0.1-conformant). Signed under "dacs-bundle:v1:" per §10.4.1. */
+export interface AttestationBundleV1 {
+  bundleVersion: '1';
+  jobId: string;
+  outcome: BundleOutcome;
+  listingRef: { listingId: string; version: number; contentHash: string };
+  agreementRef?: AttestationRef;
+  parties: BundleParty[];
+  phaseSummary: BundlePhaseEntry[];
+  vetRecords: AttestationRef[];
+  settlementEvidence: AttestationRef[];
+  amendments?: AttestationRef[];
+  ratingRefs?: AttestationRef[];
+  recipeRegistryVersion: number;
+  railRegistryVersion: number;
+  finalisedAt: number;
+  signatures: BundleSignature[];
+}
+
 /**
  * Compute the two storage anchor addresses for a bundle's jobId (§10.4.2).
  *
