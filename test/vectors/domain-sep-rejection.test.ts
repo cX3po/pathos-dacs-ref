@@ -44,7 +44,11 @@ test('§7.7 — verify() returns false for unknown separator (does NOT throw)', 
   assert.equal(result, false);
 });
 
-test('§7.7 — registry has exactly 17 separators (closed v1 set)', () => {
+test('§7.7 — registry separator count (mid-migration: legacy 17 + dacs-bundle:v1:)', () => {
+  // Migration 2026-06-03: added the §10.4.1 spec separator `dacs-bundle:v1:` alongside the
+  // legacy set. Current spec §7.7 lists 19 (closed); the full registry-name reconciliation
+  // (renaming legacy names to the spec's + dropping the legacy bundle sep) is a later step —
+  // see memory/reports/dacs-baseline-review-2026-06-03.md §C.
   const count = Object.keys(DOMAIN_SEPARATORS).length;
-  assert.equal(count, 17, `expected 17 separators per DACS v0.7 §7.7, got ${count}`);
+  assert.equal(count, 18, `expected 18 separators (17 legacy + dacs-bundle:v1:), got ${count}`);
 });

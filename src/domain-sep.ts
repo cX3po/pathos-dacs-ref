@@ -39,7 +39,8 @@ export const DOMAIN_SEPARATORS = {
   DELIVERY_RECEIPT: 'dacs-delivery-receipt:v1:',            // signed_bytes = sep || JCS(deliveryPayload)
 
   // DACS-5 Verify
-  BUNDLE_DACS5: 'dacs5-bundle:v1:',                         // signed_bytes = sep || bundleHash (per §10.4.2 — preserved from reference impl)
+  BUNDLE: 'dacs-bundle:v1:',                                // §10.4.1 spec separator: signed_bytes = sep || bundleHash (AttestationBundleV1)
+  BUNDLE_DACS5: 'dacs5-bundle:v1:',                         // LEGACY (pre-§10.4 reference impl) — retained until legacy AttestationBundle is migrated off
   REPUTATION_ATTESTATION: 'dacs-reputation:v1:',            // signed_bytes = sep || JCS(repBlob)
   SESSION_RECORD: 'dacs-session-record:v1:',                // signed_bytes = sep || JCS(sessionRecord)
 } as const;
