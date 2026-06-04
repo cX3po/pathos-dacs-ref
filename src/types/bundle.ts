@@ -142,6 +142,9 @@ export interface AttestationBundleV1 {
   bundleVersion: '1';
   jobId: string;
   outcome: BundleOutcome;
+  /** §10.4 (R4-B): role of the party that anchored THIS copy; `outcome` is from this party's
+   *  perspective (matches the §10.4.2 role-derived anchor address). Required + signed. */
+  anchoredByRole: 'buyer' | 'seller' | 'orchestrator';
   listingRef: { listingId: string; version: number; contentHash: string };
   agreementRef?: AttestationRef;
   parties: BundleParty[];

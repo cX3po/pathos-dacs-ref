@@ -2,6 +2,7 @@
   "bundleVersion": "1",
   "jobId": "DACS-VERIFY-HTLC9",
   "outcome": "failed-substrate",
+  "anchoredByRole": "buyer",
   "listingRef": {
     "listingId": "listing-dacs-verify-htlc9",
     "version": 1,
@@ -80,12 +81,12 @@
     {
       "party": "did:demos:buyer",
       "algorithm": "ed25519",
-      "value": "69bfp9UCoulGTkcNfwGZxizG5Je6BpPi0mgyj1600dThOEjjFNtOjqDzo83I463pwtnREGMXwu8wUtCnJcV9Bw"
+      "value": "E2UY59mwEf0OcTFKCxI9o1s_1Y-NYwUJWkVrtUwR8O5V-qXgL4rOx61OfCS8YeAMDpnuOWJw8oRCEiEuxWV-Dg"
     },
     {
       "party": "did:demos:seller",
       "algorithm": "ed25519",
-      "value": "NgV0IklnDmNzHs1cDWtGqfM6VRq2yJV7-YFhQYItQ9uMWui9LHFllEIsal4aJbguf0jmMxl7A05NuFh7EjPMCA"
+      "value": "vXIMQmBURHZNUS5crId1xtemjDi_0YeusX3NLobygW7KQiExRseP4Esbf5-D4Hir5HWOmVgRj-D16BU4tFWFBQ"
     }
   ]
 }

@@ -2,6 +2,7 @@
   "bundleVersion": "1",
   "jobId": "DACS-VERIFY-0004",
   "outcome": "completed",
+  "anchoredByRole": "buyer",
   "listingRef": {
     "listingId": "listing-dacs-verify-0004",
     "version": 1,
@@ -74,12 +75,12 @@
     {
       "party": "did:demos:buyer",
       "algorithm": "ed25519",
-      "value": "3EBJjj0pZ1h3Q3uj0A_n0jrrfRea1CAP8-_J0yLc1EjXX-Hyccepf2m2iDrpz19-nMToAzB34-BH2bTFMJsbDg"
+      "value": "-13GRbsqJO9vnU7QFgONkkUsTLXh7gCMV_xLDXYpyIEEc7zHTF2fztskIBWE23YMYGnekByHNiwbXS8PFINjDg"
     },
     {
       "party": "did:demos:seller",
       "algorithm": "ed25519",
-      "value": "g9dQriKVgIJO6rAbdF9xYOmOF-zhdu-rIOeulhtPrPZIoTbtTpqIV8WsxmNFLmoodmbRalBOfhQNolUnKgwjCQ"
+      "value": "V-MLJpXIS8n4FF-x9AxOEpasCrrZ7ZS0JHzbcT05pkdBgY0JV7Z4yGmcUa-KniZsTM5H9P8JsOvgANOGq-NfBQ"
     }
   ]
 }

@@ -135,6 +135,12 @@ function structuralErrors(b: unknown): string[] {
   if (x.bundleVersion !== '1') e.push('bundleVersion must be "1"');
   if (typeof x.jobId !== 'string' || !x.jobId) e.push('jobId missing');
   if (typeof x.outcome !== 'string' || !KNOWN_OUTCOMES.has(x.outcome)) e.push(`unknown outcome "${String(x.outcome)}" (§10.4)`);
+  // §10.4 (R4-B): anchoredByRole is required, a known role, and must match a listed party's role.
+  if (typeof x.anchoredByRole !== 'string' || !KNOWN_ROLES.has(x.anchoredByRole)) {
+    e.push('anchoredByRole missing/invalid (§10.4)');
+  } else if (Array.isArray(x.parties) && !(x.parties as Array<{ role?: unknown }>).some((p) => p && p.role === x.anchoredByRole)) {
+    e.push(`anchoredByRole "${x.anchoredByRole}" is not a listed party role (§10.4)`);
+  }
   const lr = x.listingRef as Record<string, unknown> | undefined;
   if (!lr || typeof lr !== 'object' || typeof lr.listingId !== 'string' || !lr.listingId || !intGe0(lr.version) || !isHash(lr.contentHash)) e.push('listingRef malformed');
   if (!intGe0(x.recipeRegistryVersion) || !intGe0(x.railRegistryVersion)) e.push('registry versions must be non-negative integers');

@@ -25,7 +25,7 @@ const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '
 
 test('§10.4 — the reference-impl contributor DACS-VERIFY-0004 accepts + reproduces his bundleHash (cross-impl)', () => {
   const v = verifyBundleV1(load('attestation-bundle-0004.json'), { requireSignatures: false });
-  assert.equal(v.bundleHash, 'eb59bd1e687df6e1e241d8c143cbf5d11535f903658afc5cb593e8461da4f1fb', 'cross-impl bundleHash match');
+  assert.equal(v.bundleHash, '98d7b565da2cbb6e60048b51cb87450484d78d1bd7eb46c96b5fe6fe4ac2dd5e', 'cross-impl bundleHash match');
   assert.equal(v.signerRuleSatisfied, true, 'completed bundle has buyer+seller signatures');
   assert.equal(v.decision, 'accept');
   // placeholder DID signers → unverifiable (not a hard fail)
@@ -58,7 +58,7 @@ test('§10.4 — real-key bundle: signatures verify (accept), tamper rejects', (
   const mk = (fill: number) => { const priv = new Uint8Array(32).fill(fill); return { priv, pubHex: hex(ed25519.getPublicKey(priv)) }; };
   const buyer = mk(0x41), seller = mk(0x42);
   const unsigned: Omit<AttestationBundleV1, 'signatures'> = {
-    bundleVersion: '1', jobId: 'local-realkey-0001', outcome: 'completed',
+    bundleVersion: '1', jobId: 'local-realkey-0001', outcome: 'completed', anchoredByRole: 'buyer',
     listingRef: { listingId: 'lst-1', version: 1, contentHash: 'ab'.repeat(32) },
     parties: [
       { role: 'buyer', bundleHash: 'aa'.repeat(32), primaryClaim: { scheme: 'cci', identifier: buyer.pubHex } },
@@ -89,7 +89,7 @@ function realKey(fill: number) { const priv = new Uint8Array(32).fill(fill); ret
 function baseUnsigned(over: Partial<AttestationBundleV1> = {}): Omit<AttestationBundleV1, 'signatures'> {
   const buyer = realKey(0x51), seller = realKey(0x52);
   return {
-    bundleVersion: '1', jobId: 'edge-0001', outcome: 'completed',
+    bundleVersion: '1', jobId: 'edge-0001', outcome: 'completed', anchoredByRole: 'buyer',
     listingRef: { listingId: 'lst', version: 1, contentHash: 'ab'.repeat(32) },
     parties: [
       { role: 'buyer', bundleHash: 'aa'.repeat(32), primaryClaim: { scheme: 'cci', identifier: buyer.pubHex } },
@@ -291,4 +291,27 @@ test('§10.4 — malformed hashes and claims are rejected structurally', () => {
   assert.equal(verifyBundleV1(signBy(u3, [realKey(0x51), realKey(0x52)])).structurallyValid, false);
   const u4 = baseUnsigned(); u4.parties[0]!.primaryClaim = 'not-a-did' as unknown as typeof u4.parties[0]['primaryClaim'];
   assert.equal(verifyBundleV1(signBy(u4, [realKey(0x51), realKey(0x52)])).structurallyValid, false);
+});
+
+test('§10.4 R4-B — anchoredByRole is required and must match a listed party role', () => {
+  const u = baseUnsigned();
+  delete (u as { anchoredByRole?: unknown }).anchoredByRole; // missing → reject
+  assert.equal(verifyBundleV1(signBy(u, [realKey(0x51), realKey(0x52)])).structurallyValid, false);
+  const u2 = baseUnsigned(); (u2 as { anchoredByRole: string }).anchoredByRole = 'orchestrator'; // no orchestrator party
+  const v2 = verifyBundleV1(signBy(u2, [realKey(0x51), realKey(0x52)]));
+  assert.equal(v2.structurallyValid, false);
+  assert.ok(v2.reasons.some((r) => /anchoredByRole/.test(r)));
+});
+
+test('§10.4 R4-B — re-sealed fixtures reproduce the new bundleHashes', () => {
+  const exp: Record<string, string> = {
+    'attestation-bundle-0004': '98d7b565da2cbb6e60048b51cb87450484d78d1bd7eb46c96b5fe6fe4ac2dd5e',
+    'attestation-bundle-0004-seller': 'd6c161bd190d69acc6104279b6f53cc0d8e3de405cfc19578605cf49da5631a5',
+    'attestation-bundle-htlc9': '745f8ecf1aed66dda28560974ff43e934dae83ee44fc91d651ce07ea29bb6019',
+  };
+  for (const [f, h] of Object.entries(exp)) {
+    const v = verifyBundleV1(load(`${f}.json`), { requireSignatures: false });
+    assert.equal(v.bundleHash, h, `${f} reproduces R4-B hash`);
+    assert.equal(v.decision, 'accept');
+  }
 });
