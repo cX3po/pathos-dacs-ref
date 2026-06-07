@@ -302,8 +302,10 @@ export function resolveEffectiveConsent(
       }
       inForceGrant = rec; // a later grant re-establishes consent (supersedes any prior revoke)
       revokedBy = undefined;
-    } else {
+    } else if (rec.action === 'revoke') {
       // 'revoke' withdraws the current grant (later append supersedes the grant — spec §3) — but
+      // (explicit 'revoke' guard, Codex note: with requireValidSignatures:false an unknown action
+      //  must NOT fall through to the revoke branch — unknown actions are skipped/fail-closed.)
       // ONLY if it comes from the establishing grantor. A revoke before any grant, or from a
       // non-establishing grantor, has no authority over this scope.
       if (establishingGrantor === undefined || recGrantor !== establishingGrantor) {
