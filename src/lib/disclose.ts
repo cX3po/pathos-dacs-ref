@@ -347,6 +347,9 @@ export function verifyMerklePath(commitmentHex: string, path: MerklePathStep[], 
   for (const step of path) {
     const sib = decode32(step.sibling);
     if (sib === null) return false;
+    // Reject unknown side values (Codex note) — a malformed proof must fail closed,
+    // not silently fall through to the right-sibling branch.
+    if (step.side !== 'left' && step.side !== 'right') return false;
     running = step.side === 'left' ? merkleParent(sib, running) : merkleParent(running, sib);
   }
   return bytesToHex(running).toLowerCase() === bytesToHex(rootBytes).toLowerCase();
