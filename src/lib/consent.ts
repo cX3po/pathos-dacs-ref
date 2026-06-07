@@ -199,6 +199,15 @@ export function signConsentRecord(body: ConsentRecordBody, grantorPriv: Uint8Arr
  * commitment? right audience?) is resolved by `resolveEffectiveConsent` over the whole list.
  */
 export function verifyConsentRecord(record: ConsentRecord): boolean {
+  // FIX 3 — reject unknown `action` values at RUNTIME, fail-closed, BEFORE the record can affect
+  // resolution. TS narrows `action` to 'grant'|'revoke' only at COMPILE time; chain/read JSON is
+  // UNTRUSTED, so a hostile record can carry action:'foo' (or a missing action). The resolver
+  // (resolveEffectiveConsent) treats any non-'grant' action as a revoke — so without this gate an
+  // attacker could revoke a victim's grant with a bogus action string. An authentic record MUST
+  // carry exactly 'grant' or 'revoke'. (Defence in depth: canonicalBody also copies `action`
+  // verbatim into the signed body, so a tampered action breaks the content-hash/sig check below —
+  // but we reject explicitly here so an unknown action can NEVER reach the resolver intake.)
+  if (record.action !== 'grant' && record.action !== 'revoke') return false;
   // Re-derive the canonical body from the record's fields and check the content-addressed id.
   const cb = canonicalBody(record);
   if (computeConsentRecordId(cb) !== record.recordId.toLowerCase()) return false;
@@ -266,15 +275,40 @@ export function resolveEffectiveConsent(
     return { consent_receipt_id, status: 'none', reason: 'no authentic consent records for this scope' };
   }
 
+  // FIX 1 — AUTHORITY: the FIRST authentic GRANT for a scope establishes the AUTHORITATIVE grantor
+  // pubkey for that scope. verifyConsentRecord only proves "signed by the named key" — it does NOT
+  // prove the named key is allowed to govern THIS scope. Without this binding, any valid signer can
+  // append a (validly self-signed) revoke or grant for someone else's `consent_receipt_id` and
+  // revoke/supersede their consent. So: only the establishing grantor may revoke or supersede their
+  // own scope. Any later grant/revoke whose `grantor` != the establishing grantor is IGNORED
+  // (fail-closed, dropped) — it cannot affect effective state.
+  //
+  // The establishing grantor is the grantor of the first authentic GRANT (not a revoke): a scope
+  // that opens with only revokes has no authority to revoke and remains 'none'.
+  let establishingGrantor: string | undefined;
+
   // Fold in append order: the last grant-not-followed-by-revoke wins.
   let inForceGrant: ConsentRecord | undefined;
   let revokedBy: ConsentRecord | undefined;
   for (const rec of scoped) {
+    const recGrantor = rec.grantor.toLowerCase();
     if (rec.action === 'grant') {
+      if (establishingGrantor === undefined) {
+        // First authentic grant establishes the authoritative grantor for this scope.
+        establishingGrantor = recGrantor;
+      } else if (recGrantor !== establishingGrantor) {
+        // A grant from a DIFFERENT grantor cannot re-establish or supersede someone else's scope.
+        continue; // IGNORED — fail-closed
+      }
       inForceGrant = rec; // a later grant re-establishes consent (supersedes any prior revoke)
       revokedBy = undefined;
     } else {
-      // 'revoke' withdraws the current grant (later append supersedes the grant — spec §3)
+      // 'revoke' withdraws the current grant (later append supersedes the grant — spec §3) — but
+      // ONLY if it comes from the establishing grantor. A revoke before any grant, or from a
+      // non-establishing grantor, has no authority over this scope.
+      if (establishingGrantor === undefined || recGrantor !== establishingGrantor) {
+        continue; // IGNORED — fail-closed (no authority to revoke this scope)
+      }
       inForceGrant = undefined;
       revokedBy = rec;
     }
@@ -426,6 +460,17 @@ export interface VerifyWithConsentOptions
   extends Omit<VerifyDisclosedOptions, 'expectedConsentReceiptId' | 'allowUnscopedConsent'> {
   /** The append-only consent ledger to resolve effective state from. */
   ledger: readonly ConsentRecord[];
+  /**
+   * FIX 2 — REQUIRED authority check. The grantor pubkey (hex) this verifier expects to have
+   * granted consent — typically the bundle subject / presentation key the disclosure is bound to.
+   * The effective grant's `grantor` MUST === this value, else the disclosure is DENIED. Without it,
+   * a grant signed by an UNRELATED keypair (any valid signer) could satisfy "consent proven" even
+   * though that signer has no authority over the subject's claims.
+   *
+   * FAIL-CLOSED (mirrors P1's consent config gate): if `expectedGrantor` is not supplied,
+   * `verifyDisclosedClaimWithConsent` THROWS — it is a misconfiguration, never a silent skip.
+   */
+  expectedGrantor: string;
   /** Resolution options (now, requireValidSignatures) — `now` defaults to options.now if set. */
   resolve?: ResolveOptions;
 }
@@ -452,6 +497,19 @@ export function verifyDisclosedClaimWithConsent(
 ): DiscloseVerifyResult {
   const fail = (reason: string): DiscloseVerifyResult => ({ ok: false, decision: 'fail', reason });
 
+  // FIX 2 — authority is FAIL-CLOSED at config time (mirrors P1's expectedConsentReceiptId gate):
+  // the verifier MUST declare WHICH grantor it expects to have authorised this disclosure. Omitting
+  // it is a misconfiguration (the caller forgot to bind authority), not a per-reveal verdict — so we
+  // THROW rather than silently accepting a grant from any signer.
+  if (typeof options.expectedGrantor !== 'string' || options.expectedGrantor.length === 0) {
+    throw new Error(
+      'consent bridge: expectedGrantor is REQUIRED (fail-closed authority check, FIX 2) — supply ' +
+      'the grantor pubkey the verifier expects to have granted (typically the bundle subject / ' +
+      'presentation key). A consent grant from an unrelated key is not meaningful authority.'
+    );
+  }
+  const expectedGrantor = options.expectedGrantor.toLowerCase();
+
   const scope = disclosed.challenge.consent_receipt_id;
   const resolveOpts: ResolveOptions = {
     now: options.resolve?.now ?? options.now,
@@ -477,6 +535,18 @@ export function verifyDisclosedClaimWithConsent(
   );
   if (!coverage.ok) {
     return fail(`consent denied: ${coverage.reason}`);
+  }
+
+  // FIX 2 — AUTHORITY: the in-force grant must have been issued by the grantor the verifier expects.
+  // coverage.ok guarantees coverage.effective.grant is populated (status==='granted'). A grant from
+  // any OTHER key is not meaningful authority over this subject's claims → DENY.
+  const grant = coverage.effective.grant!;
+  if (grant.grantor.toLowerCase() !== expectedGrantor) {
+    return fail(
+      `consent denied: grantor authority mismatch — grant signed by "${grant.grantor.slice(0, 12)}…" ` +
+      `but verifier expects grantor "${expectedGrantor.slice(0, 12)}…" (a grant by an unrelated key ` +
+      `is not authority over this disclosure)`
+    );
   }
 
   // Consent proven — now run P1's full cryptographic verification, binding it to the SAME scope.
