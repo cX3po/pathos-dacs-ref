@@ -22,7 +22,7 @@
  *     compat is honored by RE-SEALING legacy bundles under the canonical separator on read/emit).
  */
 
-import type { IdentityBundle, ClaimRef } from './identity.js';
+import type { LegacyIdentityBundle, ClaimRef } from './identity.js';
 import type { CompositeVerificationRecord, VerifyResult, AttestationRef } from './verify-result.js';
 
 /** The phase outcomes captured in a session record. */
@@ -51,15 +51,21 @@ export type SessionState =
   | 'failed-delivery'
   | 'expired';
 
-/** The AttestationBundle anchored at TWO party-specific addresses (§10.4.2). */
+/**
+ * @deprecated Legacy DACS-5 reference-impl bundle (pre-§10.4 freeze). Emission is RETIRED
+ * (the emitter now produces `AttestationBundleV1`); this shape is retained for dual-accept
+ * READS only (§10.4.2 backwards-compat). New code MUST use `AttestationBundleV1`.
+ *
+ * The AttestationBundle anchored at TWO party-specific addresses (§10.4.2).
+ */
 export interface AttestationBundle {
   v: 'dacs-5-bundle:0.1';
   /** The job/session id — same across both parties' bundles */
   jobId: string;
   /** Which party this bundle is from */
   role: 'buyer' | 'seller' | 'orchestrator';
-  /** The DACS-1 IdentityBundle of the bundle author (without their signature on this bundle) */
-  party: IdentityBundle;
+  /** The DACS-1 (legacy) IdentityBundle of the bundle author (without their signature on this bundle) */
+  party: LegacyIdentityBundle;
   /** The counterparty's primary claim (full bundle is in the counterparty's anchor) */
   counterparty: { primary: ClaimRef };
   /** Final state of the session */

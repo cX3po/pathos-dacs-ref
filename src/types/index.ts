@@ -8,7 +8,17 @@
  */
 
 // DACS-1 Identify
-export type { ClaimRef, PresentationKind, IdentityBundle, BundleHash } from './identity.js';
+export type {
+  ClaimRef,
+  ClaimReference,
+  PresentationKind,
+  PresentationSignature,
+  BundleClaim,
+  VerifyResultRef,
+  IdentityBundle,
+  LegacyIdentityBundle,
+  BundleHash,
+} from './identity.js';
 export type { Listing, UnsignedListing, BundleRequirement, SubstrateRequirement } from './listing.js';
 
 // DACS-2 Vet
