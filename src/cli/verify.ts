@@ -29,11 +29,59 @@
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import type { AttestationBundle, VerifyVerdict } from '../types/index.js';
+import type { AttestationBundleV1 } from '../types/bundle.js';
 import { verifyBundle, computeAnchorPair } from '../lib/verify-bundle.js';
+import { verifyBundleV1, type BundleV1Verdict } from '../lib/verify-bundle-v1.js';
 import { fetchAnchored } from '../demos/storage.js';
 
+/**
+ * Dual-accept dispatch (§10.4.2 backwards-compat). The DEFAULT verify path is the v0.1
+ * AttestationBundleV1 verifier (verifyBundleV1); legacy `dacs-5-bundle:0.1` bundles are still
+ * READ via the legacy verifyBundle walk. Discriminated on the bundle's version field:
+ *   - bundleVersion === '1'        -> v0.1 path (verifyBundleV1) — DEFAULT for emission too
+ *   - v === 'dacs-5-bundle:0.1'    -> legacy read path (verifyBundle)
+ */
+type LoadedBundle =
+  | { kind: 'v1'; bundle: AttestationBundleV1 }
+  | { kind: 'legacy'; bundle: AttestationBundle };
+
+function classifyBundle(raw: unknown): LoadedBundle | { error: string } {
+  if (!raw || typeof raw !== 'object') return { error: 'bundle is not a JSON object' };
+  const o = raw as Record<string, unknown>;
+  if (o.bundleVersion === '1') return { kind: 'v1', bundle: raw as AttestationBundleV1 };
+  if (o.v === 'dacs-5-bundle:0.1') return { kind: 'legacy', bundle: raw as AttestationBundle };
+  return {
+    error: `unrecognised bundle shape — expected a v0.1 AttestationBundle (bundleVersion:"1") ` +
+      `or a legacy bundle (v:"dacs-5-bundle:0.1"); got bundleVersion=${String(o.bundleVersion)} v=${String(o.v)}`,
+  };
+}
+
+/** Normalise the v0.1 BundleV1Verdict into the CLI's VerifyVerdict shape (accept->pass / reject->fail). */
+function normaliseV1Verdict(jobId: string, v: BundleV1Verdict): VerifyVerdict {
+  const steps: VerifyStepLite[] = [
+    { step: 'structural', outcome: v.structurallyValid ? 'pass' : 'fail', detail: v.structurallyValid ? 'v0.1 §10.4 shape valid' : v.reasons.join('; ') },
+    { step: 'signer-rule', outcome: v.signerRuleSatisfied ? 'pass' : 'fail', detail: v.signerRuleSatisfied ? 'required-signer rule satisfied (§10.4.1)' : v.reasons.join('; ') },
+    { step: 'signatures', outcome: v.cryptographicallyVerified ? 'pass' : (v.decision === 'reject' ? 'fail' : 'indeterminate'),
+      detail: v.signatureChecks.map((c) => `${c.party.slice(0, 18)}…:${c.decision}${c.reason ? ` (${c.reason})` : ''}`).join('; ') || 'no signatures' },
+  ];
+  return {
+    decision: v.decision === 'accept' ? 'pass' : 'fail',
+    jobId,
+    steps,
+    canonicalBundleHash: v.bundleHash,
+    signersVerified: v.signatureChecks.filter((c) => c.decision === 'pass').map((c) => c.party),
+    attestationsVerified: 0,
+    attestationsFailed: 0,
+  };
+}
+type VerifyStepLite = VerifyVerdict['steps'][number];
+
 const USAGE = `
-pathos-dacs-verify — DACS-5 envelope-receipt verifier
+pathos-dacs-verify — DACS-5 envelope-receipt verifier (v0.1)
+
+Dual-accept (§10.4.2 backwards-compat): the DEFAULT verify path is the v0.1
+AttestationBundle verifier (bundleVersion:"1"); legacy bundles (v:"dacs-5-bundle:0.1")
+are still READ via the legacy verification walk.
 
 Usage:
   pathos-dacs-verify --bundle-file <path> [--offline] [--rpc <url>]
@@ -108,10 +156,10 @@ function parseCliArgs(): CliArgs {
   };
 }
 
-async function loadBundle(args: CliArgs): Promise<AttestationBundle | { error: string }> {
+async function loadBundle(args: CliArgs): Promise<unknown | { error: string }> {
   if (args.bundleFile) {
     try {
-      return JSON.parse(readFileSync(args.bundleFile, 'utf-8')) as AttestationBundle;
+      return JSON.parse(readFileSync(args.bundleFile, 'utf-8'));
     } catch (e) {
       return { error: `failed to load bundle from ${args.bundleFile}: ${(e as Error).message}` };
     }
@@ -128,7 +176,7 @@ async function loadBundle(args: CliArgs): Promise<AttestationBundle | { error: s
     // The anchored data IS the bundle JSON
     const raw = typeof fetched.data === 'string' ? fetched.data : JSON.stringify(fetched.data);
     try {
-      return JSON.parse(raw) as AttestationBundle;
+      return JSON.parse(raw);
     } catch (e) {
       return { error: `bundle at ${args.bundleAnchor} is not valid JSON: ${(e as Error).message}` };
     }
@@ -157,7 +205,7 @@ async function loadBundle(args: CliArgs): Promise<AttestationBundle | { error: s
     }
     const raw = typeof winner.data === 'string' ? winner.data : JSON.stringify(winner.data);
     try {
-      return JSON.parse(raw) as AttestationBundle;
+      return JSON.parse(raw);
     } catch (e) {
       return { error: `bundle at ${pair.buyer}/${pair.seller} is not valid JSON: ${(e as Error).message}` };
     }
@@ -169,7 +217,11 @@ async function main(): Promise<void> {
   const args = parseCliArgs();
 
   const loaded = await loadBundle(args);
-  if ('error' in loaded) {
+  const loadError =
+    loaded && typeof loaded === 'object' && 'error' in loaded && typeof (loaded as { error: unknown }).error === 'string'
+      ? (loaded as { error: string }).error
+      : null;
+  if (loadError !== null) {
     // Codex M2 #2: the step outcome MUST match the rollup decision.
     // Missing-file / unreachable-anchor is "verifier could not reach a verdict" —
     // that's indeterminate semantically. Use outcome:'indeterminate' so the JSON
@@ -177,7 +229,7 @@ async function main(): Promise<void> {
     const verdict: VerifyVerdict = {
       decision: 'indeterminate',
       jobId: args.jobId ?? 'unknown',
-      steps: [{ step: 'source', outcome: 'indeterminate', detail: loaded.error }],
+      steps: [{ step: 'source', outcome: 'indeterminate', detail: loadError }],
       canonicalBundleHash: '',
       signersVerified: [],
       attestationsVerified: 0,
@@ -185,21 +237,48 @@ async function main(): Promise<void> {
     };
     if (!args.json) {
       console.error(`pathos-dacs-verify — DACS-5 verifier v0.2\n`);
-      console.error(`  ? source: ${loaded.error}`);
+      console.error(`  ? source: ${loadError}`);
       console.error(`\nverdict: INDETERMINATE\n`);
     }
     console.log(JSON.stringify(verdict, null, 2));
     process.exit(2);
   }
 
-  // Codex M2 round-7 #1: only skip two-sided lookup when explicitly opted in via --offline.
-  // Default --bundle-file verification still attempts the chain lookup, binding the local
-  // file to one of the two anchors. This enforces the local-bundle binding invariant for
-  // file-based verifies too.
-  const verdict = await verifyBundle(loaded, {
-    rpc: args.rpc,
-    skipTwoSidedLookup: args.offline,
-  });
+  // Dual-accept dispatch (§10.4.2). DEFAULT verify path = v0.1 verifyBundleV1; legacy bundles
+  // are still READ via the legacy walk.
+  const classified = classifyBundle(loaded);
+  if ('error' in classified) {
+    const verdict: VerifyVerdict = {
+      decision: 'indeterminate',
+      jobId: args.jobId ?? 'unknown',
+      steps: [{ step: 'classify', outcome: 'indeterminate', detail: classified.error }],
+      canonicalBundleHash: '', signersVerified: [], attestationsVerified: 0, attestationsFailed: 0,
+    };
+    if (!args.json) {
+      console.error(`pathos-dacs-verify — DACS verifier v0.1\n`);
+      console.error(`  ? classify: ${classified.error}`);
+      console.error(`\nverdict: INDETERMINATE\n`);
+    }
+    console.log(JSON.stringify(verdict, null, 2));
+    process.exit(2);
+  }
+
+  let verdict: VerifyVerdict;
+  if (classified.kind === 'v1') {
+    // v0.1 path. The v0.1 verifier is a single-bundle structural+signature check; the chain-side
+    // two-sided anchoring (§10.4.2/§10.4.3) is not part of verifyBundleV1, so --offline is moot here.
+    const v1 = verifyBundleV1(classified.bundle);
+    verdict = normaliseV1Verdict(classified.bundle.jobId ?? (args.jobId ?? 'unknown'), v1);
+  } else {
+    // Codex M2 round-7 #1: only skip two-sided lookup when explicitly opted in via --offline.
+    // Default --bundle-file verification still attempts the chain lookup, binding the local
+    // file to one of the two anchors. This enforces the local-bundle binding invariant for
+    // file-based verifies too.
+    verdict = await verifyBundle(classified.bundle, {
+      rpc: args.rpc,
+      skipTwoSidedLookup: args.offline,
+    });
+  }
 
   if (!args.json) {
     console.error(`pathos-dacs-verify — DACS-5 verifier v0.2\n`);

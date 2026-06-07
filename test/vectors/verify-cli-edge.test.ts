@@ -60,6 +60,44 @@ test('CLI: malformed JSON file → exit 2 (indeterminate)', () => {
   }
 });
 
+test('CLI: v0.1 AttestationBundleV1 file → verified via the DEFAULT v0.1 path (exit 0)', async () => {
+  // Dual-accept: a real-key v0.1 bundle (bundleVersion:"1") routes to verifyBundleV1 by default.
+  const { sign } = await import('../../src/lib/sign.js');
+  const { DOMAIN_SEPARATORS } = await import('../../src/domain-sep.js');
+  const { jcsHashHex } = await import('../../src/jcs.js');
+  const { ed25519 } = await import('@noble/curves/ed25519');
+
+  const hexOf = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  const mk = (fill: number) => { const priv = new Uint8Array(32).fill(fill); return { priv, pubHex: hexOf(ed25519.getPublicKey(priv)) }; };
+  const buyer = mk(0x61), seller = mk(0x62);
+  const unsigned = {
+    bundleVersion: '1' as const, jobId: 'cli-v1-001', outcome: 'completed' as const, anchoredByRole: 'buyer' as const,
+    listingRef: { listingId: 'lst-1', version: 1, contentHash: 'ab'.repeat(32) },
+    parties: [
+      { role: 'buyer' as const, bundleHash: 'aa'.repeat(32), primaryClaim: { scheme: 'cci' as const, identifier: buyer.pubHex } },
+      { role: 'seller' as const, bundleHash: 'bb'.repeat(32), primaryClaim: { scheme: 'cci' as const, identifier: seller.pubHex } },
+    ],
+    phaseSummary: [{ index: 0, kind: 'vet-credentials', outcome: 'ok' as const }],
+    vetRecords: [], settlementEvidence: [], recipeRegistryVersion: 1, railRegistryVersion: 1, finalisedAt: 1735689600000,
+  };
+  const bundleHash = jcsHashHex(unsigned);
+  const enc = new TextEncoder();
+  const sigOf = (k: { priv: Uint8Array; pubHex: string }) => ({
+    party: { scheme: 'cci' as const, identifier: k.pubHex }, algorithm: 'ed25519' as const,
+    value: Buffer.from(sign(DOMAIN_SEPARATORS.BUNDLE, enc.encode(bundleHash), k.priv)).toString('base64'),
+  });
+  const signed = { ...unsigned, signatures: [sigOf(buyer), sigOf(seller)] };
+
+  const path = '/tmp/dacs-cli-v1-' + process.pid + '.json';
+  writeFileSync(path, JSON.stringify(signed));
+  try {
+    const r = run(['--bundle-file', path, '--json']);
+    assert.equal(r.code, 0, `expected exit 0 (v0.1 accept), got ${r.code}\nstderr: ${r.stderr}\nstdout: ${r.stdout.slice(0, 500)}`);
+  } finally {
+    try { unlinkSync(path); } catch {}
+  }
+});
+
 test('CLI: --offline + valid bundle file → can pass without chain access', async () => {
   // Build the bundle inline in this process, then exec the CLI as a subprocess.
   const { generateKeypair, sign } = await import('../../src/lib/sign.js');
