@@ -18,7 +18,7 @@ import { sha256 } from '@noble/hashes/sha2';
 import type { AttestationBundle, VerifyStep, VerifyVerdict, AttestationRef } from '../types/index.js';
 import { jcsCanonical, jcsHash } from '../jcs.js';
 import { verify as edVerify } from './sign.js';
-import { DOMAIN_SEPARATORS } from '../domain-sep.js';
+import { DOMAIN_SEPARATORS, LEGACY_READ_SEPARATORS } from '../domain-sep.js';
 import { fetchAnchored } from '../demos/storage.js';
 
 /** Step recorder — accumulates the verify walk for the final verdict. */
@@ -147,9 +147,11 @@ function verifySignature(bundle: AttestationBundle, log: StepLog): { ok: boolean
   const canonical = jcsCanonical(unsigned);
   const bundleHash = jcsHash(unsigned);
 
-  // signed_bytes = "dacs-bundle:v1:" || bundleHash || JCS(payload)  per §10.4.2 + sign.ts contract.
-  // (Legacy reads: the `dacs5-bundle:v1:` separator was folded into the canonical `dacs-bundle:v1:`
-  //  per the v0.1 §B.7 registry alignment 2026-06-07. Legacy bundles are RE-SEALED under this separator.)
+  // signed_bytes = <separator> || bundleHash || JCS(payload)  per §10.4.2 + sign.ts contract.
+  // Post-cutover bundles seal under the canonical `dacs-bundle:v1:`. GENUINE pre-cutover legacy
+  // bundles were sealed under `dacs5-bundle:v1:` (now LEGACY_READ_SEPARATORS) — the verify below
+  // tries the canonical separator first, then falls back to the legacy one for backwards-compat
+  // READS (§10.4.2). New emission is canonical-only; the legacy separator is never emitted.
   // Codex M2 #3: Buffer.from(..., 'base64') is permissive — garbage input decodes to whatever
   // happens to be base64-decodable, then edVerify gets a wrong-length signature. Validate the
   // decoded length is exactly 64 bytes (ed25519 signature length) before passing to edVerify.
@@ -166,16 +168,27 @@ function verifySignature(bundle: AttestationBundle, log: StepLog): { ok: boolean
     return { ok: false, signerPubkeyHex: null };
   }
 
-  const ok = edVerify(DOMAIN_SEPARATORS.BUNDLE, sig, canonical, resolved.pubkey, bundleHash);
-  if (ok) {
-    log.add('verify-signature', 'pass', `ed25519 verified against ${resolved.source}`);
+  // §10.4.2 backwards-compat reads: try the canonical EMISSION separator first
+  // (`dacs-bundle:v1:` — what every post-cutover bundle is sealed under), then fall back to
+  // the READ-ONLY legacy separator (`dacs5-bundle:v1:`) so genuine PRE-cutover artifacts —
+  // signed before the §B.7 fold — still verify. New code never emits under the legacy string;
+  // this fallback is purely a read-path concession (Codex BLOCKER 3, 2026-06-07).
+  if (edVerify(DOMAIN_SEPARATORS.BUNDLE, sig, canonical, resolved.pubkey, bundleHash)) {
+    log.add('verify-signature', 'pass', `ed25519 verified against ${resolved.source} (separator="${DOMAIN_SEPARATORS.BUNDLE}")`);
+    return { ok: true, signerPubkeyHex: bytesToHex(resolved.pubkey) };
+  }
+  if (edVerify(LEGACY_READ_SEPARATORS.BUNDLE_DACS5, sig, canonical, resolved.pubkey, bundleHash)) {
+    log.add('verify-signature', 'pass',
+      `ed25519 verified against ${resolved.source} under the read-only legacy separator ` +
+      `"${LEGACY_READ_SEPARATORS.BUNDLE_DACS5}" (pre-cutover artifact, §10.4.2 backwards-compat read)`);
     return { ok: true, signerPubkeyHex: bytesToHex(resolved.pubkey) };
   }
   log.add(
     'verify-signature',
     'fail',
     `ed25519 verification failed against ${resolved.source} ` +
-    `(separator="${DOMAIN_SEPARATORS.BUNDLE}", bundleHash=${bytesToHex(bundleHash).slice(0, 16)}…)`
+    `(tried separators "${DOMAIN_SEPARATORS.BUNDLE}" + read-only legacy "${LEGACY_READ_SEPARATORS.BUNDLE_DACS5}", ` +
+    `bundleHash=${bytesToHex(bundleHash).slice(0, 16)}…)`
   );
   return { ok: false, signerPubkeyHex: null };
 }

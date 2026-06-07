@@ -47,8 +47,27 @@ export const DOMAIN_SEPARATORS = {
   SETTLEMENT_EVIDENCE: 'dacs-evidence:v1:',                 // §9.7 — DACS-4 settlement evidence
 
   // DACS-5 Verify
-  BUNDLE: 'dacs-bundle:v1:',                                // §10.4.1 — DACS-5 attestation bundle: sep || bundle_hash (single-hash). Legacy `dacs5-bundle:v1:` folded in here.
+  BUNDLE: 'dacs-bundle:v1:',                                // §10.4.1 — DACS-5 attestation bundle: sep || bundle_hash (single-hash). Canonical EMISSION separator.
   REPUTATION_ATTESTATION: 'dacs-rating:v1:',                // §10.6 — DACS-5 rating record
+} as const;
+
+/**
+ * READ-ONLY legacy separators (§10.4.2 backwards-compat).
+ *
+ * Before the v0.1 §B.7 cutover, the reference-impl legacy `AttestationBundle`
+ * (`v: 'dacs-5-bundle:0.1'`) signed its bundle under the separator `dacs5-bundle:v1:`.
+ * The §B.7 alignment (2026-06-07) replaced that with the canonical `dacs-bundle:v1:` for
+ * EMISSION. Real pre-cutover artifacts on disk / on chain are still sealed under the OLD
+ * string — so to honor §10.4.2 backwards-compatible READS we MUST keep recognising it.
+ *
+ * IMPORTANT: this map is for READING legacy `dacs-5-bundle:0.1` bundles ONLY. No code path
+ * EMITS under these separators — new bundles always sign under `DOMAIN_SEPARATORS.BUNDLE`.
+ * These are admitted by `assertKnownSeparator()` so the legacy verify path can pass the old
+ * string to `verify()`, but they are intentionally NOT part of `DOMAIN_SEPARATORS` (the
+ * canonical closed registry the emitters draw from).
+ */
+export const LEGACY_READ_SEPARATORS = {
+  BUNDLE_DACS5: 'dacs5-bundle:v1:',                         // pre-cutover DACS-5 AttestationBundle signing separator (read-only)
 } as const;
 
 /**
@@ -92,6 +111,7 @@ export const PATHOS_EXTENSION_SEPARATORS = {
 
 export type DomainSeparator =
   | (typeof DOMAIN_SEPARATORS)[keyof typeof DOMAIN_SEPARATORS]
+  | (typeof LEGACY_READ_SEPARATORS)[keyof typeof LEGACY_READ_SEPARATORS]
   | (typeof DACS_X_EXTENSION_SEPARATORS)[keyof typeof DACS_X_EXTENSION_SEPARATORS]
   | (typeof PATHOS_EXTENSION_SEPARATORS)[keyof typeof PATHOS_EXTENSION_SEPARATORS];
 export type DomainSeparatorKey = keyof typeof DOMAIN_SEPARATORS;
@@ -104,6 +124,7 @@ export type DomainSeparatorKey = keyof typeof DOMAIN_SEPARATORS;
 export function assertKnownSeparator(sep: string): asserts sep is DomainSeparator {
   const known: string[] = [
     ...Object.values(DOMAIN_SEPARATORS),
+    ...Object.values(LEGACY_READ_SEPARATORS),
     ...Object.values(DACS_X_EXTENSION_SEPARATORS),
     ...Object.values(PATHOS_EXTENSION_SEPARATORS),
   ];
