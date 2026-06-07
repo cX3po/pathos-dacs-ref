@@ -97,6 +97,12 @@ export const DACS_X_EXTENSION_SEPARATORS = {
   //   CLAIM_REVEAL body  := verifier_id || consent_receipt_id || nonce || expiry || commitment_i  (audience-bound)
   CLAIM_COMMIT: 'dacs-x-claim-commit:v1:',
   CLAIM_REVEAL: 'dacs-x-claim-reveal:v1:',
+
+  // dacs-disclose P2 — consent/revocation records (spec §3 "consent + revocation", §5 P2).
+  // Grantor-signed records anchored (in production) as demos-receipts entries; revocation = a
+  // later signed append that supersedes an earlier grant. SIG-4 extension surface (no ZK/L2PS/FHE).
+  //   CONSENT body := JCS(canonical signable consent record)  (grantor-signed; see src/lib/consent.ts)
+  CONSENT: 'dacs-x-consent:v1:',
 } as const;
 
 /**
