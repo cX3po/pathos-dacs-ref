@@ -32,11 +32,11 @@ test('intermediate hash — sign with bundleHash, verify without it must fail', 
   const { privKey, pubKey } = generateKeypair();
   const body = new TextEncoder().encode('{"v":"dacs-5-bundle:0.1","jobId":"abc"}');
   const bundleHash = sha256(body);
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, body, privKey, bundleHash);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, body, privKey, bundleHash);
   // Verifying without the intermediate hash MUST fail (no truncation attack)
-  assert.equal(verify(DOMAIN_SEPARATORS.BUNDLE_DACS5, sig, body, pubKey), false);
+  assert.equal(verify(DOMAIN_SEPARATORS.BUNDLE, sig, body, pubKey), false);
   // Verifying with the intermediate hash MUST pass
-  assert.equal(verify(DOMAIN_SEPARATORS.BUNDLE_DACS5, sig, body, pubKey, bundleHash), true);
+  assert.equal(verify(DOMAIN_SEPARATORS.BUNDLE, sig, body, pubKey, bundleHash), true);
 });
 
 test('mutated body — even a single byte flip breaks verification', () => {

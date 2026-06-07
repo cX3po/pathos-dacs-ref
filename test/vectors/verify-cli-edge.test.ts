@@ -80,7 +80,7 @@ test('CLI: --offline + valid bundle file → can pass without chain access', asy
   };
   const canonical = jcsCanonical(unsigned);
   const bundleHash = jcsHash(unsigned);
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canonical, privKey, bundleHash);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, privKey, bundleHash);
   const signed = { ...unsigned, signature: Buffer.from(sig).toString('base64') };
 
   const path = '/tmp/dacs-cli-valid-' + process.pid + '.json';

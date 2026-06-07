@@ -47,7 +47,7 @@ function makeBundle(opts: {
   };
   const canonical = jcsCanonical(unsigned);
   const bundleHash = jcsHash(unsigned);
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canonical, opts.selfPrivKey, bundleHash);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, opts.selfPrivKey, bundleHash);
   return { ...unsigned, signature: Buffer.from(sig).toString('base64') };
 }
 
@@ -124,7 +124,7 @@ test('Codex M2 round-3 #2: inline counterparty with WRONG SCHEME (cci vs erc8004
   };
   const canonical = jcsCanonical(wrongSchemeUnsigned);
   const bundleHash = jcsHash(wrongSchemeUnsigned);
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canonical, sellerKeys.privKey, bundleHash);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, sellerKeys.privKey, bundleHash);
   const wrongSchemeSeller: AttestationBundle = { ...wrongSchemeUnsigned, signature: Buffer.from(sig).toString('base64') };
   const verdict = await verifyBundle(buyer.bundle, { counterpartyBundle: wrongSchemeSeller });
   assert.equal(verdict.decision, 'fail',
@@ -154,7 +154,7 @@ test('Codex M2 round-3 #1: inline counterparty with state mismatch → fail (pro
   // we reconstruct using the keys we have stored on the seller PartyBundle.
   const canonical = jcsCanonical(stateMutatedUnsigned);
   const bundleHash = jcsHash(stateMutatedUnsigned);
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canonical, seller.privKey, bundleHash);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, seller.privKey, bundleHash);
   const stateMutated: AttestationBundle = { ...stateMutatedUnsigned, signature: Buffer.from(sig).toString('base64') };
   void buyerSelfHex;
   const verdict = await verifyBundle(buyer.bundle, { counterpartyBundle: stateMutated });
@@ -265,7 +265,7 @@ test('Codex M2 round-5 #1: third bundle riding along same jobId is REJECTED', as
   };
   const canon = jcsCanonical(thirdUnsigned);
   const bh = jcsHash(thirdUnsigned);
-  const tsig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canon, thirdKeys.privKey, bh);
+  const tsig = sign(DOMAIN_SEPARATORS.BUNDLE, canon, thirdKeys.privKey, bh);
   const thirdBundle: AttestationBundle = { ...thirdUnsigned, signature: Buffer.from(tsig).toString('base64') };
 
   // Chain serves the real buyer + seller anchors; we ask verifier to verify the THIRD bundle.

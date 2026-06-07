@@ -48,7 +48,7 @@ function makeSignedBundle(opts: { jobId?: string; role?: 'buyer' | 'seller' | 'o
 
   const canonical = jcsCanonical(unsigned);
   const bundleHash = jcsHash(unsigned);
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canonical, privKey, bundleHash);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, privKey, bundleHash);
 
   // base64-encode the signature for the on-wire format
   const sigB64 = Buffer.from(sig).toString('base64');
@@ -168,7 +168,7 @@ test('dahr-stub: attestation → indeterminate even with matching content-hash p
   };
   const canonical = jcsCanonical(unsigned);
   const bundleHash = jcsHash(unsigned);
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canonical, privKey, bundleHash);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, privKey, bundleHash);
   const signed: AttestationBundle = { ...unsigned, signature: Buffer.from(sig).toString('base64') };
 
   const verdict = await verifyBundle(signed, { skipTwoSidedLookup: true });
@@ -196,7 +196,7 @@ test('stub locator with mismatched prefix → fail (catches forged stub)', async
   };
   const canonical = jcsCanonical(bundle);
   const bundleHash = jcsHash(bundle);
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canonical, privKey, bundleHash);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, privKey, bundleHash);
   const signed: AttestationBundle = { ...bundle, signature: Buffer.from(sig).toString('base64') };
   const verdict = await verifyBundle(signed, { skipTwoSidedLookup: true });
   assert.equal(verdict.decision, 'fail', 'mismatched stub locator MUST fail — catches forged stubs');

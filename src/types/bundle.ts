@@ -17,8 +17,9 @@
  *     Consumers MUST query both party-specific addresses.
  *     Unilateral bundle ⇒ `aborted-by-self` for the non-signer.
  *
- *   Domain separator: "dacs5-bundle:v1:" (preserved from reference impl per §10.4.2 comment;
- *     will harmonize to "dacs-bundle:v2:" later — backwards compat MUST be honored).
+ *   Domain separator: "dacs-bundle:v1:" (v0.1 §B.7 registry alignment 2026-06-07 — the legacy
+ *     `dacs5-bundle:v1:` separator was folded into the canonical `dacs-bundle:v1:`; backwards
+ *     compat is honored by RE-SEALING legacy bundles under the canonical separator on read/emit).
  */
 
 import type { IdentityBundle, ClaimRef } from './identity.js';
@@ -71,7 +72,7 @@ export interface AttestationBundle {
   verifyResults?: VerifyResult[];
   /** When the bundle was finalised (ISO 8601) */
   finalisedAt: string;
-  /** Signature over JCS-canonical(bundle without `signature`), prefixed with "dacs5-bundle:v1:" || bundleHash */
+  /** Signature over JCS-canonical(bundle without `signature`), prefixed with "dacs-bundle:v1:" || bundleHash */
   signature?: string; // base64 ed25519
   /** If orchestrator-distinct-from-parties: their cosignature */
   orchestratorSignature?: string;

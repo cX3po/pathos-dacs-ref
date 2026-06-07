@@ -8,7 +8,7 @@
  *   1. Locate the AttestationBundle (from `stor-` anchor OR local file)
  *   2. Recompute the JCS canonical form of the payload (sans signature)
  *   3. Recompute bundleHash = SHA-256(canonical_payload)
- *   4. Recompute signed_bytes = "dacs5-bundle:v1:" || bundleHash
+ *   4. Recompute signed_bytes = "dacs-bundle:v1:" || bundleHash
  *   5. Verify each signature against the signer's DACS-1 primary-claim public key
  *   6. For two-sided anchoring (§10.4.2 / §10.4.3): verify BOTH party anchors are populated;
  *      unilateral ⇒ mark as `aborted-by-self` for the non-signing party

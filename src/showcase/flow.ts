@@ -87,7 +87,7 @@ function buildBundle(
   };
   const canonical = jcsCanonical(unsigned);
   const bundleHash = jcsHash(unsigned);
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canonical, selfPriv, bundleHash);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, selfPriv, bundleHash);
   return { ...unsigned, signature: Buffer.from(sig).toString('base64') };
 }
 

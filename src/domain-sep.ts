@@ -1,48 +1,76 @@
 /**
- * DACS v0.7 universal signature scheme — domain separators (§7.7)
+ * DACS v0.1 universal signature scheme — domain separators (CORE §B.7)
  *
- * Closed registry. The §7.7 closure rule: callers passing an unknown separator
- * MUST fail. This file is the single source of truth.
+ * Closed registry. The §B.7 / SIG-1..4 closure rule: callers passing a separator
+ * outside the registry (or the sanctioned `dacs-x-` extension form) MUST fail.
+ * This file is the single source of truth.
  *
  * Every signature produced by any DACS implementation has the form:
  *
- *   signed_bytes := <domain_separator> || <payload_hash_or_payload_bytes>
+ *   signed_bytes := <domain_separator> || <artifact_hash>            (single-hash, the common case)
+ *   signed_bytes := <domain_separator> || <h1> || <h2> || …          (composite — sanctioned exceptions, CORE §B.7)
  *
  * The exact body after the separator depends on the artifact (see each constant's comment).
  *
- * v1 list extracted from DACS v0.7 §7.7. When v2 ships, this file gains a sibling map
- * and consumers MUST support both (§10.4.2 backwards-compat note).
+ * v1 list aligned to the v0.1 §B.7 closed registry (CORE.md:237-259), VERIFIED against the
+ * published spec copy 2026-06-07. `version_tag` is the MAJOR version: every v0.1..v0.x kind
+ * signs under `:v1:` and the registry stays frozen across minor bumps (CORE §B.7 version_tag binding).
+ * When a v2 MAJOR ships, this file gains a sibling map and consumers MUST support both (SIG-5).
+ *
+ * SIG-4 extension rule: an artifact kind NOT in the v0.1 table MUST use a separator of the form
+ * `dacs-x-<kind>:v1:` until accepted into a future registry version. The PATHOS_EXTENSION and
+ * DACS_X_EXTENSION maps below carry those; they are admitted by assertKnownSeparator() but a
+ * spec-conformance auditor can distinguish them from the closed §B.7 set by their map of origin.
  */
 
-/** Closed registry — 17 separators. Adding new ones requires DACS spec revision. */
+/**
+ * v0.1 §B.7 closed-registry separators that this reference impl uses, aligned to CORE.md:237-259.
+ * (The full §B.7 registry has 20 entries; this map carries only the kinds our code signs/verifies
+ * plus the ones it has historically declared, each now mapped to its canonical v0.1 string.)
+ * Adding new ones requires a DACS spec revision — use the `dacs-x-` extension form for experiments.
+ */
 export const DOMAIN_SEPARATORS = {
   // DACS-1 Identify
-  LISTING: 'dacs-listing:v1:',                              // signed_bytes = sep || JCS(unsignedListing)
-  BUNDLE_PRESENTATION: 'dacs-bundle-presentation:v1:',      // signed_bytes = sep || bundleHash || JCS(payload)
-  SESSION_KEY_AUTH: 'dacs-session-key-auth:v1:',            // signed_bytes = sep || sessionPubkey
+  LISTING: 'dacs-listing:v1:',                              // §6.3.4 — signed_bytes = sep || JCS-hash(unsignedListing)
+  BUNDLE_PRESENTATION: 'dacs-bundle-presentation:v1:',      // §6.3.2 — signed_bytes = sep || bundle_hash (single-hash)
+  SESSION_BINDING: 'dacs-session-binding:v1:',             // §6.3.2 — COMPOSITE: sep || session_key || bundle_hash (session-key root binding)
 
   // DACS-2 Vet
-  ATTESTATION_REF: 'dacs-attestation-ref:v1:',              // signed_bytes = sep || JCS(attestationRef)
-  COMPOSITE_VERIFY: 'dacs-composite-verify:v1:',            // signed_bytes = sep || JCS(record)
-  CONSENSUS_PROXY_COMMIT: 'dacs-cbp-commit:v1:',            // signed_bytes = sep || responseHash || JCS(requestSpec)
+  COMPOSITE_VERIFY: 'dacs-composite:v1:',                   // §7.7 — DACS-2 composite verification record
 
   // DACS-3 Negotiate
-  CHANNEL_MSG: 'dacs-channelmsg:v1:',                       // signed_bytes = sep || JCS(envelope) — every channel message
-  AGREEMENT: 'dacs-agreement:v1:',                          // signed_bytes = sep || JCS(agreementDocument)
-  COMMIT_AGREEMENT: 'dacs-commit-agreement:v1:',            // signed_bytes = sep || agreementHash || JCS(commitContext)
-  SEALED_ENVELOPE_OPEN: 'dacs-sealed-envelope-open:v1:',    // signed_bytes = sep || envelopeContentHash
-  RULE_REF_COMMIT: 'dacs-rule-ref:v1:',                     // signed_bytes = sep || ruleContentHash
+  CHANNEL_MSG: 'dacs-channelmsg:v1:',                       // §8.3.3 — every channel message
+  AGREEMENT: 'dacs-agreement:v1:',                          // §8.5 — DACS-3 agreement document
+  COMMIT_AGREEMENT: 'dacs-commitment:v1:',                  // §8.6 — DACS-3 commitment record
 
   // DACS-4 Settle
-  SETTLEMENT_EVIDENCE: 'dacs-settlement-evidence:v1:',      // signed_bytes = sep || JCS(evidence)
-  PAYMENT_AUTH: 'dacs-payment-auth:v1:',                    // signed_bytes = sep || JCS(authPayload)
-  DELIVERY_RECEIPT: 'dacs-delivery-receipt:v1:',            // signed_bytes = sep || JCS(deliveryPayload)
+  SETTLEMENT_EVIDENCE: 'dacs-evidence:v1:',                 // §9.7 — DACS-4 settlement evidence
 
   // DACS-5 Verify
-  BUNDLE: 'dacs-bundle:v1:',                                // §10.4.1 spec separator: signed_bytes = sep || bundleHash (AttestationBundleV1)
-  BUNDLE_DACS5: 'dacs5-bundle:v1:',                         // LEGACY (pre-§10.4 reference impl) — retained until legacy AttestationBundle is migrated off
-  REPUTATION_ATTESTATION: 'dacs-reputation:v1:',            // signed_bytes = sep || JCS(repBlob)
-  SESSION_RECORD: 'dacs-session-record:v1:',                // signed_bytes = sep || JCS(sessionRecord)
+  BUNDLE: 'dacs-bundle:v1:',                                // §10.4.1 — DACS-5 attestation bundle: sep || bundle_hash (single-hash). Legacy `dacs5-bundle:v1:` folded in here.
+  REPUTATION_ATTESTATION: 'dacs-rating:v1:',                // §10.6 — DACS-5 rating record
+} as const;
+
+/**
+ * SIG-4 extension separators for artifact kinds NOT in the v0.1 §B.7 closed registry.
+ * CORE.md:265: "An artifact kind not in the v0.1 table MUST use a domain separator of the form
+ * `dacs-x-<kind>:v1:` until accepted into a future version of the registry."
+ *
+ * These were declared in the legacy v0.7 registry under non-conformant names
+ * (`dacs-attestation-ref`, `dacs-cbp-commit`, `dacs-rule-ref`, `dacs-payment-auth`,
+ * `dacs-delivery-receipt`, `dacs-session-record`, `dacs-sealed-envelope-open`). None of them
+ * has a clear v0.1 §B.7 registry entry, so per SIG-4 they move to the `dacs-x-` extension prefix.
+ * (None of these are currently produced/verified by any signer in this repo — they are reserved
+ * surfaces — so the move is registry-hygiene only with no signed-artifact impact.)
+ */
+export const DACS_X_EXTENSION_SEPARATORS = {
+  ATTESTATION_REF: 'dacs-x-attestation-ref:v1:',
+  CONSENSUS_PROXY_COMMIT: 'dacs-x-cbp-commit:v1:',
+  RULE_REF_COMMIT: 'dacs-x-rule-ref:v1:',
+  PAYMENT_AUTH: 'dacs-x-payment-auth:v1:',
+  DELIVERY_RECEIPT: 'dacs-x-delivery-receipt:v1:',
+  SESSION_RECORD: 'dacs-x-session-record:v1:',
+  SEALED_ENVELOPE_OPEN: 'dacs-x-sealed-envelope-open:v1:',
 } as const;
 
 /**
@@ -64,18 +92,25 @@ export const PATHOS_EXTENSION_SEPARATORS = {
 
 export type DomainSeparator =
   | (typeof DOMAIN_SEPARATORS)[keyof typeof DOMAIN_SEPARATORS]
+  | (typeof DACS_X_EXTENSION_SEPARATORS)[keyof typeof DACS_X_EXTENSION_SEPARATORS]
   | (typeof PATHOS_EXTENSION_SEPARATORS)[keyof typeof PATHOS_EXTENSION_SEPARATORS];
 export type DomainSeparatorKey = keyof typeof DOMAIN_SEPARATORS;
 
-/** §7.7 closure rule (extended to admit PATH-OS Labs extension separators). Throws on unknown separator. */
+/**
+ * §B.7 closure rule. Throws on unknown separator. Admits the closed v0.1 §B.7 registry
+ * PLUS the SIG-4 `dacs-x-` extension separators (DACS_X_EXTENSION_SEPARATORS and the
+ * PATH-OS Labs extension siblings) — all three maps follow the registry-or-`dacs-x-` discipline.
+ */
 export function assertKnownSeparator(sep: string): asserts sep is DomainSeparator {
   const known: string[] = [
     ...Object.values(DOMAIN_SEPARATORS),
+    ...Object.values(DACS_X_EXTENSION_SEPARATORS),
     ...Object.values(PATHOS_EXTENSION_SEPARATORS),
   ];
   if (!known.includes(sep)) {
     throw new Error(
-      `Unknown domain separator: "${sep}". DACS §7.7 declares a closed v1 registry. ` +
+      `Unknown domain separator: "${sep}". DACS §B.7 declares a closed v0.1 registry; ` +
+      `experimental kinds MUST use the dacs-x-<kind>:v1: form (SIG-4). ` +
       `Known separators: ${known.join(', ')}`
     );
   }

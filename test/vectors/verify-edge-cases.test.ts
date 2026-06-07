@@ -61,7 +61,7 @@ test('Codex M2 #3 / Gemini LOW: signature with valid base64 but WRONG byte lengt
   const canonical = jcsCanonical(unsigned);
   const bundleHash = jcsHash(unsigned);
   // Build a real signature, then truncate to a wrong-but-base64-clean length
-  const realSig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canonical, privKey, bundleHash);
+  const realSig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, privKey, bundleHash);
   const truncated = realSig.slice(0, 32); // 32 bytes instead of 64
   const bundle: AttestationBundle = { ...unsigned, signature: Buffer.from(truncated).toString('base64') };
 
@@ -100,7 +100,7 @@ test('Codex M2 #4 / Gemini LOW: AttestationRef with non-string anchored data →
   };
   const canonical = jcsCanonical(unsigned);
   const bundleHash = jcsHash(unsigned);
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, canonical, privKey, bundleHash);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, privKey, bundleHash);
   const bundle: AttestationBundle = { ...unsigned, signature: Buffer.from(sig).toString('base64') };
 
   // Mock fetchAnchored to return non-string data

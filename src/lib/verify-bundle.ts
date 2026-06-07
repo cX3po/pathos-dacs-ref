@@ -147,7 +147,9 @@ function verifySignature(bundle: AttestationBundle, log: StepLog): { ok: boolean
   const canonical = jcsCanonical(unsigned);
   const bundleHash = jcsHash(unsigned);
 
-  // signed_bytes = "dacs5-bundle:v1:" || bundleHash || JCS(payload)  per §10.4.2 + sign.ts contract
+  // signed_bytes = "dacs-bundle:v1:" || bundleHash || JCS(payload)  per §10.4.2 + sign.ts contract.
+  // (Legacy reads: the `dacs5-bundle:v1:` separator was folded into the canonical `dacs-bundle:v1:`
+  //  per the v0.1 §B.7 registry alignment 2026-06-07. Legacy bundles are RE-SEALED under this separator.)
   // Codex M2 #3: Buffer.from(..., 'base64') is permissive — garbage input decodes to whatever
   // happens to be base64-decodable, then edVerify gets a wrong-length signature. Validate the
   // decoded length is exactly 64 bytes (ed25519 signature length) before passing to edVerify.
@@ -164,7 +166,7 @@ function verifySignature(bundle: AttestationBundle, log: StepLog): { ok: boolean
     return { ok: false, signerPubkeyHex: null };
   }
 
-  const ok = edVerify(DOMAIN_SEPARATORS.BUNDLE_DACS5, sig, canonical, resolved.pubkey, bundleHash);
+  const ok = edVerify(DOMAIN_SEPARATORS.BUNDLE, sig, canonical, resolved.pubkey, bundleHash);
   if (ok) {
     log.add('verify-signature', 'pass', `ed25519 verified against ${resolved.source}`);
     return { ok: true, signerPubkeyHex: bytesToHex(resolved.pubkey) };
@@ -173,7 +175,7 @@ function verifySignature(bundle: AttestationBundle, log: StepLog): { ok: boolean
     'verify-signature',
     'fail',
     `ed25519 verification failed against ${resolved.source} ` +
-    `(separator="${DOMAIN_SEPARATORS.BUNDLE_DACS5}", bundleHash=${bytesToHex(bundleHash).slice(0, 16)}…)`
+    `(separator="${DOMAIN_SEPARATORS.BUNDLE}", bundleHash=${bytesToHex(bundleHash).slice(0, 16)}…)`
   );
   return { ok: false, signerPubkeyHex: null };
 }
