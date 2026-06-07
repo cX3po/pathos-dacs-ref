@@ -2,8 +2,8 @@
  * DACS-4 Settle — TypeScript types
  *
  * Spec source: DACS v0.7 + DACS-1..5 v0.1, §9 (Settle) — in particular §9.5
- * (SettlementEvidence + HTLC TxRef variants) and the §7.7 universal signature
- * scheme (domain separator "dacs-settlement-evidence:v1:").
+ * (SettlementEvidence + HTLC TxRef variants) and the §B.7 universal signature
+ * scheme (domain separator "dacs-evidence:v1:", v0.1 §9.7).
  *
  * DACS-4 covers the SETTLE phase: once a price is agreed (DACS-3 Negotiate), the
  * buyer pays and the seller delivers, producing SettlementEvidence that anchors
@@ -211,7 +211,7 @@ export type HtlcTxRef = HtlcLockTxRef | HtlcRevealTxRef | HtlcRefundTxRef;
 
 /**
  * Settlement evidence assembled by the settling party and signed under
- * "dacs-settlement-evidence:v1:" (§7.7). Anchors into the DACS-5 bundle's SETTLE
+ * "dacs-evidence:v1:" (v0.1 §B.7 / §9.7). Anchors into the DACS-5 bundle's SETTLE
  * phase.
  *
  * `outcome`:

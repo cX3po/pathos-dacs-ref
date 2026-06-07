@@ -5,8 +5,8 @@
  *
  * Assembles the lock/reveal (or lock/refund) phase evidence for a Hashed-TimeLock
  * Contract settlement, canonicalises it (JCS, RFC 8785), domain-separates under
- * "dacs-settlement-evidence:v1:", and signs/verifies via the repo's ed25519 pattern
- * (src/lib/sign.ts).
+ * "dacs-evidence:v1:" (v0.1 §B.7; DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE), and signs/verifies
+ * via the repo's ed25519 pattern (src/lib/sign.ts).
  *
  * **Signed-bytes discipline (repo invariant):**
  *   signed_bytes := domain_separator || sha256-hex(JCS(unsignedEvidence))
@@ -168,7 +168,7 @@ export function buildHtlcSettlementEvidence(input: BuildHtlcEvidenceInput): Sett
     settledAt: input.settledAt ?? new Date().toISOString(),
   };
 
-  // signed_bytes = "dacs-settlement-evidence:v1:" || sha256-hex(JCS(unsigned))
+  // signed_bytes = "dacs-evidence:v1:" || sha256-hex(JCS(unsigned))
   const hashHex = jcsHashHex(unsigned);
   const body = new TextEncoder().encode(hashHex);
   const sig = sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, body, input.settlerPrivKey);
