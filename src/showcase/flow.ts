@@ -14,6 +14,13 @@
  * Honest scope: this proves the artifact + verification shape end-to-end. It is
  * NOT live on-chain (mock settlement) and uses local keypairs, not deployed
  * identities — by design, so the demo runs anywhere with zero setup.
+ *
+ * NOTE (v0.1 re-pin, 2026-06-07): this showcase emits the @deprecated legacy
+ * `AttestationBundle` (dacs-5-bundle:0.1) on purpose — it is a backwards-compat
+ * READ demonstration exercising the legacy verifyBundle path under dual-accept
+ * (§10.4.2). The sanctioned EMISSION path for production is emitAttestationBundleV1
+ * (src/lib/emit-bundle-v1.ts) producing the v0.1 AttestationBundleV1. Migrating the
+ * showcase itself onto v0.1 is intentionally out of scope for the re-pin (spec §5).
  */
 import { generateKeypair, sign } from '../lib/sign.js';
 import { verifyBundle, bytesToHex } from '../lib/verify-bundle.js';
