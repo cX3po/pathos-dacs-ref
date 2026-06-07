@@ -18,11 +18,29 @@
  */
 import type { AttestationBundleV1, BundleOutcome, BundleParty, BundleSignature } from '../types/bundle.js';
 import type { ClaimRef } from '../types/identity.js';
+import type { AttestationRef } from '../types/verify-result.js';
 import { verify } from './sign.js';
 import { DOMAIN_SEPARATORS } from '../domain-sep.js';
-import { jcsHashHex } from '../jcs.js';
+import { jcsHashHex, jcsCanonical } from '../jcs.js';
+import { sha256 } from '@noble/hashes/sha2';
+import { fetchAnchored } from '../demos/storage.js';
 
 const enc = new TextEncoder();
+
+const bytesToHexLocal = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+
+/**
+ * §10.4.2 two-sided anchor derivation for a v0.1 bundle's jobId — identical contract to the
+ * legacy `computeAnchorPair` in verify-bundle.ts:
+ *   buyer  := stor-{sha256(jobId + "-bundle-buyer")}
+ *   seller := stor-{sha256(jobId + "-bundle-seller")}
+ */
+export function computeAnchorPairV1(jobId: string): { buyer: string; seller: string } {
+  return {
+    buyer: 'stor-' + bytesToHexLocal(sha256(enc.encode(jobId + '-bundle-buyer'))),
+    seller: 'stor-' + bytesToHexLocal(sha256(enc.encode(jobId + '-bundle-seller'))),
+  };
+}
 
 const NON_ABORT: ReadonlySet<string> = new Set(['completed', 'failed-perm', 'failed-counterparty', 'failed-substrate']);
 const ABORT: ReadonlySet<string> = new Set(['aborted-by-self', 'aborted-by-other']);
@@ -258,4 +276,274 @@ export function verifyBundleV1(
     decision = 'accept';
   }
   return { decision, bundleHash, structurallyValid: true, signerRuleSatisfied, cryptographicallyVerified, signatureChecks, reasons };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Chain-side v0.1 verification: §7.5.2 AttestationRef walk + §10.4.2/§10.4.3
+// two-sided anchoring. The single-bundle `verifyBundleV1` above does NOT touch the
+// chain; this layer adds the checks the legacy verifyBundle has always done so the
+// v0.1 CLI path has the SAME contract (Codex BLOCKERs 1 + 2, 2026-06-07).
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Three-valued outcome for one §7.5.2 step / the two-sided anchoring step. */
+type ChainOutcome = 'pass' | 'fail' | 'indeterminate';
+
+export interface VerifyBundleV1Options {
+  /** Demos RPC URL for fetching anchored bundles + attestation refs. */
+  rpc?: string;
+  /**
+   * Skip the §10.4.2/§10.4.3 two-sided anchor lookup. EXACTLY like legacy verifyBundle's
+   * `skipTwoSidedLookup`: only set this when the caller has deliberately opted into offline
+   * verification (e.g. receipt-archive audit). When false (default), an UNANCHORED bundle is
+   * `indeterminate`, NEVER a silent pass.
+   */
+  skipTwoSidedLookup?: boolean;
+  /** Inject a custom fetchAnchored — tests use this to mock the chain. */
+  fetchAnchoredImpl?: typeof fetchAnchored;
+  /** Enforcing vs fixture mode for the structural+signature stage (see verifyBundleV1). */
+  requireSignatures?: boolean;
+}
+
+/** The full v0.1 verdict: the single-bundle verdict PLUS the chain-side results. */
+export interface BundleV1FullVerdict extends BundleV1Verdict {
+  /** §10.4.2/§10.4.3 — null when skipped. */
+  twoSided: { outcome: ChainOutcome | 'skipped'; detail: string };
+  /** §7.5.2 — REAL fetched-and-content-hashed counts (no longer hardcoded). */
+  attestationsVerified: number;
+  attestationsFailed: number;
+  /** Per-ref §7.5.2 step log. */
+  attestationSteps: { ref: string; outcome: ChainOutcome; detail: string }[];
+  /** Final rollup across structural+sig, two-sided, and the attestation walk (§7.5.1). */
+  rollup: ChainOutcome;
+}
+
+/** Collect every AttestationRef-bearing field of a v0.1 bundle into a flat list. */
+function collectV1Refs(b: AttestationBundleV1): AttestationRef[] {
+  const out: AttestationRef[] = [];
+  const push = (r: unknown) => { if (r && typeof r === 'object') out.push(r as AttestationRef); };
+  if (b.agreementRef) push(b.agreementRef);
+  for (const r of b.vetRecords ?? []) push(r);
+  for (const r of b.settlementEvidence ?? []) push(r);
+  for (const r of b.amendments ?? []) push(r);
+  for (const r of b.ratingRefs ?? []) push(r);
+  for (const p of b.phaseSummary ?? []) if (p && (p as { attestationRef?: unknown }).attestationRef) push((p as { attestationRef: unknown }).attestationRef);
+  return out;
+}
+
+/**
+ * §7.5.2 — walk every AttestationRef: fetch the anchored bytes, recompute sha256, compare to
+ * `contentHash`. Mismatch ⇒ fail. Missing ⇒ fail (the bundle cites evidence that does not exist
+ * — that is a content-integrity failure, not a transient absence: a finalised bundle's evidence
+ * MUST be retrievable). Unreachable RPC / unsupported substrate ⇒ indeterminate.
+ *
+ * Mirrors the legacy walkAttestationRefs contract (string-anchored only; object-anchored → v0.3).
+ */
+async function walkV1AttestationRefs(
+  bundle: AttestationBundleV1,
+  rpc: string,
+  fetchImpl: typeof fetchAnchored,
+): Promise<{ verified: number; failed: number; steps: BundleV1FullVerdict['attestationSteps'] }> {
+  const refs = collectV1Refs(bundle);
+  const steps: BundleV1FullVerdict['attestationSteps'] = [];
+  let verified = 0;
+  let failed = 0;
+
+  for (let i = 0; i < refs.length; i++) {
+    const ref = refs[i]!;
+    const anchor = (ref as { anchor?: { substrate?: string; locator?: string } }).anchor;
+    const contentHash = (ref as { contentHash?: string }).contentHash;
+    const label = `attestation[${i}]${(ref as { type?: string }).type ? ` type=${(ref as { type?: string }).type}` : ''}`;
+
+    if (typeof contentHash !== 'string' || !/^(sha256:)?[0-9a-fA-F]{64}$/.test(contentHash)) {
+      steps.push({ ref: label, outcome: 'fail', detail: `AttestationRef has no valid sha256 contentHash — cannot satisfy §7.5.2` });
+      failed++;
+      continue;
+    }
+    const wantHash = contentHash.replace(/^sha256:/, '').toLowerCase();
+
+    // Locator must be present + on a substrate we can fetch. No locator / non-demos substrate ⇒
+    // verifier cannot reach the bytes → indeterminate (NOT a pass — §7.5.1 never coerces).
+    if (!anchor || anchor.substrate !== 'demos' || typeof anchor.locator !== 'string' || !anchor.locator) {
+      steps.push({ ref: label, outcome: 'indeterminate',
+        detail: `anchor not fetchable (substrate="${anchor?.substrate ?? 'none'}", locator="${anchor?.locator ?? 'none'}") — only string-anchored demos refs are walked in v0.2` });
+      continue;
+    }
+
+    let fetched;
+    try {
+      fetched = await fetchImpl(rpc, anchor.locator);
+    } catch (e) {
+      steps.push({ ref: label, outcome: 'indeterminate', detail: `fetch ${anchor.locator} from ${rpc} failed (RPC error): ${(e as Error).message}` });
+      continue;
+    }
+    if (!fetched) {
+      // The bundle cites this evidence by content hash; if it cannot be retrieved at the locator
+      // the citation is unverifiable. §7.5.2 normative MUST: a non-resolvable cited ref fails.
+      steps.push({ ref: label, outcome: 'fail', detail: `${anchor.locator} not found at ${rpc} — cited evidence does not exist (§7.5.2)` });
+      failed++;
+      continue;
+    }
+    if (typeof fetched.data !== 'string') {
+      steps.push({ ref: label, outcome: 'indeterminate',
+        detail: `anchored data is not a string (type=${typeof fetched.data}); v0.2 walks string-anchored refs only` });
+      continue;
+    }
+    const actualHash = bytesToHexLocal(sha256(enc.encode(fetched.data)));
+    if (actualHash !== wantHash) {
+      steps.push({ ref: label, outcome: 'fail',
+        detail: `content-hash mismatch at ${anchor.locator}: want ${wantHash.slice(0, 16)}…, got ${actualHash.slice(0, 16)}… — §7.5.2 MUST reject` });
+      failed++;
+      continue;
+    }
+    steps.push({ ref: label, outcome: 'pass', detail: `content-hash matches (${actualHash.slice(0, 16)}…); anchor=${anchor.locator}` });
+    verified++;
+  }
+
+  return { verified, failed, steps };
+}
+
+/** Detect §10.4.3(d) divergence between two same-jobId v0.1 bundles. */
+function v1Divergence(a: AttestationBundleV1, b: AttestationBundleV1): string | null {
+  if (a.outcome !== b.outcome) return `outcome contradiction: "${a.outcome}" vs "${b.outcome}"`;
+  // phaseSummary contradiction: same index → same phase-level outcome.
+  const bIdx = new Map(b.phaseSummary.map((p) => [p.index, p.outcome]));
+  for (const p of a.phaseSummary) {
+    const other = bIdx.get(p.index);
+    if (other !== undefined && other !== p.outcome) return `phaseSummary contradiction at index ${p.index}: "${p.outcome}" vs "${other}"`;
+  }
+  return null;
+}
+
+type AnchorFetch = { status: 'present'; data: unknown } | { status: 'absent' } | { status: 'error'; error: string };
+async function fetchV1WithStatus(rpc: string, addr: string, fetchImpl: typeof fetchAnchored): Promise<AnchorFetch> {
+  try {
+    const r = await fetchImpl(rpc, addr);
+    return r ? { status: 'present', data: r.data } : { status: 'absent' };
+  } catch (e) {
+    return { status: 'error', error: (e as Error).message };
+  }
+}
+
+/**
+ * §10.4.2 + §10.4.3 — two-sided anchoring for a v0.1 bundle. Compute buyer + seller anchors from
+ * jobId, fetch BOTH, and:
+ *   - neither present              → indeterminate (unanchored — NOT a pass)
+ *   - exactly one present          → fail (unilateral ⇒ aborted-by-self for the absent role, §10.4.3)
+ *   - both present, RPC error      → indeterminate (transient, not an absence signal)
+ *   - both present, jobId mismatch → fail
+ *   - both present, local bundle not byte-equal to either anchored copy → fail (ride-along)
+ *   - both present, divergent (§10.4.3(d) outcome/phaseSummary contradiction) → fail (dispute)
+ *   - both present + consistent + local bound to one side → pass
+ */
+async function verifyV1TwoSided(
+  bundle: AttestationBundleV1,
+  rpc: string,
+  fetchImpl: typeof fetchAnchored,
+): Promise<{ outcome: ChainOutcome; detail: string }> {
+  const pair = computeAnchorPairV1(bundle.jobId);
+  const buyer = await fetchV1WithStatus(rpc, pair.buyer, fetchImpl);
+  const seller = await fetchV1WithStatus(rpc, pair.seller, fetchImpl);
+
+  if (buyer.status === 'error' || seller.status === 'error') {
+    const parts: string[] = [];
+    if (buyer.status === 'error') parts.push(`buyer RPC error: ${buyer.error}`);
+    if (seller.status === 'error') parts.push(`seller RPC error: ${seller.error}`);
+    return { outcome: 'indeterminate', detail: `two-sided anchor fetch failed (not an absence signal): ${parts.join('; ')}` };
+  }
+  const buyerPresent = buyer.status === 'present';
+  const sellerPresent = seller.status === 'present';
+  if (!buyerPresent && !sellerPresent) {
+    return { outcome: 'indeterminate',
+      detail: `neither party anchor present at ${rpc} (buyer=${pair.buyer}, seller=${pair.seller}); bundle may not have been anchored — unanchored local v1 bundle is indeterminate, not a pass` };
+  }
+  if (buyerPresent && !sellerPresent) {
+    return { outcome: 'fail', detail: `seller anchor absent at ${pair.seller} — §10.4.3 unilateral ⇒ aborted-by-self for seller` };
+  }
+  if (!buyerPresent && sellerPresent) {
+    return { outcome: 'fail', detail: `buyer anchor absent at ${pair.buyer} — §10.4.3 unilateral ⇒ aborted-by-self for buyer` };
+  }
+
+  // Both present — parse + cross-check.
+  let buyerBundle: AttestationBundleV1, sellerBundle: AttestationBundleV1;
+  try {
+    const bData = (buyer as { data: unknown }).data;
+    const sData = (seller as { data: unknown }).data;
+    buyerBundle = JSON.parse(typeof bData === 'string' ? bData : JSON.stringify(bData)) as AttestationBundleV1;
+    sellerBundle = JSON.parse(typeof sData === 'string' ? sData : JSON.stringify(sData)) as AttestationBundleV1;
+  } catch (e) {
+    return { outcome: 'indeterminate', detail: `failed to parse one or both anchored v0.1 bundles: ${(e as Error).message}` };
+  }
+
+  if (buyerBundle.jobId !== bundle.jobId || sellerBundle.jobId !== bundle.jobId) {
+    return { outcome: 'fail', detail: `jobId mismatch: buyer-anchor=${buyerBundle.jobId}, seller-anchor=${sellerBundle.jobId}, local=${bundle.jobId}` };
+  }
+
+  // Bind the LOCAL bundle to one of the two anchored copies via full byte-equality (signatures
+  // included). A local bundle that is not byte-equal to EITHER anchored side is a third bundle
+  // riding along the jobId — reject.
+  const localHash = bytesToHexLocal(sha256(jcsCanonical(bundle)));
+  const matchesBuyer = localHash === bytesToHexLocal(sha256(jcsCanonical(buyerBundle)));
+  const matchesSeller = localHash === bytesToHexLocal(sha256(jcsCanonical(sellerBundle)));
+  if (!matchesBuyer && !matchesSeller) {
+    return { outcome: 'fail', detail: `local bundle is not byte-equal to EITHER party-anchored bundle (shared jobId, different content — likely a third bundle riding along)` };
+  }
+
+  // Both anchored copies must themselves pass the single-bundle structural+signature check.
+  const bv = verifyBundleV1(buyerBundle, { requireSignatures: false });
+  const sv = verifyBundleV1(sellerBundle, { requireSignatures: false });
+  if (bv.decision !== 'accept') return { outcome: 'fail', detail: `buyer-anchor bundle did not pass single-bundle verify: ${bv.reasons.join('; ')}` };
+  if (sv.decision !== 'accept') return { outcome: 'fail', detail: `seller-anchor bundle did not pass single-bundle verify: ${sv.reasons.join('; ')}` };
+
+  // §10.4.3(d) divergence detection.
+  const div = v1Divergence(buyerBundle, sellerBundle);
+  if (div) return { outcome: 'fail', detail: `two-sided divergence (dispute signal, §10.4.3(d)): ${div}` };
+
+  return { outcome: 'pass', detail: `both party anchors present, jobId + content consistent, local bound to ${matchesBuyer ? 'buyer' : 'seller'} side (buyer=${pair.buyer.slice(0, 16)}…, seller=${pair.seller.slice(0, 16)}…)` };
+}
+
+/**
+ * Full v0.1 verification — the contract the CLI MUST use for `bundleVersion:"1"` bundles.
+ * Runs the single-bundle structural+signature check, the §10.4.2/§10.4.3 two-sided anchoring
+ * (unless explicitly skipped via `skipTwoSidedLookup`), and the §7.5.2 AttestationRef walk, then
+ * rolls them up with §7.5.1 precedence (any fail → fail; else any indeterminate → indeterminate;
+ * else pass). This brings the v0.1 path to parity with the legacy verifyBundle path.
+ */
+export async function verifyBundleV1Full(
+  bundle: AttestationBundleV1,
+  options: VerifyBundleV1Options = {},
+): Promise<BundleV1FullVerdict> {
+  const rpc = options.rpc ?? 'https://demosnode.discus.sh/';
+  const fetchImpl = options.fetchAnchoredImpl ?? fetchAnchored;
+  const base = verifyBundleV1(bundle, { requireSignatures: options.requireSignatures });
+
+  // Structural reject short-circuits — no jobId / refs to trust.
+  if (!base.structurallyValid) {
+    return { ...base, twoSided: { outcome: 'skipped', detail: 'structural reject — chain checks not run' }, attestationsVerified: 0, attestationsFailed: 0, attestationSteps: [], rollup: 'fail' };
+  }
+
+  let twoSided: BundleV1FullVerdict['twoSided'];
+  if (options.skipTwoSidedLookup) {
+    twoSided = { outcome: 'skipped',
+      detail: 'skipTwoSidedLookup=true — offline verification; §10.4.3 unilateral/divergence detection not enforced (caller-accepted scope limit)' };
+  } else {
+    twoSided = await verifyV1TwoSided(bundle, rpc, fetchImpl);
+  }
+
+  const walk = await walkV1AttestationRefs(bundle, rpc, fetchImpl);
+
+  // §7.5.1 rollup. `skipped` two-sided is informational (does not block), exactly like legacy.
+  const baseDecision: ChainOutcome = base.decision === 'accept' ? 'pass' : 'fail';
+  const outcomes: ChainOutcome[] = [baseDecision];
+  if (twoSided.outcome !== 'skipped') outcomes.push(twoSided.outcome);
+  outcomes.push(...walk.steps.map((s) => s.outcome));
+  const rollup: ChainOutcome = outcomes.includes('fail') ? 'fail' : outcomes.includes('indeterminate') ? 'indeterminate' : 'pass';
+
+  return {
+    ...base,
+    twoSided,
+    attestationsVerified: walk.verified,
+    attestationsFailed: walk.failed,
+    attestationSteps: walk.steps,
+    rollup,
+  };
 }

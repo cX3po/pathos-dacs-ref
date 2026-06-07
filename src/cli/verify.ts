@@ -31,7 +31,7 @@ import { parseArgs } from 'node:util';
 import type { AttestationBundle, VerifyVerdict } from '../types/index.js';
 import type { AttestationBundleV1 } from '../types/bundle.js';
 import { verifyBundle, computeAnchorPair } from '../lib/verify-bundle.js';
-import { verifyBundleV1, type BundleV1Verdict } from '../lib/verify-bundle-v1.js';
+import { verifyBundleV1Full, type BundleV1FullVerdict } from '../lib/verify-bundle-v1.js';
 import { fetchAnchored } from '../demos/storage.js';
 
 /**
@@ -56,22 +56,30 @@ function classifyBundle(raw: unknown): LoadedBundle | { error: string } {
   };
 }
 
-/** Normalise the v0.1 BundleV1Verdict into the CLI's VerifyVerdict shape (accept->pass / reject->fail). */
-function normaliseV1Verdict(jobId: string, v: BundleV1Verdict): VerifyVerdict {
+/** Normalise the full v0.1 verdict (structural+sig + two-sided + §7.5.2 walk) into the CLI's VerifyVerdict shape. */
+function normaliseV1Verdict(jobId: string, v: BundleV1FullVerdict): VerifyVerdict {
   const steps: VerifyStepLite[] = [
     { step: 'structural', outcome: v.structurallyValid ? 'pass' : 'fail', detail: v.structurallyValid ? 'v0.1 §10.4 shape valid' : v.reasons.join('; ') },
     { step: 'signer-rule', outcome: v.signerRuleSatisfied ? 'pass' : 'fail', detail: v.signerRuleSatisfied ? 'required-signer rule satisfied (§10.4.1)' : v.reasons.join('; ') },
     { step: 'signatures', outcome: v.cryptographicallyVerified ? 'pass' : (v.decision === 'reject' ? 'fail' : 'indeterminate'),
       detail: v.signatureChecks.map((c) => `${c.party.slice(0, 18)}…:${c.decision}${c.reason ? ` (${c.reason})` : ''}`).join('; ') || 'no signatures' },
+    // §10.4.2/§10.4.3 two-sided anchoring — `skipped` only when --offline was passed (informational).
+    { step: 'two-sided-anchoring',
+      outcome: v.twoSided.outcome === 'skipped' ? 'skipped' : v.twoSided.outcome,
+      detail: v.twoSided.detail },
+    // §7.5.2 AttestationRef walk — one rolled-up step + the real per-ref outcomes are in the count.
+    ...v.attestationSteps.map((s): VerifyStepLite => ({ step: s.ref, outcome: s.outcome, detail: s.detail })),
   ];
   return {
-    decision: v.decision === 'accept' ? 'pass' : 'fail',
+    // §7.5.1 — the CLI verdict is the FULL rollup (any fail → fail; else any indeterminate →
+    // indeterminate; else pass). An unanchored / unwalkable v1 bundle is NOT a default pass.
+    decision: v.rollup,
     jobId,
     steps,
     canonicalBundleHash: v.bundleHash,
     signersVerified: v.signatureChecks.filter((c) => c.decision === 'pass').map((c) => c.party),
-    attestationsVerified: 0,
-    attestationsFailed: 0,
+    attestationsVerified: v.attestationsVerified,
+    attestationsFailed: v.attestationsFailed,
   };
 }
 type VerifyStepLite = VerifyVerdict['steps'][number];
@@ -93,10 +101,11 @@ Options:
   --bundle-anchor <id>   stor-<hex> anchor address (fetched from Demos chain)
   --jobId <uuid>         jobId — verifier will compute both party-specific anchors and fetch both
   --rpc <url>            Demos node RPC URL (default: https://demosnode.discus.sh/)
-  --offline              Skip §10.4.2 two-sided anchor lookup. Use ONLY for receipt-archive
-                         audit where the chain is not available. Default (no flag) attempts
-                         the two-sided lookup even for --bundle-file inputs and binds the
-                         local file to one of the two chain anchors.
+  --offline              Skip §10.4.2 two-sided anchor lookup (BOTH the v0.1 and legacy paths).
+                         Use ONLY for receipt-archive audit where the chain is not available.
+                         Default (no flag) attempts the two-sided lookup even for --bundle-file
+                         inputs and binds the local file to one of the two chain anchors. Without
+                         --offline, an UNANCHORED bundle is indeterminate, never a default pass.
   --json                 Output JSON only (suppress human-readable preamble)
   --help                 Show this message
 
@@ -265,9 +274,14 @@ async function main(): Promise<void> {
 
   let verdict: VerifyVerdict;
   if (classified.kind === 'v1') {
-    // v0.1 path. The v0.1 verifier is a single-bundle structural+signature check; the chain-side
-    // two-sided anchoring (§10.4.2/§10.4.3) is not part of verifyBundleV1, so --offline is moot here.
-    const v1 = verifyBundleV1(classified.bundle);
+    // v0.1 path — SAME contract as legacy (Codex BLOCKERs 1 + 2): structural+signature check
+    // PLUS §10.4.2/§10.4.3 two-sided anchoring PLUS the §7.5.2 AttestationRef walk. --offline
+    // opts out of the two-sided lookup exactly like the legacy path; without it, an unanchored
+    // local v1 bundle is indeterminate, NOT a default pass.
+    const v1 = await verifyBundleV1Full(classified.bundle, {
+      rpc: args.rpc,
+      skipTwoSidedLookup: args.offline,
+    });
     verdict = normaliseV1Verdict(classified.bundle.jobId ?? (args.jobId ?? 'unknown'), v1);
   } else {
     // Codex M2 round-7 #1: only skip two-sided lookup when explicitly opted in via --offline.

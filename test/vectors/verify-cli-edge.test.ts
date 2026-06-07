@@ -60,8 +60,11 @@ test('CLI: malformed JSON file → exit 2 (indeterminate)', () => {
   }
 });
 
-test('CLI: v0.1 AttestationBundleV1 file → verified via the DEFAULT v0.1 path (exit 0)', async () => {
-  // Dual-accept: a real-key v0.1 bundle (bundleVersion:"1") routes to verifyBundleV1 by default.
+test('CLI: v0.1 AttestationBundleV1 file → unanchored default = indeterminate (exit 2); --offline = pass (exit 0)', async () => {
+  // Codex BLOCKER 1 regression: a real-key v0.1 bundle (bundleVersion:"1") routes to the v0.1
+  // path. WITHOUT --offline the §10.4.2 two-sided lookup runs; an UNANCHORED local file (neither
+  // party anchor on chain) is INDETERMINATE, not a default pass. WITH --offline the two-sided
+  // lookup is skipped (caller-accepted scope) and the bundle passes structural+sig.
   const { sign } = await import('../../src/lib/sign.js');
   const { DOMAIN_SEPARATORS } = await import('../../src/domain-sep.js');
   const { jcsHashHex } = await import('../../src/jcs.js');
@@ -91,8 +94,18 @@ test('CLI: v0.1 AttestationBundleV1 file → verified via the DEFAULT v0.1 path 
   const path = '/tmp/dacs-cli-v1-' + process.pid + '.json';
   writeFileSync(path, JSON.stringify(signed));
   try {
-    const r = run(['--bundle-file', path, '--json']);
-    assert.equal(r.code, 0, `expected exit 0 (v0.1 accept), got ${r.code}\nstderr: ${r.stderr}\nstdout: ${r.stdout.slice(0, 500)}`);
+    // Default (no --offline): two-sided lookup attempted, bundle is not anchored → indeterminate (exit 2).
+    const def = run(['--bundle-file', path, '--json', '--rpc', 'http://127.0.0.1:1/']);
+    assert.equal(def.code, 2,
+      `expected exit 2 (indeterminate — unanchored, NOT a default pass), got ${def.code}\nstderr: ${def.stderr}\nstdout: ${def.stdout.slice(0, 600)}`);
+    const defJson = JSON.parse(def.stdout);
+    assert.equal(defJson.decision, 'indeterminate');
+    assert.ok(defJson.steps.some((s: { step: string }) => s.step === 'two-sided-anchoring'),
+      'v0.1 default path MUST run the §10.4.2 two-sided-anchoring step');
+
+    // With --offline: two-sided lookup skipped → structural+sig pass (exit 0).
+    const off = run(['--bundle-file', path, '--offline', '--json']);
+    assert.equal(off.code, 0, `expected exit 0 with --offline, got ${off.code}\nstderr: ${off.stderr}\nstdout: ${off.stdout.slice(0, 500)}`);
   } finally {
     try { unlinkSync(path); } catch {}
   }
