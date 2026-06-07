@@ -90,6 +90,13 @@ export const DACS_X_EXTENSION_SEPARATORS = {
   DELIVERY_RECEIPT: 'dacs-x-delivery-receipt:v1:',
   SESSION_RECORD: 'dacs-x-session-record:v1:',
   SEALED_ENVELOPE_OPEN: 'dacs-x-sealed-envelope-open:v1:',
+
+  // dacs-disclose (selective-disclosure follow-on for DACS-1 §11.2.7) — SIG-4 extension
+  // surface, salted-hash claim commitments + audience/challenge-bound reveals (no ZK/L2PS/FHE).
+  //   CLAIM_COMMIT body  := salt_i || JCS(claim_i)             (attester-produced; see src/lib/disclose.ts)
+  //   CLAIM_REVEAL body  := verifier_id || consent_receipt_id || nonce || expiry || commitment_i  (audience-bound)
+  CLAIM_COMMIT: 'dacs-x-claim-commit:v1:',
+  CLAIM_REVEAL: 'dacs-x-claim-reveal:v1:',
 } as const;
 
 /**
