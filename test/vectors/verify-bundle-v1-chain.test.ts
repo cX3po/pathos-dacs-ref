@@ -71,15 +71,30 @@ function makeV1(opts: {
   ]);
 }
 
+/**
+ * Build the two-sided anchor map for a job: a buyer-role copy at the buyer address and a
+ * seller-role copy at the seller address (FIX 1 — the copy at each role address MUST declare
+ * the matching anchoredByRole). The two copies are identical EXCEPT anchoredByRole, so the
+ * local `buyerCopy` is byte-equal to the buyer-anchored copy (binds to the buyer side).
+ * Returns { buyerCopy, sellerCopy, map } where map can be extended (e.g. evidence locators).
+ */
+function twoSidedMap(opts: Parameters<typeof makeV1>[0]): {
+  buyerCopy: AttestationBundleV1; sellerCopy: AttestationBundleV1; map: Map<string, string>;
+} {
+  const buyerCopy = makeV1({ ...opts, anchoredByRole: 'buyer' });
+  const sellerCopy = makeV1({ ...opts, anchoredByRole: 'seller' });
+  const pair = computeAnchorPairV1(opts.jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(buyerCopy)], [pair.seller, JSON.stringify(sellerCopy)]]);
+  return { buyerCopy, sellerCopy, map };
+}
+
 // ── BLOCKER 1: two-sided anchoring ──────────────────────────────────────────
 
 test('BLOCKER 1: v0.1 both anchors present + consistent → pass (attestationsVerified counted)', async () => {
   const jobId = 'v1-twosided-pass';
-  const bundle = makeV1({ jobId });
-  const pair = computeAnchorPairV1(jobId);
-  // The same finalised bundle is anchored at BOTH role addresses (canonical-equality happy path).
-  const map = new Map([[pair.buyer, JSON.stringify(bundle)], [pair.seller, JSON.stringify(bundle)]]);
-  const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(map) });
+  // FIX 1 — buyer-role copy at buyer addr, seller-role copy at seller addr. Local = buyer copy.
+  const { buyerCopy, map } = twoSidedMap({ jobId });
+  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.rollup, 'pass', JSON.stringify({ reasons: v.reasons, two: v.twoSided }));
   assert.equal(v.twoSided.outcome, 'pass');
   assert.equal(v.attestationsFailed, 0);
@@ -119,12 +134,11 @@ test('BLOCKER 1: v0.1 buyer/seller divergence (outcome contradiction) → fail (
 
 test('BLOCKER 1: v0.1 third bundle riding along the jobId → fail (not byte-equal to either anchor)', async () => {
   const jobId = 'v1-ridealong';
-  const realBuyer = makeV1({ jobId, buyerFill: 0x31, sellerFill: 0x32 });
-  const realSeller = realBuyer; // canonical-equality happy path
-  const pair = computeAnchorPairV1(jobId);
-  const map = new Map([[pair.buyer, JSON.stringify(realBuyer)], [pair.seller, JSON.stringify(realSeller)]]);
-  // A different bundle (different signers) sharing the jobId.
-  const third = makeV1({ jobId, buyerFill: 0x41, sellerFill: 0x42 });
+  // Role-matched real anchors (FIX 1): buyer copy at buyer addr, seller copy at seller addr.
+  const { map } = twoSidedMap({ jobId, buyerFill: 0x31, sellerFill: 0x32 });
+  // A different bundle (different signers) sharing the jobId — declares anchoredByRole buyer so it
+  // passes the local-side role guard, but its bytes match NEITHER real anchor → ride-along fail.
+  const third = makeV1({ jobId, anchoredByRole: 'buyer', buyerFill: 0x41, sellerFill: 0x42 });
   const v = await verifyBundleV1Full(third, { fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'fail');
   assert.match(v.twoSided.detail, /not byte-equal to EITHER/);
@@ -155,13 +169,9 @@ test('BLOCKER 2: v0.1 real AttestationRef (content-hash matches) → attestation
   const evidence = JSON.stringify({ kind: 'settlement', amount: '42' });
   const locator = 'stor-' + sha256Hex('evidence-anchor');
   const ref = { anchor: { substrate: 'demos' as const, locator }, contentHash: sha256Hex(evidence), type: 'dahr:settlement', producedAt: '2026-06-07T00:00:00Z' };
-  const bundle = makeV1({ jobId, settlementEvidence: [ref] });
-  const pair = computeAnchorPairV1(jobId);
-  const map = new Map([
-    [pair.buyer, JSON.stringify(bundle)], [pair.seller, JSON.stringify(bundle)],
-    [locator, evidence],
-  ]);
-  const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(map) });
+  const { buyerCopy, map } = twoSidedMap({ jobId, settlementEvidence: [ref] });
+  map.set(locator, evidence);
+  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.attestationsVerified, 1, JSON.stringify(v.attestationSteps));
   assert.equal(v.attestationsFailed, 0);
   assert.equal(v.rollup, 'pass');
@@ -198,11 +208,113 @@ test('BLOCKER 2: v0.1 AttestationRef content-hash MISMATCH → fail (§7.5.2)', 
 
 test('BLOCKER 2: v0.1 bundle with NO refs → attestationsVerified=0/failed=0, still passes when anchored', async () => {
   const jobId = 'v1-no-refs';
-  const bundle = makeV1({ jobId });
-  const pair = computeAnchorPairV1(jobId);
-  const map = new Map([[pair.buyer, JSON.stringify(bundle)], [pair.seller, JSON.stringify(bundle)]]);
-  const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(map) });
+  const { buyerCopy, map } = twoSidedMap({ jobId });
+  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.attestationsVerified, 0);
   assert.equal(v.attestationsFailed, 0);
+  assert.equal(v.rollup, 'pass');
+});
+
+// ── FIX 1 — anchor-address ↔ anchoredByRole integrity cross-check ─────────────
+test('FIX 1: buyer-address anchor declaring anchoredByRole "seller" → fail (address↔role mismatch)', async () => {
+  const jobId = 'fix1-buyer-addr-seller-role';
+  // Put a SELLER-role copy at the BUYER address (and a correct seller copy at the seller address).
+  const buyerImpostor = makeV1({ jobId, anchoredByRole: 'seller' }); // wrong role for the buyer addr
+  const sellerCopy = makeV1({ jobId, anchoredByRole: 'seller' });
+  const local = makeV1({ jobId, anchoredByRole: 'buyer' });
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(buyerImpostor)], [pair.seller, JSON.stringify(sellerCopy)]]);
+  const v = await verifyBundleV1Full(local, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'fail', JSON.stringify(v.twoSided));
+  assert.match(v.twoSided.detail, /anchoredByRole mismatch/);
+  assert.match(v.twoSided.detail, /buyer address/);
+  assert.equal(v.rollup, 'fail');
+});
+
+test('FIX 1: seller-address anchor declaring anchoredByRole "buyer" → fail (address↔role mismatch)', async () => {
+  const jobId = 'fix1-seller-addr-buyer-role';
+  const buyerCopy = makeV1({ jobId, anchoredByRole: 'buyer' });
+  const sellerImpostor = makeV1({ jobId, anchoredByRole: 'buyer' }); // wrong role for the seller addr
+  const local = makeV1({ jobId, anchoredByRole: 'buyer' });
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(buyerCopy)], [pair.seller, JSON.stringify(sellerImpostor)]]);
+  const v = await verifyBundleV1Full(local, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'fail', JSON.stringify(v.twoSided));
+  assert.match(v.twoSided.detail, /anchoredByRole mismatch/);
+  assert.match(v.twoSided.detail, /seller address/);
+  assert.equal(v.rollup, 'fail');
+});
+
+test('FIX 1: role-matched copies at the right addresses → pass (positive control)', async () => {
+  const jobId = 'fix1-role-matched-pass';
+  const { buyerCopy, map } = twoSidedMap({ jobId });
+  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'pass', JSON.stringify(v.twoSided));
+  assert.equal(v.rollup, 'pass');
+});
+
+// ── FIX 3 — anchored counterparty copies are ENFORCING by default ─────────────
+//
+// To isolate FIX 3 we need an UNVERIFIABLE (not hard-fail) counterparty: a hard-fail sig is
+// rejected in BOTH modes (anyHardFail), so it wouldn't distinguish enforcing from fixture. A
+// seller copy whose parties present placeholder DIDs (not raw cci keys) yields `unverifiable`
+// signatures — accepted in fixture mode (requireSignatures:false), REJECTED in enforcing mode
+// (the default). That is exactly the surface FIX 3 closes.
+
+/**
+ * Build a seller-role copy whose signers are placeholder DIDs ⇒ every signature is `unverifiable`
+ * (structurally valid + signer-rule satisfied, but no resolvable ed25519 key). It is verifiable
+ * `accept` ONLY under fixture mode. Mirrors the cross-impl contributor fixtures' DID signers.
+ */
+function makeUnverifiableSellerCopy(jobId: string): AttestationBundleV1 {
+  // Bare-DID claims (the verifier accepts these at runtime; the TS type is the object form, so the
+  // illustrative fixtures cast — exactly the placeholder-DID shape the cross-impl #117 fixtures use).
+  type Claim = AttestationBundleV1['parties'][number]['primaryClaim'];
+  const buyerDid = 'did:dacs:buyer-placeholder-001' as unknown as Claim;
+  const sellerDid = 'did:dacs:seller-placeholder-001' as unknown as Claim;
+  const unsigned: Omit<AttestationBundleV1, 'signatures'> = {
+    bundleVersion: '1', jobId, outcome: 'completed', anchoredByRole: 'seller',
+    listingRef: { listingId: 'lst-x', version: 1, contentHash: 'cd'.repeat(32) },
+    parties: [
+      { role: 'buyer', bundleHash: 'aa'.repeat(32), primaryClaim: buyerDid },
+      { role: 'seller', bundleHash: 'bb'.repeat(32), primaryClaim: sellerDid },
+    ],
+    phaseSummary: [{ index: 0, kind: 'vet-credentials', outcome: 'ok' }],
+    vetRecords: [], settlementEvidence: [], recipeRegistryVersion: 1, railRegistryVersion: 1, finalisedAt: 1735689600000,
+  };
+  // A syntactically-valid 64-byte ed25519 sig value, but the DID party resolves to NO key ⇒
+  // verifyBundleV1 marks it `unverifiable` (not `fail`). One sig per listed DID party.
+  const placeholderSig = Buffer.alloc(64, 0x01).toString('base64');
+  return {
+    ...unsigned,
+    signatures: [
+      { party: buyerDid, algorithm: 'ed25519', value: placeholderSig },
+      { party: sellerDid, algorithm: 'ed25519', value: placeholderSig },
+    ],
+  };
+}
+
+test('FIX 3: counterparty (seller) anchor with UNVERIFIABLE signatures → fail (enforcing default)', async () => {
+  const jobId = 'fix3-unverifiable-counterparty';
+  const buyerCopy = makeV1({ jobId, anchoredByRole: 'buyer' }); // local binds here (real keys)
+  const sellerUnverifiable = makeUnverifiableSellerCopy(jobId);
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(buyerCopy)], [pair.seller, JSON.stringify(sellerUnverifiable)]]);
+  // DEFAULT (enforcing) — the unverifiable seller anchor must NOT be accepted.
+  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'fail', JSON.stringify(v.twoSided));
+  assert.match(v.twoSided.detail, /seller-anchor bundle did not pass single-bundle verify/);
+  assert.equal(v.rollup, 'fail');
+});
+
+test('FIX 3: caller may OPT IN to fixture mode (requireSignatures:false) → unverifiable counterparty accepted', async () => {
+  const jobId = 'fix3-unverifiable-counterparty'; // SAME inputs as above — only the mode differs
+  const buyerCopy = makeV1({ jobId, anchoredByRole: 'buyer' });
+  const sellerUnverifiable = makeUnverifiableSellerCopy(jobId);
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(buyerCopy)], [pair.seller, JSON.stringify(sellerUnverifiable)]]);
+  // Caller EXPLICITLY opts into fixture mode → the unverifiable counterparty anchor is accepted.
+  const v = await verifyBundleV1Full(buyerCopy, { requireSignatures: false, fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'pass', JSON.stringify(v.twoSided));
   assert.equal(v.rollup, 'pass');
 });

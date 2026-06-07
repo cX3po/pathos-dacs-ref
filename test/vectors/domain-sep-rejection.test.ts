@@ -12,9 +12,14 @@ import {
   DOMAIN_SEPARATORS,
   DACS_X_EXTENSION_SEPARATORS,
   PATHOS_EXTENSION_SEPARATORS,
+  LEGACY_READ_SEPARATORS,
   assertKnownSeparator,
+  assertEmittableSeparator,
+  isLegacyReadSeparator,
+  buildSignedBytes,
 } from '../../src/domain-sep.js';
 import { sign, verify, generateKeypair } from '../../src/lib/sign.js';
+import { ed25519 } from '@noble/curves/ed25519';
 
 test('§B.7 — every registered separator passes assertKnownSeparator', () => {
   for (const sep of [
@@ -86,4 +91,37 @@ test('§B.7 — registry separator count (v0.1 cutover: 10 registry + 7 dacs-x e
     `expected 7 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
   assert.equal(Object.keys(PATHOS_EXTENSION_SEPARATORS).length, 4,
     `expected 4 PATH-OS extension separators, got ${Object.keys(PATHOS_EXTENSION_SEPARATORS).length}`);
+});
+
+// ── FIX 4 — LEGACY_READ_SEPARATORS are truly read-only (verify/read OK, sign/emit rejected) ───
+test('FIX 4 — sign() REFUSES to emit under a read-only legacy separator (dacs5-bundle:v1:)', () => {
+  const kp = generateKeypair();
+  const body = new TextEncoder().encode('legacy-emission-attempt');
+  // assertKnownSeparator still admits it (the read path needs it)...
+  assert.doesNotThrow(() => assertKnownSeparator(LEGACY_READ_SEPARATORS.BUNDLE_DACS5));
+  assert.doesNotThrow(() => assertKnownSeparator('dacs5-bundle:v1:'));
+  // ...but the EMISSION path (sign) must reject it.
+  assert.throws(() => sign(LEGACY_READ_SEPARATORS.BUNDLE_DACS5, body, kp.privKey),
+    /read-only legacy separator/,
+    'sign() must reject the legacy read-only separator (no emission under a retired separator)');
+  assert.throws(() => assertEmittableSeparator(LEGACY_READ_SEPARATORS.BUNDLE_DACS5),
+    /read-only legacy separator/);
+});
+
+test('FIX 4 — legacy READ/verify under dacs5-bundle:v1: still works (round-trip via raw signer)', () => {
+  const kp = generateKeypair();
+  const body = new TextEncoder().encode('a genuine pre-cutover artifact body');
+  // Simulate a pre-cutover artifact: produce the legacy signed-bytes the way old code did, signing
+  // with the raw primitive (sign() now refuses the legacy separator). verify() — on the READ path —
+  // must STILL accept it under the legacy separator.
+  const signedBytes = buildSignedBytes(LEGACY_READ_SEPARATORS.BUNDLE_DACS5, body);
+  const sig = ed25519.sign(signedBytes, kp.privKey);
+  assert.equal(verify(LEGACY_READ_SEPARATORS.BUNDLE_DACS5, sig, body, kp.pubKey), true,
+    'legacy READ/verify under the legacy separator must still succeed (§10.4.2 backwards-compat)');
+});
+
+test('FIX 4 — isLegacyReadSeparator flags the legacy set only', () => {
+  assert.equal(isLegacyReadSeparator(LEGACY_READ_SEPARATORS.BUNDLE_DACS5), true);
+  assert.equal(isLegacyReadSeparator(DOMAIN_SEPARATORS.BUNDLE), false);
+  assert.equal(isLegacyReadSeparator('dacs-x-attestation-ref:v1:'), false);
 });

@@ -315,3 +315,21 @@ test('§10.4 R4-B — re-sealed fixtures reproduce the new bundleHashes', () => 
     assert.equal(v.decision, 'accept');
   }
 });
+
+// ── FIX 2 — anchoredByRole is protected (in-hash signing is the compensating control) ────────
+test('FIX 2 — a flipped anchoredByRole is rejected (it is in the signed hash → signature breaks)', () => {
+  // Sign a real-key bundle with anchoredByRole "buyer", then tamper anchoredByRole to "seller"
+  // WITHOUT re-signing. Because anchoredByRole is inside the signed scope (jcsHashHex(unsigned)),
+  // the recomputed bundleHash no longer matches what was signed → every signature hard-fails.
+  const signed = signBy(baseUnsigned({ anchoredByRole: 'buyer' }), [realKey(0x51), realKey(0x52)]);
+  // Sanity: untampered bundle verifies cryptographically.
+  const clean = verifyBundleV1(signed);
+  assert.equal(clean.decision, 'accept', JSON.stringify(clean.reasons));
+  assert.ok(clean.cryptographicallyVerified);
+
+  const tampered: AttestationBundleV1 = { ...signed, anchoredByRole: 'seller' };
+  const v = verifyBundleV1(tampered);
+  assert.equal(v.decision, 'reject', 'flipped anchoredByRole must be rejected');
+  assert.equal(v.cryptographicallyVerified, false, 'signature no longer verifies over the flipped hash');
+  assert.ok(v.signatureChecks.some((c) => c.decision === 'fail'), 'at least one signature hard-fails');
+});

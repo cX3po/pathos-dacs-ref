@@ -20,7 +20,7 @@ import { emitAttestationBundleV1 } from '../../src/lib/emit-bundle-v1.js';
 import { verifyBundleV1 } from '../../src/lib/verify-bundle-v1.js';
 import { verifyBundle } from '../../src/lib/verify-bundle.js';
 import { sign } from '../../src/lib/sign.js';
-import { DOMAIN_SEPARATORS, LEGACY_READ_SEPARATORS } from '../../src/domain-sep.js';
+import { DOMAIN_SEPARATORS, LEGACY_READ_SEPARATORS, buildSignedBytes } from '../../src/domain-sep.js';
 import { jcsCanonical, jcsHash } from '../../src/jcs.js';
 
 const hexOf = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -72,7 +72,15 @@ test('cross-version: a GENUINE pre-cutover dacs-5-bundle:0.1 (signed under the O
     'guard: the legacy read separator MUST differ from the canonical emission separator');
   const canonical = jcsCanonical(unsigned);
   const bundleHash = jcsHash(unsigned);
-  const sig = sign(LEGACY_READ_SEPARATORS.BUNDLE_DACS5, canonical, self.priv, bundleHash);
+  // Produce a GENUINE pre-cutover signature the way OLD code did — by signing the legacy-separator
+  // signed-bytes with the raw ed25519 primitive. We DELIBERATELY bypass sign() here: post-FIX-4,
+  // sign() refuses LEGACY_READ_SEPARATORS (emission under a retired separator is forbidden). The
+  // legacy separator survives ONLY on the verify/read path, which is exactly what this test proves.
+  const legacySignedBytes = buildSignedBytes(LEGACY_READ_SEPARATORS.BUNDLE_DACS5, canonical, bundleHash);
+  const sig = ed25519.sign(legacySignedBytes, self.priv);
+  // Guard: confirm sign() now REFUSES to emit under the legacy separator (FIX 4 hardening).
+  assert.throws(() => sign(LEGACY_READ_SEPARATORS.BUNDLE_DACS5, canonical, self.priv, bundleHash),
+    /read-only legacy separator/, 'sign() must refuse emission under a LEGACY_READ_SEPARATOR (FIX 4)');
   const legacy: AttestationBundle = { ...unsigned, signature: Buffer.from(sig).toString('base64') };
 
   // Read offline (skip the chain two-sided lookup) — the OLD-separator signature must STILL verify

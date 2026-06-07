@@ -223,7 +223,18 @@ export function verifyBundleV1(
   }
 
   const { signatures, ...unsigned } = bundle;
-  const bundleHash = jcsHashHex(unsigned); // signed scope = bundle without `signatures` (§10.4.1)
+  // Signed scope = bundle WITHOUT `signatures` (§10.4.1). This INCLUDES `anchoredByRole`.
+  //
+  // FIX 2 — anchoredByRole protection. CORE.md:477/:612 envision `anchoredByRole` being EXCLUDED
+  // from the canonical hash (so the two two-sided copies hash equal) and integrity-checked against
+  // the anchor address instead. This reference impl currently keeps `anchoredByRole` IN the signed
+  // hash to preserve the locked cross-impl fixture hash `98d7b565` (changing the hash scope needs
+  // separate Marius coordination — do NOT change it here). The COMPENSATING control that makes this
+  // safe is the FIX 1 anchor-address ↔ anchoredByRole cross-check in verifyV1TwoSided: a tampered
+  // `anchoredByRole` is caught by EITHER (a) the signature, because the flipped value changes
+  // bundleHash and the ed25519 sig no longer verifies, OR (b) the address-role mismatch on the
+  // two-sided path. In-hash signing + address cross-check is the chosen, documented protection.
+  const bundleHash = jcsHashHex(unsigned);
 
   // Listed-party claim set; required signers = EVERY distinct party claim (buyer + seller +
   // each distinct orchestrator) — covers multiple/shared-claim orchestrators correctly. §10.4.1
@@ -300,7 +311,16 @@ export interface VerifyBundleV1Options {
   skipTwoSidedLookup?: boolean;
   /** Inject a custom fetchAnchored — tests use this to mock the chain. */
   fetchAnchoredImpl?: typeof fetchAnchored;
-  /** Enforcing vs fixture mode for the structural+signature stage (see verifyBundleV1). */
+  /**
+   * Enforcing vs fixture mode for the structural+signature stage of BOTH the local bundle AND
+   * the two chain-anchored counterparty copies (see verifyBundleV1).
+   *
+   * DEFAULT = undefined ⇒ ENFORCING (requireSignatures:true) everywhere. The two-sided check
+   * (FIX 3) NO LONGER hardcodes fixture mode for the anchored copies — a counterparty anchor with
+   * placeholder/unverifiable signatures is `fail` unless the CALLER explicitly opted into fixture
+   * mode by passing `requireSignatures:false`. This flag is threaded to verifyV1TwoSided so the
+   * anchored copies are verified under the SAME mode the caller chose for the local bundle.
+   */
   requireSignatures?: boolean;
 }
 
@@ -431,7 +451,13 @@ async function fetchV1WithStatus(rpc: string, addr: string, fetchImpl: typeof fe
  *   - exactly one present          → fail (unilateral ⇒ aborted-by-self for the absent role, §10.4.3)
  *   - both present, RPC error      → indeterminate (transient, not an absence signal)
  *   - both present, jobId mismatch → fail
+ *   - both present, anchoredByRole ↔ anchor-address mismatch → fail (FIX 1: integrity cross-check;
+ *       the copy fetched from the BUYER address MUST declare anchoredByRole "buyer", the SELLER
+ *       address MUST declare "seller"; the LOCAL bundle's anchoredByRole must match whichever side
+ *       its bytes are bound to)
  *   - both present, local bundle not byte-equal to either anchored copy → fail (ride-along)
+ *   - both present, an anchored copy fails ENFORCING structural+signature verify → fail (FIX 3:
+ *       anchored copies are enforcing by default; fixture mode honored ONLY when caller requested it)
  *   - both present, divergent (§10.4.3(d) outcome/phaseSummary contradiction) → fail (dispute)
  *   - both present + consistent + local bound to one side → pass
  */
@@ -439,6 +465,7 @@ async function verifyV1TwoSided(
   bundle: AttestationBundleV1,
   rpc: string,
   fetchImpl: typeof fetchAnchored,
+  requireSignatures: boolean,
 ): Promise<{ outcome: ChainOutcome; detail: string }> {
   const pair = computeAnchorPairV1(bundle.jobId);
   const buyer = await fetchV1WithStatus(rpc, pair.buyer, fetchImpl);
@@ -478,6 +505,20 @@ async function verifyV1TwoSided(
     return { outcome: 'fail', detail: `jobId mismatch: buyer-anchor=${buyerBundle.jobId}, seller-anchor=${sellerBundle.jobId}, local=${bundle.jobId}` };
   }
 
+  // FIX 1 — anchor-address ↔ anchoredByRole integrity cross-check (CORE.md:477, §10.4.1/§10.4.2).
+  // `anchoredByRole` names the role that anchored a copy; it is integrity-checked against the
+  // anchor ADDRESS the copy was fetched from. The bundle at the BUYER address MUST declare
+  // anchoredByRole === "buyer"; the SELLER address MUST declare "seller". A buyer-address anchor
+  // claiming anchoredByRole "seller" (or vice versa) is a forged/mislabeled copy → reject.
+  if (buyerBundle.anchoredByRole !== 'buyer') {
+    return { outcome: 'fail',
+      detail: `anchor-address ↔ anchoredByRole mismatch: copy at buyer address ${pair.buyer.slice(0, 16)}… declares anchoredByRole="${buyerBundle.anchoredByRole}", expected "buyer" (CORE.md:477)` };
+  }
+  if (sellerBundle.anchoredByRole !== 'seller') {
+    return { outcome: 'fail',
+      detail: `anchor-address ↔ anchoredByRole mismatch: copy at seller address ${pair.seller.slice(0, 16)}… declares anchoredByRole="${sellerBundle.anchoredByRole}", expected "seller" (CORE.md:477)` };
+  }
+
   // Bind the LOCAL bundle to one of the two anchored copies via full byte-equality (signatures
   // included). A local bundle that is not byte-equal to EITHER anchored side is a third bundle
   // riding along the jobId — reject.
@@ -488,9 +529,23 @@ async function verifyV1TwoSided(
     return { outcome: 'fail', detail: `local bundle is not byte-equal to EITHER party-anchored bundle (shared jobId, different content — likely a third bundle riding along)` };
   }
 
-  // Both anchored copies must themselves pass the single-bundle structural+signature check.
-  const bv = verifyBundleV1(buyerBundle, { requireSignatures: false });
-  const sv = verifyBundleV1(sellerBundle, { requireSignatures: false });
+  // FIX 1 (local-side) — the LOCAL bundle's own anchoredByRole must match the side its bytes are
+  // bound to. Since byte-equality includes anchoredByRole, matchesBuyer ⇒ local anchoredByRole
+  // already equals the (validated) buyer copy's "buyer", and matchesSeller ⇒ "seller". This guard
+  // is defence-in-depth: it makes the local binding's role-integrity explicit (and survives any
+  // future change to the byte-equality scope, e.g. excluding anchoredByRole per CORE.md:612).
+  const boundRole: 'buyer' | 'seller' = matchesBuyer ? 'buyer' : 'seller';
+  if (bundle.anchoredByRole !== boundRole) {
+    return { outcome: 'fail',
+      detail: `local bundle bound to ${boundRole} anchor but declares anchoredByRole="${bundle.anchoredByRole}" — address↔role integrity violation (CORE.md:477)` };
+  }
+
+  // FIX 3 — both anchored copies must pass the single-bundle structural+signature check ENFORCING
+  // by default. Previously this hardcoded requireSignatures:false, so a counterparty anchor with
+  // placeholder/unverifiable signatures could be accepted. We now thread the caller's chosen mode:
+  // fixture mode (requireSignatures:false) is honored ONLY when the caller explicitly requested it.
+  const bv = verifyBundleV1(buyerBundle, { requireSignatures });
+  const sv = verifyBundleV1(sellerBundle, { requireSignatures });
   if (bv.decision !== 'accept') return { outcome: 'fail', detail: `buyer-anchor bundle did not pass single-bundle verify: ${bv.reasons.join('; ')}` };
   if (sv.decision !== 'accept') return { outcome: 'fail', detail: `seller-anchor bundle did not pass single-bundle verify: ${sv.reasons.join('; ')}` };
 
@@ -514,7 +569,9 @@ export async function verifyBundleV1Full(
 ): Promise<BundleV1FullVerdict> {
   const rpc = options.rpc ?? 'https://demosnode.discus.sh/';
   const fetchImpl = options.fetchAnchoredImpl ?? fetchAnchored;
-  const base = verifyBundleV1(bundle, { requireSignatures: options.requireSignatures });
+  // ENFORCING by default everywhere — the local bundle AND the anchored counterparty copies.
+  const requireSignatures = options.requireSignatures ?? true;
+  const base = verifyBundleV1(bundle, { requireSignatures });
 
   // Structural reject short-circuits — no jobId / refs to trust.
   if (!base.structurallyValid) {
@@ -526,7 +583,7 @@ export async function verifyBundleV1Full(
     twoSided = { outcome: 'skipped',
       detail: 'skipTwoSidedLookup=true — offline verification; §10.4.3 unilateral/divergence detection not enforced (caller-accepted scope limit)' };
   } else {
-    twoSided = await verifyV1TwoSided(bundle, rpc, fetchImpl);
+    twoSided = await verifyV1TwoSided(bundle, rpc, fetchImpl, requireSignatures);
   }
 
   const walk = await walkV1AttestationRefs(bundle, rpc, fetchImpl);

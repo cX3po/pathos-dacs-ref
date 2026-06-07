@@ -137,6 +137,34 @@ export function assertKnownSeparator(sep: string): asserts sep is DomainSeparato
   }
 }
 
+/** The set of `LEGACY_READ_SEPARATORS` strings — read/verify-only, never emittable. */
+const LEGACY_READ_SET: ReadonlySet<string> = new Set(Object.values(LEGACY_READ_SEPARATORS));
+
+/** True iff `sep` is a read-only legacy separator (admitted on the verify/read path only). */
+export function isLegacyReadSeparator(sep: string): boolean {
+  return LEGACY_READ_SET.has(sep);
+}
+
+/**
+ * EMISSION-path closure rule (strictly tighter than `assertKnownSeparator`).
+ *
+ * `LEGACY_READ_SEPARATORS` (e.g. `dacs5-bundle:v1:`) exist ONLY so the legacy VERIFY/read path
+ * can recognise pre-cutover artifacts already sealed under the old string. They must NEVER be
+ * used to PRODUCE a new signature: no code path emits under a retired separator. `sign()` (and
+ * any other emission path) MUST call this — it admits every separator `assertKnownSeparator`
+ * does EXCEPT the read-only legacy set, which it rejects with a distinct, actionable message.
+ */
+export function assertEmittableSeparator(sep: string): asserts sep is DomainSeparator {
+  if (isLegacyReadSeparator(sep)) {
+    throw new Error(
+      `Refusing to sign under read-only legacy separator "${sep}". ` +
+      `LEGACY_READ_SEPARATORS are admitted on the VERIFY/read path only (§10.4.2 backwards-compat); ` +
+      `emission MUST use a current DOMAIN_SEPARATORS entry (canonical: "${DOMAIN_SEPARATORS.BUNDLE}").`
+    );
+  }
+  assertKnownSeparator(sep);
+}
+
 /** Build the signed_bytes for a payload + separator + optional intermediate hash. */
 export function buildSignedBytes(
   separator: DomainSeparator,

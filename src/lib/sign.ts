@@ -15,7 +15,7 @@
 
 import * as ed25519 from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2';
-import { buildSignedBytes, type DomainSeparator, assertKnownSeparator } from '../domain-sep.js';
+import { buildSignedBytes, type DomainSeparator, assertKnownSeparator, assertEmittableSeparator } from '../domain-sep.js';
 
 // @noble/ed25519 v2 requires a sync sha512 to be wired in for sync sign/verify.
 // Per @noble/ed25519@2.3.x API: etc.sha512Sync = (...m) => sha512(etc.concatBytes(...m));
@@ -31,7 +31,9 @@ ed25519.etc.sha512Sync = (...m: Uint8Array[]): Uint8Array => sha512(ed25519.etc.
  * For DACS-1 Listing and most DACS-2 / DACS-3 / DACS-4 signatures:
  *   omit `intermediateHash`; signed_bytes = separator || JCS(payload).
  *
- * Throws if separator is not in the §7.7 closed registry.
+ * Throws if separator is not in the §7.7 closed registry, OR if it is a read-only
+ * LEGACY_READ_SEPARATOR (those are admitted on the verify/read path only — emission MUST use a
+ * current DOMAIN_SEPARATORS entry; see assertEmittableSeparator).
  */
 export function sign(
   separator: DomainSeparator | string,
@@ -39,7 +41,7 @@ export function sign(
   privKey: Uint8Array,
   intermediateHash?: Uint8Array
 ): Uint8Array {
-  assertKnownSeparator(separator);
+  assertEmittableSeparator(separator);
   const signedBytes = buildSignedBytes(separator, body, intermediateHash);
   return ed25519.sign(signedBytes, privKey);
 }
