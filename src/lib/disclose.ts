@@ -322,22 +322,34 @@ export function buildMerklePath(commitmentsHex: readonly string[], targetHex: st
  * the result equals `rootHex`. Pure membership check — no signature involved here.
  */
 export function verifyMerklePath(commitmentHex: string, path: MerklePathStep[], rootHex: string): boolean {
-  let running: Uint8Array;
-  try {
-    running = merkleLeaf(hexToBytes(commitmentHex));
-  } catch {
-    return false;
-  }
-  for (const step of path) {
-    let sib: Uint8Array;
+  // FIX 3 — fail-closed on non-canonical proof encodings. sha256 outputs are EXACTLY 32 bytes,
+  // so every hash that enters the fold (commitment, each sibling) and the root we compare against
+  // MUST decode to exactly 32 bytes. A non-32-byte value can only be a malformed/non-canonical
+  // proof (e.g. a truncated sibling that happens to fold to a colliding short root); reject it.
+  const decode32 = (hex: string): Uint8Array | null => {
+    let b: Uint8Array;
     try {
-      sib = hexToBytes(step.sibling);
+      b = hexToBytes(hex);
     } catch {
-      return false;
+      return null;
     }
+    return b.length === 32 ? b : null;
+  };
+
+  // Validate the root width up front — if it isn't 32 bytes the comparison can't be meaningful.
+  const rootBytes = decode32(rootHex);
+  if (rootBytes === null) return false;
+
+  const commitmentBytes = decode32(commitmentHex);
+  if (commitmentBytes === null) return false;
+  let running: Uint8Array = merkleLeaf(commitmentBytes);
+
+  for (const step of path) {
+    const sib = decode32(step.sibling);
+    if (sib === null) return false;
     running = step.side === 'left' ? merkleParent(sib, running) : merkleParent(running, sib);
   }
-  return bytesToHex(running).toLowerCase() === rootHex.toLowerCase();
+  return bytesToHex(running).toLowerCase() === bytesToHex(rootBytes).toLowerCase();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -380,6 +392,40 @@ export function produceReveal(
   challenge: RevealChallenge,
   presentationKey: Uint8Array
 ): DisclosedClaim {
+  // FIX 2 — fail-closed on the HOLDER side too. attestClaimCommitment + verifyDisclosedClaim
+  // both enforce the >=128-bit CSPRNG salt floor; produceReveal must NOT mint a reveal artifact
+  // over a short/invalid salt or a commitment that doesn't open to (salt, claim) — that would
+  // only produce an artifact the verifier is guaranteed to reject. Validate BEFORE signing.
+  if (typeof commitment.salt !== 'string' || commitment.salt.length === 0 || !/^[0-9a-fA-F]+$/.test(commitment.salt)) {
+    throw new Error('disclose: produceReveal — commitment.salt must be non-empty hex');
+  }
+  let saltLenBytes: number;
+  try {
+    saltLenBytes = hexToBytes(commitment.salt).length;
+  } catch {
+    throw new Error('disclose: produceReveal — commitment.salt is not valid hex');
+  }
+  if (saltLenBytes < MIN_SALT_BYTES) {
+    throw new Error(
+      `disclose: produceReveal — salt too short: ${saltLenBytes} bytes < ${MIN_SALT_BYTES}-byte ` +
+      `floor (128-bit, spec §3). Refusing to sign a reveal the verifier will reject.`
+    );
+  }
+  // The carried commitment MUST actually open to (salt, claim). A mismatch means the artifact
+  // is internally inconsistent — throw rather than mint a doomed/forged-looking reveal.
+  let recomputed: string;
+  try {
+    recomputed = computeCommitment(commitment.salt, commitment.claim);
+  } catch (e) {
+    throw new Error(`disclose: produceReveal — cannot recompute commitment: ${(e as Error).message}`);
+  }
+  if (recomputed.toLowerCase() !== commitment.commitment.toLowerCase()) {
+    throw new Error(
+      'disclose: produceReveal — commitment does not open to (salt, claim): ' +
+      `carried=${commitment.commitment.slice(0, 12)}… recomputed=${recomputed.slice(0, 12)}…. ` +
+      'Refusing to sign an inconsistent reveal.'
+    );
+  }
   const body = revealPreimageBody(challenge, commitment.commitment);
   const sig = edSign(REVEAL_SEP, body, presentationKey);
   return {
@@ -411,27 +457,45 @@ export interface VerifyDisclosedOptions {
    */
   expectedNonce: string;
   /**
-   * Optional: the consent_receipt_id THIS verifier is operating under. When supplied, the
-   * reveal MUST bind to it (consent-scope check). Omit to skip (membership+audience+freshness
-   * still enforced).
+   * The consent_receipt_id THIS verifier is operating under. REQUIRED by default — this is a
+   * consent CORE, so consent verification is FAIL-CLOSED: the verifier MUST declare the scope
+   * it operates under, and the reveal MUST bind to it, else the disclosure is rejected. Omitting
+   * it is NOT a silent skip; it throws unless the loud `allowUnscopedConsent` opt-out is set.
+   * (Spec §3 ordering: audience → nonce → CONSENT → expiry → commitment → membership → sig.)
    */
   expectedConsentReceiptId?: string;
+  /**
+   * LOUD, deliberate opt-out of consent-scope binding (lower-assurance, no-consent mode).
+   * Must be set to `true` explicitly to verify a reveal WITHOUT a consent_receipt_id. When set,
+   * `expectedConsentReceiptId` MUST be omitted (supplying both is a contradiction and throws).
+   * Default/unset = fail-closed: consent is required. This exists ONLY for genuine no-consent
+   * flows and is never the silent default. (Spec §3 / FIX 1 — fail-closed consent CORE.)
+   */
+  allowUnscopedConsent?: boolean;
   /** Current unix-ms (injectable for deterministic tests). Defaults to Date.now(). */
   now?: number;
 }
 
 /**
- * Verify ONE disclosed claim under audience/challenge binding. REJECTS unless ALL hold:
+ * Verify ONE disclosed claim under audience/challenge binding. REJECTS unless ALL hold, in the
+ * spec §3 fail-closed ordering (audience → nonce → consent → expiry → commitment → membership → sig):
  *   (a) recomputed commitment_i == sha256(COMMIT_SEP || len(salt)||salt || len(JCS(claim))||JCS(claim));
  *   (b) commitment_i is a MEMBER of the signed Merkle root (audit-path fold);
  *   (c) the challenge binds to THIS verifier_id (audience) and THIS nonce (replay);
- *   (c2) if expectedConsentReceiptId supplied, the challenge binds to it (consent scope);
+ *   (c2) CONSENT (fail-closed): consent verification is REQUIRED by default — the verifier MUST
+ *        supply `expectedConsentReceiptId` and the reveal MUST bind to it, else FAIL. The only way
+ *        to skip is the LOUD, deliberate `allowUnscopedConsent: true` opt-out (lower-assurance,
+ *        no-consent mode). Omitting consent on the DEFAULT path is a hard error, never a silent skip.
  *   (d) the reveal is UNEXPIRED (challenge.expiry > now);
  *   (e) reveal_sig verifies under the holder's presentation pubkey over the audience-bound
  *       preimage (REVEAL_SEP || revealPreimageBody(challenge, commitment_i)).
  *
  * Fails CLOSED on the FIRST failed guarantee. Returns {ok:false, decision:'fail'} — there is
  * no 'indeterminate' here: every input needed for a verdict is verifier-supplied.
+ *
+ * @throws if consent config is contradictory/missing on the default path (misconfiguration, not a
+ *         per-reveal verdict): both `expectedConsentReceiptId` and `allowUnscopedConsent` set, or
+ *         neither set (fail-closed — the caller MUST decide consent scope deliberately).
  */
 export function verifyDisclosedClaim(
   disclosed: DisclosedClaim,
@@ -439,6 +503,24 @@ export function verifyDisclosedClaim(
 ): DiscloseVerifyResult {
   const fail = (reason: string): DiscloseVerifyResult => ({ ok: false, decision: 'fail', reason });
   const now = options.now ?? Date.now();
+
+  // FIX 1 — consent is FAIL-CLOSED at config time. A caller cannot accidentally fall through to
+  // a no-consent verification: it must either declare the scope (default) or LOUDLY opt out.
+  const hasExpectedConsent = options.expectedConsentReceiptId !== undefined;
+  const unscoped = options.allowUnscopedConsent === true;
+  if (hasExpectedConsent && unscoped) {
+    throw new Error(
+      'disclose: contradictory consent config — expectedConsentReceiptId AND allowUnscopedConsent ' +
+      'both set. Pick one: bind a consent scope, or loudly opt out of it.'
+    );
+  }
+  if (!hasExpectedConsent && !unscoped) {
+    throw new Error(
+      'disclose: consent verification is REQUIRED (fail-closed, spec §3) — supply ' +
+      'expectedConsentReceiptId, or set allowUnscopedConsent:true to deliberately run the ' +
+      'lower-assurance no-consent mode. Omitting consent is not a silent skip.'
+    );
+  }
 
   // (c) audience binding — reject a reveal aimed at a different verifier BEFORE crypto work.
   if (disclosed.challenge.verifier_id !== options.expectedVerifierId) {
@@ -454,11 +536,9 @@ export function verifyDisclosedClaim(
       `"${options.expectedNonce}" — a captured reveal is non-replayable`
     );
   }
-  // (c2) consent-scope binding — only when the verifier declares the scope.
-  if (
-    options.expectedConsentReceiptId !== undefined &&
-    disclosed.challenge.consent_receipt_id !== options.expectedConsentReceiptId
-  ) {
+  // (c2) consent-scope binding — FAIL-CLOSED by default (checked unless loud opt-out). Order:
+  // consent comes BEFORE expiry per spec §3 (audience → nonce → CONSENT → expiry → ...).
+  if (hasExpectedConsent && disclosed.challenge.consent_receipt_id !== options.expectedConsentReceiptId) {
     return fail(
       `consent-scope mismatch: reveal binds consent_receipt_id="${disclosed.challenge.consent_receipt_id}" ` +
       `but this verifier operates under "${options.expectedConsentReceiptId}"`

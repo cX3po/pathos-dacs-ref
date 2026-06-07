@@ -141,6 +141,7 @@ test('single-claim set: root membership still verifies', () => {
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id, // FIX 1: consent fail-closed
     now: NOW,
   });
   assert.equal(result.decision, 'pass', result.reason);
@@ -157,6 +158,7 @@ test('wrong salt opening the commitment → FAIL (membership)', () => {
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -175,6 +177,7 @@ test('tampered claim (plaintext changed after commitment) → FAIL', () => {
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -202,6 +205,7 @@ test('forged commitment not in the signed set → FAIL (no valid path)', () => {
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -224,6 +228,7 @@ test('reveal replayed to a DIFFERENT verifier_id → FAIL (non-transferable)', (
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: 'verifier:evil-relay', // NOT the audience the reveal was bound to
     expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -237,6 +242,7 @@ test('reused / wrong nonce → FAIL (non-replayable)', () => {
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: 'nonce-a-DIFFERENT-fresh-challenge', // verifier issued a new nonce
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -266,6 +272,7 @@ test('expired reveal → FAIL', () => {
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -279,6 +286,7 @@ test('reveal exactly at expiry → FAIL (expiry is exclusive upper bound)', () =
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -303,6 +311,7 @@ test('reveal_sig signed by a NON-holder key → FAIL', () => {
     presentationPubKey: bytesToHex(holder.pubKey), // holder key, not attacker's
     expectedVerifierId: challenge.verifier_id,
     expectedNonce: challenge.nonce,
+    expectedConsentReceiptId: challenge.consent_receipt_id,
     now: NOW,
   });
   void root;
@@ -320,6 +329,7 @@ test('tampered reveal_sig bits → FAIL', () => {
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -340,6 +350,7 @@ test('reveal bound to a DIFFERENT nonce cannot be re-signed for a new challenge 
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: 'nonce-swapped-by-attacker', // matches the swapped artifact value
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -356,6 +367,7 @@ test('sub-128-bit salt on the reveal path → FAIL', () => {
     presentationPubKey: presentationPubKeyHex,
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -369,6 +381,7 @@ test('malformed presentationPubKey → FAIL', () => {
     presentationPubKey: 'not-hex-zz',
     expectedVerifierId: disclosed.challenge.verifier_id,
     expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
     now: NOW,
   });
   assert.equal(result.decision, 'fail', result.reason);
@@ -377,4 +390,160 @@ test('malformed presentationPubKey → FAIL', () => {
 
 test('empty commitment set → computeCommitmentRoot throws', () => {
   assert.throws(() => computeCommitmentRoot([]), /empty commitment set/);
+});
+
+/* ===========================================================================
+ * FIX 1 — consent verification is FAIL-CLOSED by default (consent CORE).
+ * Omitting consent on the default path is a hard error, never a silent skip.
+ * The only skip is the LOUD, deliberate allowUnscopedConsent opt-out.
+ * =========================================================================== */
+
+test('FIX 1: omitting consent on the DEFAULT path → throws (fail-closed, not a silent pass)', () => {
+  const { root, disclosed, presentationPubKeyHex } = scene();
+  // No expectedConsentReceiptId, no allowUnscopedConsent → consent would otherwise be SKIPPED.
+  // Must throw rather than silently verify without consent.
+  assert.throws(
+    () =>
+      verifyDisclosedClaim(disclosed, {
+        signedRoot: root,
+        presentationPubKey: presentationPubKeyHex,
+        expectedVerifierId: disclosed.challenge.verifier_id,
+        expectedNonce: disclosed.challenge.nonce,
+        now: NOW,
+      }),
+    /consent verification is REQUIRED/
+  );
+});
+
+test('FIX 1: supplying BOTH consent id AND allowUnscopedConsent → throws (contradiction)', () => {
+  const { root, disclosed, presentationPubKeyHex } = scene();
+  assert.throws(
+    () =>
+      verifyDisclosedClaim(disclosed, {
+        signedRoot: root,
+        presentationPubKey: presentationPubKeyHex,
+        expectedVerifierId: disclosed.challenge.verifier_id,
+        expectedNonce: disclosed.challenge.nonce,
+        expectedConsentReceiptId: disclosed.challenge.consent_receipt_id,
+        allowUnscopedConsent: true,
+        now: NOW,
+      }),
+    /contradictory consent config/
+  );
+});
+
+test('FIX 1: explicit allowUnscopedConsent:true is the ONLY way to verify without a consent id → PASS', () => {
+  const { root, disclosed, presentationPubKeyHex } = scene();
+  const result = verifyDisclosedClaim(disclosed, {
+    signedRoot: root,
+    presentationPubKey: presentationPubKeyHex,
+    expectedVerifierId: disclosed.challenge.verifier_id,
+    expectedNonce: disclosed.challenge.nonce,
+    allowUnscopedConsent: true, // loud, deliberate lower-assurance no-consent mode
+    now: NOW,
+  });
+  assert.equal(result.decision, 'pass', result.reason);
+});
+
+test('FIX 1: with consent required, a non-matching consent id still FAILS (ordering: consent before expiry)', () => {
+  // Even an EXPIRED reveal fails on consent FIRST (consent is checked before expiry per spec §3).
+  const { root, disclosed, presentationPubKeyHex } = scene(CLAIM_LEI, undefined, freshChallenge({ expiry: NOW - 1 }));
+  const result = verifyDisclosedClaim(disclosed, {
+    signedRoot: root,
+    presentationPubKey: presentationPubKeyHex,
+    expectedVerifierId: disclosed.challenge.verifier_id,
+    expectedNonce: disclosed.challenge.nonce,
+    expectedConsentReceiptId: 'receipt:not-the-one-bound',
+    now: NOW,
+  });
+  assert.equal(result.decision, 'fail', result.reason);
+  assert.match(result.reason, /consent-scope mismatch/); // NOT /expired/ — consent checked first
+});
+
+/* ===========================================================================
+ * FIX 2 — produceReveal enforces the salt floor + commitment consistency on
+ * the HOLDER side. It must refuse to MINT an artifact the verifier will reject.
+ * =========================================================================== */
+
+test('FIX 2: produceReveal with a SUB-128-bit salt → throws (does not mint a doomed reveal)', () => {
+  const c = attestClaimCommitment(CLAIM_LEI);
+  const shortSalt = bytesToHex(new Uint8Array(8).fill(1)); // 64-bit
+  // Rebuild a self-consistent commitment over the short salt so ONLY the floor check trips.
+  const bad: ClaimCommitment = { ...c, salt: shortSalt, commitment: computeCommitment(shortSalt, c.claim) };
+  const { privKey } = generateKeypair();
+  assert.throws(() => produceReveal(bad, [], freshChallenge(), privKey), /salt too short/);
+});
+
+test('FIX 2: produceReveal with a NON-HEX salt → throws', () => {
+  const c = attestClaimCommitment(CLAIM_LEI);
+  const bad: ClaimCommitment = { ...c, salt: 'not-hex-zz' };
+  const { privKey } = generateKeypair();
+  assert.throws(() => produceReveal(bad, [], freshChallenge(), privKey), /non-empty hex|not valid hex/);
+});
+
+test('FIX 2: produceReveal with a MISMATCHED commitment (does not open to salt+claim) → throws', () => {
+  const c = attestClaimCommitment(CLAIM_LEI); // valid 256-bit salt
+  // Keep the good salt but corrupt the commitment so it no longer opens to (salt, claim).
+  const bad: ClaimCommitment = { ...c, commitment: bytesToHex(new Uint8Array(32).fill(0xab)) };
+  const { privKey } = generateKeypair();
+  assert.throws(() => produceReveal(bad, [], freshChallenge(), privKey), /does not open to/);
+});
+
+test('FIX 2: produceReveal with a CONSISTENT, floored commitment → succeeds (no false positive)', () => {
+  const c = attestClaimCommitment(CLAIM_LEI);
+  const { privKey } = generateKeypair();
+  const out = produceReveal(c, [], freshChallenge(), privKey);
+  assert.equal(out.salt, c.salt);
+  assert.equal(out.reveal_sig.length, 128); // 64-byte ed25519 sig as hex
+});
+
+/* ===========================================================================
+ * FIX 3 — verifyMerklePath rejects non-32-byte hash widths (fail-closed
+ * against non-canonical proof encodings).
+ * =========================================================================== */
+
+test('FIX 3: a SIBLING that is not 32 bytes → rejected', () => {
+  const commitments = [CLAIM_LEI, CLAIM_CRD].map((c) => attestClaimCommitment(c));
+  const setHex = commitments.map((c) => c.commitment);
+  const root = computeCommitmentRoot(setHex);
+  const path = buildMerklePath(setHex, commitments[0]!.commitment);
+  // Truncate the first sibling to 16 bytes — a non-canonical, short proof step.
+  const badPath = path.map((s, i) => (i === 0 ? { ...s, sibling: bytesToHex(new Uint8Array(16).fill(5)) } : s));
+  assert.equal(verifyMerklePath(commitments[0]!.commitment, badPath, root), false);
+});
+
+test('FIX 3: a ROOT that is not 32 bytes → rejected', () => {
+  const commitments = [CLAIM_LEI, CLAIM_CRD].map((c) => attestClaimCommitment(c));
+  const setHex = commitments.map((c) => c.commitment);
+  const path = buildMerklePath(setHex, commitments[0]!.commitment);
+  const shortRoot = bytesToHex(new Uint8Array(16).fill(9)); // 16-byte root
+  assert.equal(verifyMerklePath(commitments[0]!.commitment, path, shortRoot), false);
+});
+
+test('FIX 3: a COMMITMENT that is not 32 bytes → rejected', () => {
+  const commitments = [CLAIM_LEI, CLAIM_CRD].map((c) => attestClaimCommitment(c));
+  const setHex = commitments.map((c) => c.commitment);
+  const root = computeCommitmentRoot(setHex);
+  const path = buildMerklePath(setHex, commitments[0]!.commitment);
+  const shortCommitment = bytesToHex(new Uint8Array(20).fill(3)); // 20-byte commitment
+  assert.equal(verifyMerklePath(shortCommitment, path, root), false);
+});
+
+test('FIX 3: a too-LONG (33-byte) sibling → rejected (width is exact, not a floor)', () => {
+  const commitments = [CLAIM_LEI, CLAIM_CRD].map((c) => attestClaimCommitment(c));
+  const setHex = commitments.map((c) => c.commitment);
+  const root = computeCommitmentRoot(setHex);
+  const path = buildMerklePath(setHex, commitments[0]!.commitment);
+  const badPath = path.map((s, i) => (i === 0 ? { ...s, sibling: bytesToHex(new Uint8Array(33).fill(5)) } : s));
+  assert.equal(verifyMerklePath(commitments[0]!.commitment, badPath, root), false);
+});
+
+test('FIX 3: canonical 32-byte proof still verifies → PASS (no false negative)', () => {
+  const commitments = [CLAIM_LEI, CLAIM_CRD, CLAIM_UEI].map((c) => attestClaimCommitment(c));
+  const setHex = commitments.map((c) => c.commitment);
+  const root = computeCommitmentRoot(setHex);
+  for (const c of commitments) {
+    const path = buildMerklePath(setHex, c.commitment);
+    assert.ok(verifyMerklePath(c.commitment, path, root), `canonical leaf ${c.claim.scheme} rejected`);
+  }
 });
