@@ -80,17 +80,33 @@ test('§B.7 — verify() returns false for unknown separator (does NOT throw)', 
   assert.equal(result, false);
 });
 
-test('§B.7 — registry separator count (v0.1 cutover: 10 registry + 7 dacs-x extension)', () => {
+test('§B.7 — registry separator count (v0.1 cutover: 10 registry + 10 dacs-x extension)', () => {
   // v0.1 §B.7 alignment 2026-06-07 (dacs-repin cutover): the 6 drifted strings were renamed
   // to their canonical §B.7 form, the legacy `dacs5-bundle:v1:` was folded into `dacs-bundle:v1:`,
   // and the 7 residual non-registry kinds moved to the SIG-4 `dacs-x-` extension map.
   // See memory/reports/dacs-repin-v01-cutover-spec-2026-06-07.md §2.
+  // 2026-06-07 dacs-disclose P1: +2 dacs-x kinds (CLAIM_COMMIT, CLAIM_REVEAL) for the
+  // selective-disclosure follow-on (DACS-1 §11.2.7) → 7 → 9. See src/lib/disclose.ts +
+  // dacs-consent-selective-disclosure-spec-2026-06-07.md §3.
+  // 2026-06-07 dacs-disclose P2: +1 dacs-x kind (CONSENT) for consent/revocation records
+  // (spec §3 "consent + revocation", §5 P2) → 9 → 10. See src/lib/consent.ts.
   assert.equal(Object.keys(DOMAIN_SEPARATORS).length, 10,
     `expected 10 §B.7-registry separators, got ${Object.keys(DOMAIN_SEPARATORS).length}`);
-  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 7,
-    `expected 7 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
+  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 10,
+    `expected 10 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
   assert.equal(Object.keys(PATHOS_EXTENSION_SEPARATORS).length, 4,
     `expected 4 PATH-OS extension separators, got ${Object.keys(PATHOS_EXTENSION_SEPARATORS).length}`);
+});
+
+test('dacs-disclose — CLAIM_COMMIT/CLAIM_REVEAL are known AND emittable (SIG-4 dacs-x)', () => {
+  for (const sep of [
+    DACS_X_EXTENSION_SEPARATORS.CLAIM_COMMIT,
+    DACS_X_EXTENSION_SEPARATORS.CLAIM_REVEAL,
+  ]) {
+    assert.doesNotThrow(() => assertKnownSeparator(sep), `${sep} must be a known separator`);
+    assert.doesNotThrow(() => assertEmittableSeparator(sep), `${sep} must be emittable`);
+    assert.match(sep, /^dacs-x-.*:v1:$/, `${sep} must follow the SIG-4 dacs-x-<kind>:v1: form`);
+  }
 });
 
 // ── FIX 4 — LEGACY_READ_SEPARATORS are truly read-only (verify/read OK, sign/emit rejected) ───
