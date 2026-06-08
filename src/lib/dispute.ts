@@ -46,7 +46,6 @@ import {
 } from './disclose.js';
 import {
   type ConsentRecord,
-  type ResolveOptions,
   verifyDisclosedClaimWithConsent,
 } from './consent.js';
 
@@ -86,22 +85,32 @@ export interface DisputeEvidenceBundle {
 /**
  * A single-use ledger for resolver challenges. Production supplies a durable implementation; an
  * in-memory default is provided for tests / single-process resolvers. Keys are opaque strings.
+ *
+ * ATOMICITY (Codex finding 1, 2026-06-08): the API is a single compare-and-set, NOT a separate
+ * check-then-write. A naive `has()` then `add()` is a TOCTOU race — two concurrent resolver workers
+ * could both observe "absent", both verify, both write, and a captured bundle would pass twice. A
+ * durable store MUST implement this as one atomic op (e.g. `INSERT … ON CONFLICT DO NOTHING` and
+ * report whether the row was inserted). `verifyDisputeBundle` calls it EXACTLY once, as the final
+ * step after full crypto verification, so a failed bundle never consumes (no griefing).
  */
 export interface ConsumptionStore {
-  /** True iff `key` was already consumed (→ replay; reject). */
-  has(key: string): boolean;
-  /** Mark `key` consumed. Called by `verifyDisputeBundle` ONLY after a bundle fully verifies. */
-  add(key: string): void;
+  /**
+   * Atomically consume `key` iff absent. Returns true iff THIS call performed the insert (caller may
+   * treat the bundle as accepted); false iff `key` was already present (→ replay; reject). MUST be
+   * atomic — no observable window between the membership test and the insert.
+   */
+  consumeIfAbsent(key: string): boolean;
 }
 
-/** In-memory `ConsumptionStore` — process-lifetime single-use. Not durable across restarts. */
+/** In-memory `ConsumptionStore` — process-lifetime single-use. Not durable across restarts. JS is
+ *  single-threaded so the test-and-set below is atomic within a process; a durable cross-process
+ *  store MUST use a real CAS primitive. */
 export class InMemoryConsumptionStore implements ConsumptionStore {
   private readonly seen = new Set<string>();
-  has(key: string): boolean {
-    return this.seen.has(key);
-  }
-  add(key: string): void {
+  consumeIfAbsent(key: string): boolean {
+    if (this.seen.has(key)) return false;
     this.seen.add(key);
+    return true;
   }
 }
 
@@ -117,8 +126,10 @@ export interface VerifyDisputeBundleOptions {
   minReceiptIdHexLen?: number;
   /** Current unix-ms (injectable for deterministic tests). Defaults to Date.now(). */
   now?: number;
-  /** Resolution options forwarded to the P2 consent bridge (`requireValidSignatures`, etc.). */
-  resolve?: ResolveOptions;
+  // NOTE (Codex finding 2, 2026-06-08): there is deliberately NO `resolve` passthrough. P3's whole
+  // guarantee is that ONE identity signed everything — so consent-signature validation is FORCED ON
+  // in-layer (`requireValidSignatures: true`), and a caller cannot pass a resolution mode that would
+  // accept unverified/invalid consent signatures. Authority is non-negotiable at the dispute layer.
 }
 
 /** Result of verifying a dispute-evidence bundle. */
@@ -251,8 +262,8 @@ export function verifyDisputeBundle(
   if (typeof options.expectedNonce !== 'string' || options.expectedNonce.length === 0) {
     throw new Error('dispute: verifyDisputeBundle — expectedNonce is REQUIRED (replay binding).');
   }
-  if (!options.consumption || typeof options.consumption.has !== 'function' || typeof options.consumption.add !== 'function') {
-    throw new Error('dispute: verifyDisputeBundle — a ConsumptionStore is REQUIRED (single-use enforcement).');
+  if (!options.consumption || typeof options.consumption.consumeIfAbsent !== 'function') {
+    throw new Error('dispute: verifyDisputeBundle — a ConsumptionStore (atomic consumeIfAbsent) is REQUIRED (single-use enforcement).');
   }
   const now = options.now ?? Date.now();
   const minHexLen = options.minReceiptIdHexLen ?? MIN_RECEIPT_ID_HEX_LEN;
@@ -305,12 +316,15 @@ export function verifyDisputeBundle(
       `(${minHexLen / 2}-byte unguessability floor) — a guessable scope id is a front-run-denial vector`
     );
   }
-
-  // ---- 5. SINGLE-USE (replay) — check now, consume only on full success ----------------------
-  const challengeKey = consumptionKey(options.expectedVerifierId, scope, challenge.nonce);
-  if (options.consumption.has(challengeKey)) {
-    return fail('replay: this resolver challenge (verifier|scope|nonce) was already consumed — single-use');
+  // byte-alignment (Codex finding 4): a minted id is byte-derived hex (even length). An odd-length
+  // value is non-canonical — not a CSPRNG receipt id — so reject it rather than count half a byte.
+  if (scope.length % 2 !== 0) {
+    return fail('consent_receipt_id is non-canonical: odd hex length (not byte-aligned) — mint it via mintConsentReceiptId');
   }
+
+  // ---- 5. SINGLE-USE: deferred to step 8 (atomic consumeIfAbsent AFTER full crypto verification).
+  //         Computing the key here; the burn happens once, atomically, only on full success. -------
+  const challengeKey = consumptionKey(options.expectedVerifierId, scope, challenge.nonce);
 
   // ---- 6. AUDIENCE / NONCE at the bundle layer (defence in depth; P1 also checks) ------------
   if (challenge.verifier_id !== options.expectedVerifierId) {
@@ -338,7 +352,8 @@ export function verifyDisputeBundle(
       expectedGrantor: presenter,
       ledger: bundle.consentLedger,
       now,
-      resolve: options.resolve,
+      // Consent-signature validation is FORCED ON (Codex finding 2) — not caller-overridable.
+      resolve: { now, requireValidSignatures: true },
     });
     perDisclosure.push(r);
     if (!r.ok) {
@@ -346,8 +361,12 @@ export function verifyDisputeBundle(
     }
   }
 
-  // ---- 8. all disclosures passed → burn the challenge (single-use) ---------------------------
-  options.consumption.add(challengeKey);
+  // ---- 8. all disclosures passed → ATOMICALLY burn the challenge (single-use). consumeIfAbsent is
+  //         the compare-and-set: if a concurrent worker already burned this exact challenge, we lose
+  //         the race and reject as replay — closing the has()/add() TOCTOU (Codex finding 1). -------
+  if (!options.consumption.consumeIfAbsent(challengeKey)) {
+    return { ok: false, decision: 'fail', reason: 'replay: this resolver challenge (verifier|scope|nonce) was already consumed — single-use', perDisclosure };
+  }
   return { ok: true, decision: 'pass', reason: `bundle verified: ${perDisclosure.length} disclosure(s) under presenter authority`, perDisclosure };
 }
 
@@ -369,7 +388,7 @@ function firstChallengeDivergence(disclosures: readonly DisclosedClaim[]): strin
   if (!c0) return 'first disclosure has no challenge';
   for (let i = 1; i < disclosures.length; i++) {
     const di = disclosures[i];
-    if (!di) return `disclosure[${i}] is missing`;
+    if (!di || !di.challenge) return `disclosure[${i}] is missing its challenge`; // never throw on untrusted input (Codex finding 3)
     const c = di.challenge;
     if (c.verifier_id !== c0.verifier_id) return `disclosure[${i}].verifier_id differs`;
     if (c.consent_receipt_id !== c0.consent_receipt_id) return `disclosure[${i}].consent_receipt_id differs`;

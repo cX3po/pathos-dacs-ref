@@ -166,7 +166,9 @@ test('OPTION A: a grant DECLARING the presenter but SIGNED by another key is REJ
   // inside the bridge → consent denied. Confirms we cannot spoof authority by just naming the presenter.
   const other = generateKeypair();
   const s = scene({ grantorKeyOverride: other.privKey }); // grantorPub defaults to presenter
-  const r = verifyDisputeBundle(s.bundle, opts({ resolve: { requireValidSignatures: true } }));
+  // P3 forces requireValidSignatures in-layer (Codex finding 2) — the caller need NOT (and cannot)
+  // pass it; a grant declaring the presenter but signed by another key must fail by default.
+  const r = verifyDisputeBundle(s.bundle, opts());
   assert.equal(r.ok, false);
   assert.match(r.reason, /consent denied|signature/i);
 });
@@ -209,6 +211,31 @@ test('shared challenge: a mixed-challenge bundle is REJECTED at verify', () => {
   assert.match(r.reason, /mixed-challenge/i);
 });
 
+test('robustness: a later disclosure missing its challenge returns a FAIL verdict (never throws)', () => {
+  // Untrusted artifact: a malformed second disclosure with no `challenge`. verifyDisputeBundle must
+  // return {ok:false}, NOT throw (only resolver misconfiguration throws). (Codex finding 3.)
+  const s = scene({ reveal: [CLAIM_LEI, CLAIM_CRD] });
+  const d1 = s.bundle.disclosures[1]!;
+  const malformed = { ...d1 } as Record<string, unknown>;
+  delete malformed.challenge;
+  const bad: DisputeEvidenceBundle = {
+    ...s.bundle,
+    disclosures: [s.bundle.disclosures[0]!, malformed as unknown as DisclosedClaim],
+  };
+  let r: ReturnType<typeof verifyDisputeBundle>;
+  assert.doesNotThrow(() => { r = verifyDisputeBundle(bad, opts()); });
+  assert.equal(r!.ok, false);
+  assert.match(r!.reason, /missing its challenge|mixed-challenge/i);
+});
+
+test('single-use: consumeIfAbsent is the atomic gate — second consume of the same key loses', () => {
+  // Directly exercise the CAS contract the concurrent-replay fix depends on (Codex finding 1).
+  const store = new InMemoryConsumptionStore();
+  assert.equal(store.consumeIfAbsent('k'), true, 'first consume wins');
+  assert.equal(store.consumeIfAbsent('k'), false, 'second consume of same key loses');
+  assert.equal(store.consumeIfAbsent('k2'), true, 'a different key still wins');
+});
+
 test('shared challenge: assembleDisputeBundle THROWS on a mixed-challenge bundle', () => {
   const s = scene({ reveal: [CLAIM_LEI, CLAIM_CRD] });
   const d1 = s.bundle.disclosures[1]!;
@@ -241,6 +268,14 @@ test('unguessability: a non-hex consent_receipt_id is REJECTED', () => {
   const r = verifyDisputeBundle(s.bundle, opts());
   assert.equal(r.ok, false);
   assert.match(r.reason, /must be hex/i);
+});
+
+test('unguessability: an odd-length (non-byte-aligned) consent_receipt_id is REJECTED', () => {
+  // 33 hex chars — passes the length floor but is not byte-derived; a real minted id is even-length.
+  const s = scene({ scope: 'a'.repeat(MIN_RECEIPT_ID_HEX_LEN + 1) });
+  const r = verifyDisputeBundle(s.bundle, opts());
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /non-canonical|byte-aligned/i);
 });
 
 /* =========================================================================== */
@@ -315,7 +350,7 @@ test('misconfig: missing ConsumptionStore THROWS', () => {
   const s = scene();
   assert.throws(
     () => verifyDisputeBundle(s.bundle, { expectedVerifierId: RESOLVER, expectedNonce: NONCE, now: NOW } as unknown as Parameters<typeof verifyDisputeBundle>[1]),
-    /ConsumptionStore is REQUIRED/
+    /ConsumptionStore.*REQUIRED/
   );
 });
 
