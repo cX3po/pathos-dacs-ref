@@ -103,6 +103,14 @@ export const DACS_X_EXTENSION_SEPARATORS = {
   // later signed append that supersedes an earlier grant. SIG-4 extension surface (no ZK/L2PS/FHE).
   //   CONSENT body := JCS(canonical signable consent record)  (grantor-signed; see src/lib/consent.ts)
   CONSENT: 'dacs-x-consent:v1:',
+
+  // dacs-disclose P3 — dispute-evidence bundle (spec §3 dispute evidence; §5 P3). A self-contained
+  // artifact a holder presents to a dispute resolver: ONE presenting identity signs the Merkle root,
+  // every selective-disclosure reveal, AND every consent grant that authorises them. The bundle-layer
+  // enforces presenter===grantor IN-LAYER (option A) so authority can't be split from presentation.
+  // SIG-4 extension surface (no ZK/L2PS/FHE).
+  //   DISPUTE_BUNDLE body := utf8(signedRoot hex)  (presenter-signed root binding; see src/lib/dispute.ts)
+  DISPUTE_BUNDLE: 'dacs-x-dispute-bundle:v1:',
 } as const;
 
 /**
