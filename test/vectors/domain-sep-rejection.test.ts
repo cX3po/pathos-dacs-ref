@@ -80,7 +80,7 @@ test('§B.7 — verify() returns false for unknown separator (does NOT throw)', 
   assert.equal(result, false);
 });
 
-test('§B.7 — registry separator count (v0.1 cutover: 10 registry + 10 dacs-x extension)', () => {
+test('§B.7 — registry separator count (v0.1 cutover: 10 registry + 11 dacs-x extension)', () => {
   // v0.1 §B.7 alignment 2026-06-07 (dacs-repin cutover): the 6 drifted strings were renamed
   // to their canonical §B.7 form, the legacy `dacs5-bundle:v1:` was folded into `dacs-bundle:v1:`,
   // and the 7 residual non-registry kinds moved to the SIG-4 `dacs-x-` extension map.
@@ -90,10 +90,12 @@ test('§B.7 — registry separator count (v0.1 cutover: 10 registry + 10 dacs-x 
   // dacs-consent-selective-disclosure-spec-2026-06-07.md §3.
   // 2026-06-07 dacs-disclose P2: +1 dacs-x kind (CONSENT) for consent/revocation records
   // (spec §3 "consent + revocation", §5 P2) → 9 → 10. See src/lib/consent.ts.
+  // 2026-06-08 dacs-disclose P3: +1 dacs-x kind (DISPUTE_BUNDLE) for the dispute-evidence bundle
+  // (spec §3 dispute evidence, §5 P3; presenter===grantor binding) → 10 → 11. See src/lib/dispute.ts.
   assert.equal(Object.keys(DOMAIN_SEPARATORS).length, 10,
     `expected 10 §B.7-registry separators, got ${Object.keys(DOMAIN_SEPARATORS).length}`);
-  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 10,
-    `expected 10 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
+  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 11,
+    `expected 11 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
   assert.equal(Object.keys(PATHOS_EXTENSION_SEPARATORS).length, 4,
     `expected 4 PATH-OS extension separators, got ${Object.keys(PATHOS_EXTENSION_SEPARATORS).length}`);
 });
