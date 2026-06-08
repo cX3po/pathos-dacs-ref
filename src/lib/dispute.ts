@@ -137,7 +137,12 @@ export interface DisputeBundleVerifyResult {
   ok: boolean;
   decision: 'pass' | 'fail';
   reason: string;
-  /** Per-disclosure verdicts in bundle order (populated whether or not the bundle passes overall). */
+  /**
+   * Per-disclosure verdicts in bundle order. Populated once per-disclosure verification begins
+   * (step 7) — so a failure AT a disclosure includes the verdicts up to and including it. Empty for
+   * an early bundle-level rejection (shape / root binding / shared-challenge / unguessability) that
+   * fails BEFORE any disclosure is examined.
+   */
   perDisclosure: DiscloseVerifyResult[];
 }
 
