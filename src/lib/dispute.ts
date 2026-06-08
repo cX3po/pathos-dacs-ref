@@ -266,7 +266,12 @@ export function verifyDisputeBundle(
     throw new Error('dispute: verifyDisputeBundle — a ConsumptionStore (atomic consumeIfAbsent) is REQUIRED (single-use enforcement).');
   }
   const now = options.now ?? Date.now();
-  const minHexLen = options.minReceiptIdHexLen ?? MIN_RECEIPT_ID_HEX_LEN;
+  // MIN_RECEIPT_ID_HEX_LEN is an ABSOLUTE floor (Codex round-2): a caller override can only RAISE it,
+  // never lower it. A non-integer / non-positive / NaN override is ignored (NaN comparisons are always
+  // false → would otherwise disable the gate entirely). So the unguessability floor cannot be weakened.
+  const override = options.minReceiptIdHexLen;
+  const validOverride = typeof override === 'number' && Number.isInteger(override) && override > 0 ? override : MIN_RECEIPT_ID_HEX_LEN;
+  const minHexLen = Math.max(validOverride, MIN_RECEIPT_ID_HEX_LEN);
 
   // ---- 1. shape ------------------------------------------------------------------------------
   if (!Array.isArray(bundle.disclosures) || bundle.disclosures.length === 0) {

@@ -282,6 +282,17 @@ test('unguessability: an odd-length (non-byte-aligned) consent_receipt_id is REJ
 /* single-use / replay                                                          */
 /* =========================================================================== */
 
+test('unguessability: a caller override CANNOT weaken the absolute floor (NaN/0/negative ignored)', () => {
+  // Codex round-2: minReceiptIdHexLen is a raise-only knob. A short scope must still be rejected even
+  // when the caller tries to disable the gate with NaN / 0 / a negative override.
+  for (const bad of [Number.NaN, 0, -1, 2]) {
+    const s = scene({ scope: 'abcd' }); // 4 hex chars — below the 32-char floor
+    const r = verifyDisputeBundle(s.bundle, opts({ minReceiptIdHexLen: bad as number }));
+    assert.equal(r.ok, false, `override ${bad} must not let a short scope through`);
+    assert.match(r.reason, /too short|unguessability/i);
+  }
+});
+
 test('single-use: replaying the same bundle is REJECTED the second time', () => {
   const s = scene();
   const store = new InMemoryConsumptionStore();
