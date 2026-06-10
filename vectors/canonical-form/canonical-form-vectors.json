@@ -1,0 +1,117 @@
+{
+  "generatedBy": "pathos-dacs-ref vectors/canonical-form/generate.mts",
+  "oracle": "src/jcs.ts (RFC 8785 JCS + DACS section B.2 pre-pass: NFC values+keys, safe-int, surrogate-reject, key-collision-reject)",
+  "note": "Accept vectors: sha256 of the JCS canonical form of input MUST equal expectedSha256. Reject vectors are not JSON-representable (BigInt / lone surrogate / over-2^53 / NFC key-collision) - construct per cases.ts builders; a conforming canonicaliser MUST reject each.",
+  "acceptVectors": [
+    {
+      "id": "ascii-basic",
+      "description": "plain ASCII object",
+      "input": {
+        "a": 1,
+        "b": "hello"
+      },
+      "expectedSha256": "d84ab9f85753473707229d00b92623f0f9a1b8b9bf69763fc5cfc692b56c236b"
+    },
+    {
+      "id": "key-ordering",
+      "description": "keys supplied out of order hash identically (JCS sorts object keys)",
+      "input": {
+        "b": "hello",
+        "a": 1
+      },
+      "expectedSha256": "d84ab9f85753473707229d00b92623f0f9a1b8b9bf69763fc5cfc692b56c236b",
+      "sameHashAs": "ascii-basic"
+    },
+    {
+      "id": "nfc-precomposed",
+      "description": "string value: cafe with precomposed U+00E9 (NFC)",
+      "input": {
+        "name": "café"
+      },
+      "expectedSha256": "645fa443126a8954fc6d871912b8fc67bc2ee8feae417efe55546251962ca74d"
+    },
+    {
+      "id": "nfd-decomposed",
+      "description": "string value: cafe as e + U+0301 (NFD) - MUST hash identically to NFC after CF-1 normalisation",
+      "input": {
+        "name": "café"
+      },
+      "expectedSha256": "645fa443126a8954fc6d871912b8fc67bc2ee8feae417efe55546251962ca74d",
+      "sameHashAs": "nfc-precomposed"
+    },
+    {
+      "id": "unicode-key-nfc",
+      "description": "object KEY in NFC form",
+      "input": {
+        "café": 1
+      },
+      "expectedSha256": "4ba6f859a6604763e30e1afc74dd00bf3b245be58d902b5d1ae0eaa119e8a141"
+    },
+    {
+      "id": "unicode-key-nfd",
+      "description": "object KEY in NFD form - MUST hash identically to the NFC key (keys are NFC-normalised too, gap V2)",
+      "input": {
+        "café": 1
+      },
+      "expectedSha256": "4ba6f859a6604763e30e1afc74dd00bf3b245be58d902b5d1ae0eaa119e8a141",
+      "sameHashAs": "unicode-key-nfc"
+    },
+    {
+      "id": "number-integer",
+      "description": "integer value",
+      "input": {
+        "n": 42
+      },
+      "expectedSha256": "4e0730f238f81de137ff27d89ec3bcc3ebadf95107661387df82043c4ec25475"
+    },
+    {
+      "id": "number-decimal",
+      "description": "in-range decimal value",
+      "input": {
+        "n": 0.5
+      },
+      "expectedSha256": "aec38c68ae9784cd6c9391c1d52335984c2722d6ec167168b08027566480962d"
+    },
+    {
+      "id": "nested",
+      "description": "nested object + array (array order preserved, object keys sorted)",
+      "input": {
+        "outer": {
+          "z": [
+            3,
+            2,
+            1
+          ],
+          "a": true
+        },
+        "list": [
+          "x",
+          "y"
+        ]
+      },
+      "expectedSha256": "048f40344a297ef97cc63b6ad6f846da8d5e5b9fb33b9a6cb0ac67cc796747cc"
+    }
+  ],
+  "rejectVectors": [
+    {
+      "id": "number-over-2pow53",
+      "description": "integer above 2^53-1 has no reproducible JCS form; carry as a string",
+      "reason": "safe-integer-range"
+    },
+    {
+      "id": "lone-surrogate",
+      "description": "unpaired UTF-16 high surrogate has no valid UTF-8 encoding",
+      "reason": "unpaired-surrogate"
+    },
+    {
+      "id": "bigint",
+      "description": "BigInt is not JSON-encodable",
+      "reason": "bigint-not-encodable"
+    },
+    {
+      "id": "nfc-key-collision",
+      "description": "two distinct keys that NFC-normalise to the same key (ambiguous canonical form)",
+      "reason": "nfc-key-collision"
+    }
+  ]
+}
