@@ -6,17 +6,18 @@
  * @deprecated and is RETAINED for dual-accept READS only (§10.4.2 backwards-compat) — there is
  * no legacy emitter.
  *
- * Signing (§10.4.1):
- *   bundle_hash  := sha256(JCS(bundle with `signatures` omitted)), hex
+ * Signing (§10.4.1 + R5-1):
+ *   bundle_hash  := sha256(JCS(bundle with `signatures` AND `anchoredByRole` omitted)), hex
  *   signed_bytes := "dacs-bundle:v1:" || bundle_hash                  (single-hash)
  * Each party's primary-claim key signs `signed_bytes`. This is byte-for-byte what
- * verifyBundleV1 reconstructs and verifies (SIG-2), so emit -> verify round-trips.
+ * verifyBundleV1 reconstructs and verifies (SIG-2), so emit -> verify round-trips. The signed
+ * scope is the SHARED bundleSignedScopeHashV1 definition (anchoredByRole excluded per R5-1).
  */
 import type { AttestationBundleV1, BundleSignature } from '../types/bundle.js';
 import type { ClaimReference } from '../types/identity.js';
 import { DOMAIN_SEPARATORS } from '../domain-sep.js';
 import { sign } from './sign.js';
-import { jcsHashHex } from '../jcs.js';
+import { bundleSignedScopeHashV1 } from './bundle-signed-scope-v1.js';
 
 const enc = new TextEncoder();
 
@@ -37,7 +38,7 @@ export function emitAttestationBundleV1(
   signers: BundleSigner[],
 ): AttestationBundleV1 {
   if (!signers.length) throw new Error('emitAttestationBundleV1: at least one signer is required (§10.4.1)');
-  const bundleHash = jcsHashHex(unsigned); // signed scope = bundle without `signatures`
+  const bundleHash = bundleSignedScopeHashV1(unsigned); // signed scope = bundle without `signatures` AND `anchoredByRole` (R5-1)
   const signatures: BundleSignature[] = signers.map((s) => ({
     party: s.party,
     algorithm: s.algorithm ?? 'ed25519',

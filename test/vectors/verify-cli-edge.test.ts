@@ -67,7 +67,7 @@ test('CLI: v0.1 AttestationBundleV1 file → unanchored default = indeterminate 
   // lookup is skipped (caller-accepted scope) and the bundle passes structural+sig.
   const { sign } = await import('../../src/lib/sign.js');
   const { DOMAIN_SEPARATORS } = await import('../../src/domain-sep.js');
-  const { jcsHashHex } = await import('../../src/jcs.js');
+  const { bundleSignedScopeHashV1 } = await import('../../src/lib/bundle-signed-scope-v1.js');
   const { ed25519 } = await import('@noble/curves/ed25519');
 
   const hexOf = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -83,7 +83,7 @@ test('CLI: v0.1 AttestationBundleV1 file → unanchored default = indeterminate 
     phaseSummary: [{ index: 0, kind: 'vet-credentials', outcome: 'ok' as const }],
     vetRecords: [], settlementEvidence: [], recipeRegistryVersion: 1, railRegistryVersion: 1, finalisedAt: 1735689600000,
   };
-  const bundleHash = jcsHashHex(unsigned);
+  const bundleHash = bundleSignedScopeHashV1(unsigned);
   const enc = new TextEncoder();
   const sigOf = (k: { priv: Uint8Array; pubHex: string }) => ({
     party: { scheme: 'cci' as const, identifier: k.pubHex }, algorithm: 'ed25519' as const,

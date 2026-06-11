@@ -14,7 +14,7 @@ import * as path from 'node:path';
 import { verifyBundleV1 } from '../../src/lib/verify-bundle-v1.js';
 import { sign } from '../../src/lib/sign.js';
 import { DOMAIN_SEPARATORS } from '../../src/domain-sep.js';
-import { jcsHashHex } from '../../src/jcs.js';
+import { bundleSignedScopeHashV1 } from '../../src/lib/bundle-signed-scope-v1.js';
 import { ed25519 } from '@noble/curves/ed25519';
 import type { AttestationBundleV1 } from '../../src/types/bundle.js';
 
@@ -25,7 +25,7 @@ const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '
 
 test('§10.4 — the reference-impl contributor DACS-VERIFY-0004 accepts + reproduces his bundleHash (cross-impl)', () => {
   const v = verifyBundleV1(load('attestation-bundle-0004.json'), { requireSignatures: false });
-  assert.equal(v.bundleHash, '98d7b565da2cbb6e60048b51cb87450484d78d1bd7eb46c96b5fe6fe4ac2dd5e', 'cross-impl bundleHash match');
+  assert.equal(v.bundleHash, '9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba', 'cross-impl bundleHash match (v0.1 R5-1 exclude — upstream golden.json)');
   assert.equal(v.signerRuleSatisfied, true, 'completed bundle has buyer+seller signatures');
   assert.equal(v.decision, 'accept');
   // placeholder DID signers → unverifiable (not a hard fail)
@@ -39,7 +39,7 @@ test('§10.4 — divergent seller-side (failed-counterparty) is a well-formed, a
   assert.notEqual(v.bundleHash, '', 'has a computable bundleHash');
 });
 
-test('§10.4 — HTLC-9 (failed-substrate) bundle is accepted', () => {
+test('§10.4 — HTLC-9 (failed-counterparty) bundle is accepted', () => {
   const v = verifyBundleV1(load('attestation-bundle-htlc9.json'), { requireSignatures: false });
   assert.equal(v.decision, 'accept');
   assert.equal(v.signerRuleSatisfied, true);
@@ -67,7 +67,7 @@ test('§10.4 — real-key bundle: signatures verify (accept), tamper rejects', (
     phaseSummary: [{ index: 0, kind: 'vet-credentials', outcome: 'ok' }],
     vetRecords: [], settlementEvidence: [], recipeRegistryVersion: 1, railRegistryVersion: 1, finalisedAt: 1735689600000,
   };
-  const bundleHash = jcsHashHex(unsigned);
+  const bundleHash = bundleSignedScopeHashV1(unsigned);
   const enc = new TextEncoder();
   const sigOf = (k: { priv: Uint8Array; pubHex: string }) => ({
     party: { scheme: 'cci', identifier: k.pubHex } as const, algorithm: 'ed25519' as const,
@@ -101,7 +101,7 @@ function baseUnsigned(over: Partial<AttestationBundleV1> = {}): Omit<Attestation
   };
 }
 function signBy(unsigned: Omit<AttestationBundleV1, 'signatures'>, keys: { priv: Uint8Array; pubHex: string }[], algo = 'ed25519'): AttestationBundleV1 {
-  const bundleHash = jcsHashHex(unsigned); const e = new TextEncoder();
+  const bundleHash = bundleSignedScopeHashV1(unsigned); const e = new TextEncoder();
   return { ...unsigned, signatures: keys.map((k) => ({ party: { scheme: 'cci' as const, identifier: k.pubHex }, algorithm: algo as 'ed25519', value: Buffer.from(sign(DOMAIN_SEPARATORS.BUNDLE, e.encode(bundleHash), k.priv)).toString('base64') })) };
 }
 
@@ -190,7 +190,7 @@ test('§10.4 — claim params order does not change identity (a party+signer wit
   // party carries params in one order; signer carries the SAME params in the other order
   u.parties[0]!.primaryClaim = { scheme: 'cci', identifier: buyer.pubHex, params: { a: '1', b: '2' } };
   u.parties[1]!.primaryClaim = { scheme: 'cci', identifier: seller.pubHex };
-  const bundleHash = jcsHashHex(u);
+  const bundleHash = bundleSignedScopeHashV1(u);
   const e = new TextEncoder();
   const b: AttestationBundleV1 = { ...u, signatures: [
     { party: { scheme: 'cci', identifier: buyer.pubHex, params: { b: '2', a: '1' } }, algorithm: 'ed25519', value: Buffer.from(sign(DOMAIN_SEPARATORS.BUNDLE, e.encode(bundleHash), buyer.priv)).toString('base64') },
@@ -226,7 +226,7 @@ test('§10.4 — scheme confusion: a 64-hex identifier under a non-cci scheme is
   // buyer party uses scheme evm-key with a 64-hex value (an ed25519 key smuggled under the wrong scheme)
   u.parties[0]!.primaryClaim = { scheme: 'evm-key', identifier: k.pubHex };
   u.parties[1]!.primaryClaim = { scheme: 'cci', identifier: seller.pubHex };
-  const bundleHash = jcsHashHex(u); const e = new TextEncoder();
+  const bundleHash = bundleSignedScopeHashV1(u); const e = new TextEncoder();
   const b: AttestationBundleV1 = { ...u, signatures: [
     { party: { scheme: 'evm-key', identifier: k.pubHex }, algorithm: 'ed25519', value: Buffer.from(sign(DOMAIN_SEPARATORS.BUNDLE, e.encode(bundleHash), k.priv)).toString('base64') },
     { party: { scheme: 'cci', identifier: seller.pubHex }, algorithm: 'ed25519', value: Buffer.from(sign(DOMAIN_SEPARATORS.BUNDLE, e.encode(bundleHash), seller.priv)).toString('base64') },
@@ -303,11 +303,11 @@ test('§10.4 R4-B — anchoredByRole is required and must match a listed party r
   assert.ok(v2.reasons.some((r) => /anchoredByRole/.test(r)));
 });
 
-test('§10.4 R4-B — re-sealed fixtures reproduce the new bundleHashes', () => {
+test('§10.4 R5-1 — re-vendored v0.1 fixtures reproduce the exclude-rule bundleHashes (upstream golden.json)', () => {
   const exp: Record<string, string> = {
-    'attestation-bundle-0004': '98d7b565da2cbb6e60048b51cb87450484d78d1bd7eb46c96b5fe6fe4ac2dd5e',
-    'attestation-bundle-0004-seller': 'd6c161bd190d69acc6104279b6f53cc0d8e3de405cfc19578605cf49da5631a5',
-    'attestation-bundle-htlc9': '745f8ecf1aed66dda28560974ff43e934dae83ee44fc91d651ce07ea29bb6019',
+    'attestation-bundle-0004': '9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba',
+    'attestation-bundle-0004-seller': '83b180d7a2a00109e96fe099df6c1ef14271b5c0d43c24da78051238cee580bd',
+    'attestation-bundle-htlc9': 'ba1889b7d86e37b98cd2f7b4a053f328ab33e7137b0edff8efb4645f24fd4096',
   };
   for (const [f, h] of Object.entries(exp)) {
     const v = verifyBundleV1(load(`${f}.json`), { requireSignatures: false });
@@ -316,20 +316,29 @@ test('§10.4 R4-B — re-sealed fixtures reproduce the new bundleHashes', () => 
   }
 });
 
-// ── FIX 2 — anchoredByRole is protected (in-hash signing is the compensating control) ────────
-test('FIX 2 — a flipped anchoredByRole is rejected (it is in the signed hash → signature breaks)', () => {
-  // Sign a real-key bundle with anchoredByRole "buyer", then tamper anchoredByRole to "seller"
-  // WITHOUT re-signing. Because anchoredByRole is inside the signed scope (jcsHashHex(unsigned)),
-  // the recomputed bundleHash no longer matches what was signed → every signature hard-fails.
-  const signed = signBy(baseUnsigned({ anchoredByRole: 'buyer' }), [realKey(0x51), realKey(0x52)]);
-  // Sanity: untampered bundle verifies cryptographically.
-  const clean = verifyBundleV1(signed);
+// ── R5-1 — anchoredByRole is EXCLUDED from the signed hash; integrity via anchor-address ─────
+test('R5-1 — anchoredByRole is excluded from the signed hash (flip does NOT change bundleHash or break the signature)', () => {
+  // anchoredByRole is per-copy and EXCLUDED from the hashed canonical form (DACS-Standard v0.1
+  // R5-1), so the two two-sided copies hash EQUAL in the happy path. Consequences at the
+  // single-bundle layer: (1) buyer- and seller-anchored copies of otherwise-identical content
+  // produce the SAME bundleHash; (2) flipping anchoredByRole on a signed bundle does NOT invalidate
+  // the signature (it was never in scope). Integrity of anchoredByRole is therefore NOT the
+  // signature's job — it is enforced by the anchor-address ↔ anchoredByRole cross-check on the
+  // two-sided path (§10.4.2/§248), exercised by the chain tests in verify-bundle-v1-chain.test.ts.
+  const buyerSigned = signBy(baseUnsigned({ anchoredByRole: 'buyer' }), [realKey(0x51), realKey(0x52)]);
+  const clean = verifyBundleV1(buyerSigned);
   assert.equal(clean.decision, 'accept', JSON.stringify(clean.reasons));
   assert.ok(clean.cryptographicallyVerified);
 
-  const tampered: AttestationBundleV1 = { ...signed, anchoredByRole: 'seller' };
-  const v = verifyBundleV1(tampered);
-  assert.equal(v.decision, 'reject', 'flipped anchoredByRole must be rejected');
-  assert.equal(v.cryptographicallyVerified, false, 'signature no longer verifies over the flipped hash');
-  assert.ok(v.signatureChecks.some((c) => c.decision === 'fail'), 'at least one signature hard-fails');
+  // (1) The seller-anchored copy of the same content hashes IDENTICALLY (exclusion proof).
+  const sellerSameContent = signBy(baseUnsigned({ anchoredByRole: 'seller' }), [realKey(0x51), realKey(0x52)]);
+  assert.equal(verifyBundleV1(sellerSameContent).bundleHash, clean.bundleHash,
+    'buyer/seller copies of identical content hash equal — anchoredByRole excluded from the hash');
+
+  // (2) Flipping anchoredByRole WITHOUT re-signing leaves the single-bundle signature valid.
+  const flipped: AttestationBundleV1 = { ...buyerSigned, anchoredByRole: 'seller' };
+  const v = verifyBundleV1(flipped);
+  assert.equal(v.bundleHash, clean.bundleHash, 'flip does not change the signed hash');
+  assert.equal(v.decision, 'accept', 'single-bundle verify still accepts — sig unaffected by the excluded field');
+  assert.ok(v.cryptographicallyVerified, 'signature still verifies (anchoredByRole not in signed scope)');
 });
