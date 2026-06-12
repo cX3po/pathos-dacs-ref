@@ -1,0 +1,8 @@
+{
+  "_note": "Normalized DACS-2 VerifyResult verdict (deterministic surface only — per-run attestation/timestamps excluded). Reproduce: npx tsx src/cli/vet-gleif.ts --lei 506700GE1G29325QX363 --jobId <uuid> --dry-run",
+  "claim": { "scheme": "lei", "identifier": "506700GE1G29325QX363" },
+  "recipeFamily": "consensus-backed-proxy",
+  "decision": "pass",
+  "resolvedEntity": "Global Legal Entity Identifier Foundation",
+  "impl": "pathos-dacs-ref (PATH-OS Labs), recipe gleif-cbp:1"
+}

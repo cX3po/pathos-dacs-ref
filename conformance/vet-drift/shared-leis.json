@@ -1,0 +1,6 @@
+{
+  "_note": "Shared DACS-2 Vet drift-test inputs. Each impl verifies these via its own public-authority path and the deterministic verdicts (decision + resolved entity) must converge. Seed = 1 active LEI; DNO/XM33 to co-author lapsed/retired (fail/indeterminate) + malformed cases (our impl rejects pre-VerifyResult; spec lists a 4th `error` decision — to reconcile).",
+  "leis": [
+    { "lei": "506700GE1G29325QX363", "expectDecision": "pass", "note": "GLEIF Foundation's own LEI — active/ISSUED" }
+  ]
+}
