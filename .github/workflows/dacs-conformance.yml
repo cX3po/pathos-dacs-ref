@@ -1,0 +1,15 @@
+# Self-check: runs the dacs-drift Action against our own vendored DACS-X fixtures on every push,
+# so the Action is continuously proven AND we'd catch our own drift from the golden hashes.
+# Doubles as the worked example for consumers (see CONFORMANCE.md).
+name: DACS conformance (self-check)
+on: [push, pull_request]
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: dacs-drift conformance check
+        uses: ./.github/actions/dacs-drift
+        with:
+          fixtures-dir: test/vectors/dacs-x-fixtures
+          expect-manifest: conformance/our-bundle-hashes.json

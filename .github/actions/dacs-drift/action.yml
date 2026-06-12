@@ -1,0 +1,45 @@
+name: 'DACS conformance / drift check'
+description: 'Run dacs-drift against your AttestationBundle fixtures — fail CI when a bundleHash drifts from the expected/golden value.'
+author: 'PATH-OS Labs'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  fixtures-dir:
+    description: 'Directory (in your repo) of *.json AttestationBundle fixtures to check.'
+    required: true
+  expect-manifest:
+    description: 'Optional JSON manifest { "<fixture>.json": "<expectedHashHex>" } (in your repo). Omit for discovery mode (compute + structurally verify, never fails on hash).'
+    required: false
+    default: ''
+  node-version:
+    description: 'Node version to run dacs-drift under.'
+    required: false
+    default: '20'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install dacs-drift (pathos-dacs-ref)
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      run: npm ci || npm install
+
+    - name: Run dacs-drift conformance check
+      shell: bash
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "${{ github.action_path }}/../../.." && pwd)"
+        FIXTURES="$(cd "$GITHUB_WORKSPACE/${{ inputs.fixtures-dir }}" && pwd)"
+        cd "$ROOT"
+        if [ -n "${{ inputs.expect-manifest }}" ]; then
+          npx tsx dacs-drift.mts "$FIXTURES" --expect "$GITHUB_WORKSPACE/${{ inputs.expect-manifest }}"
+        else
+          npx tsx dacs-drift.mts "$FIXTURES"
+        fi
