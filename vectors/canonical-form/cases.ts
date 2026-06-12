@@ -63,7 +63,27 @@ export const acceptCases: AcceptCase[] = [
     build: () => ({ n: 9007199254740991 }),
   },
   { id: 'number-decimal', description: 'in-range decimal value', build: () => ({ n: 0.5 }) },
+  // ── ECMAScript number serialisation (RFC 8785 §3.2.2.3) — the formatting foot-guns ──
+  // NB: negative-zero is NOT a portable JSON vector (JSON cannot represent -0; it round-trips to 0),
+  // so it lives ONLY in the external ES-number reference table in the test, where a real JS -0 is used.
+  { id: 'number-small-exponent', description: 'small magnitude uses exponent form: 1e-7 -> "1e-7"', build: () => ({ n: 1e-7 }) },
+  { id: 'number-shortest-roundtrip', description: 'shortest round-trip: 0.1+0.2 -> "0.30000000000000004" (not "0.3")', build: () => ({ n: 0.30000000000000004 }) },
+  { id: 'number-decimal-tenth', description: 'decimal 0.1 -> "0.1" (no trailing/leading drift)', build: () => ({ n: 0.1 }) },
+  { id: 'number-negative-fraction', description: 'negative fractional -> "-1.5"', build: () => ({ n: -1.5 }) },
+  // ── string escaping (RFC 8785 §3.2.2.2) ──
+  { id: 'string-control-char', description: 'control char U+0001 -> lowercase \\u0001 escape', build: () => ({ s: '\u0001' }) },
+  { id: 'string-two-char-escapes', description: 'tab + newline use two-char escapes \\t \\n (not \\u0009)', build: () => ({ s: 'a\tb\nc' }) },
+  { id: 'string-quote-backslash', description: 'quote and backslash escape as \\" and \\\\', build: () => ({ s: 'a"b\\c' }) },
+  { id: 'string-emoji-nonbmp', description: 'non-BMP emoji (U+1F600, surrogate pair) passes through as raw UTF-8, NOT escaped', build: () => ({ s: '\u{1F600}' }) },
+  // ── structural edge cases ──
+  { id: 'empty-object', description: 'empty object -> {}', build: () => ({}) },
+  { id: 'empty-array', description: 'empty array value -> {"a":[]}', build: () => ({ a: [] }) },
   { id: 'nested', description: 'nested object + array (array order preserved, object keys sorted)', build: () => ({ outer: { z: [3, 2, 1], a: true }, list: ['x', 'y'] }) },
+  {
+    id: 'key-ordering-nonascii',
+    description: 'keys sorted by UTF-16 code unit: a < b < ä (U+00E4) — non-ASCII sorts AFTER ASCII',
+    build: () => ({ b: 1, 'ä': 2, a: 3 }),
+  },
 ];
 
 /** Reject cases: a conforming canonicaliser MUST throw/reject (no reproducible canonical form). */
@@ -86,6 +106,15 @@ export const rejectCases: RejectCase[] = [
     // so this pins "large-magnitude number rejects", documenting the bound is not a literal integer test.)
     description: 'large-magnitude number outside the IEEE-754 safe range (1e300) MUST be rejected (bound is on magnitude)',
     build: () => ({ n: 1e300 }),
+    reason: 'safe-integer-range',
+  },
+  {
+    id: 'number-exponent-over-range',
+    // DACS-SPECIFIC divergence from pure RFC 8785: vanilla JCS would ACCEPT 1e21 (it serialises to
+    // "1e+21" per ECMAScript), but DACS §B.2's safe-integer bound rejects it. A pure-JCS impl that
+    // forgets the DACS bound will accept this and silently diverge — that is exactly what this pins.
+    description: '1e21 is valid RFC 8785 JCS but MUST be rejected under the DACS §B.2 safe-integer bound (deliberate DACS tightening)',
+    build: () => ({ n: 1e21 }),
     reason: 'safe-integer-range',
   },
   { id: 'lone-surrogate', description: 'unpaired UTF-16 high surrogate has no valid UTF-8 encoding', build: () => ({ s: '\uD800' }), reason: 'unpaired-surrogate' },

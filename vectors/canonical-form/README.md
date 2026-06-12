@@ -32,5 +32,11 @@ broken cross-impl conformance). Offered to the foundation SDK build as **candida
 4. Safe-integer bound — integers outside ±(2^53−1) are not safely IEEE-754 representable; reject (carry as string). Boundary: `safe-int-max` (2^53−1) accepts; `number-over-2pow53` (2^53) rejects.
 5. Unpaired UTF-16 surrogate — no valid UTF-8; reject.
 6. NFC key-collision — two keys normalising to the same key are ambiguous; reject.
+7. **ECMAScript number serialisation** (RFC 8785 §3.2.2.3) — negative-zero → `0`, small magnitude → exponent (`1e-7`), shortest round-trip (`0.30000000000000004`, not `0.3`), negative fractions. This is where independent impls diverge most.
+8. **String escaping** (RFC 8785 §3.2.2.2) — control chars → lowercase `\u00xx`, tab/newline → two-char `\t`/`\n`, quote/backslash escapes, and non-BMP emoji passing through as **raw UTF-8** (not escaped).
+9. **Non-ASCII key ordering** — keys sort by UTF-16 code unit (`a` < `b` < `ä`), and empty object/array edge cases.
+10. **DACS-vs-pure-JCS divergence** — `1e21` is valid RFC 8785 JCS but DACS §B.2's safe-integer bound rejects it (a deliberate DACS tightening a pure-JCS impl will miss).
+
+The test also pins number serialisation against an **independent ECMAScript reference table** (not our own oracle), so a number-formatting bug in the underlying canonicaliser can't be enshrined on regeneration.
 
 Oracle: `src/jcs.ts` (PATH-OS Labs `pathos-dacs-ref`).

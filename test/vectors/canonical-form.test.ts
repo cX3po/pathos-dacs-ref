@@ -104,6 +104,24 @@ test('the NFC key-collision reject case is a genuine collision before it is reje
   assert.throws(() => jcsCanonical(collision.build()), /NFC key collision/i);
 });
 
+test('EXTERNAL anchor: number serialisation matches the ECMAScript / RFC 8785 §3.2.2.3 reference, not our own oracle', () => {
+  // Fable review: every other check verifies against src/jcs.ts itself, so a number-formatting bug in
+  // the underlying canonicaliser would be enshrined on regeneration. This table is the OUTSIDE answer
+  // key — the canonical decimal strings are FIXED by the ECMAScript Number::toString spec that RFC 8785
+  // mandates (NOT read from our impl). All values are within the DACS safe range so they must ACCEPT.
+  const ES_NUMBER_REF: Array<[number, string]> = [
+    [0, '0'], [-0, '0'], [1, '1'], [-1, '-1'], [100, '100'],
+    [0.1, '0.1'], [0.5, '0.5'], [-1.5, '-1.5'], [123.456, '123.456'],
+    [1e-7, '1e-7'], [0.30000000000000004, '0.30000000000000004'],
+    [9007199254740991, '9007199254740991'], // 2^53-1, the safe-int boundary
+  ];
+  const dec = new TextDecoder();
+  for (const [num, expected] of ES_NUMBER_REF) {
+    const canonical = dec.decode(jcsCanonical({ n: num }));
+    assert.equal(canonical, `{"n":${expected}}`, `ES number serialisation: ${num} must canonicalise the value as "${expected}"`);
+  }
+});
+
 test('committed reject vectors are rejected FOR THEIR STATED REASON (not just "throws")', () => {
   const caseById = new Map(rejectCases.map((c) => [c.id, c]));
   for (const rv of vectors.rejectVectors) {
