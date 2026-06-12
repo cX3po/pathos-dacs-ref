@@ -57,13 +57,37 @@ export const acceptCases: AcceptCase[] = [
     sameHashAs: 'unicode-key-nfc',
   },
   { id: 'number-integer', description: 'integer value', build: () => ({ n: 42 }) },
+  {
+    id: 'safe-int-max',
+    description: 'Number.MAX_SAFE_INTEGER (2^53-1 = 9007199254740991) is the LARGEST accepted integer (boundary)',
+    build: () => ({ n: 9007199254740991 }),
+  },
   { id: 'number-decimal', description: 'in-range decimal value', build: () => ({ n: 0.5 }) },
   { id: 'nested', description: 'nested object + array (array order preserved, object keys sorted)', build: () => ({ outer: { z: [3, 2, 1], a: true }, list: ['x', 'y'] }) },
 ];
 
 /** Reject cases: a conforming canonicaliser MUST throw/reject (no reproducible canonical form). */
 export const rejectCases: RejectCase[] = [
-  { id: 'number-over-2pow53', description: 'integer above 2^53-1 has no reproducible JCS form; carry as a string', build: () => ({ big: 9007199254740993 }), reason: 'safe-integer-range' },
+  {
+    id: 'number-over-2pow53',
+    // 9007199254740992 === 2^53 === MAX_SAFE_INTEGER+1: the FIRST integer outside the IEEE-754 safe
+    // range, and (unlike 9007199254740993) it is exactly representable so there is no JS-rounding
+    // ambiguity in the vector. NB: a JSON producer that emits the text "9007199254740993" will be read
+    // back as this same value — both are unsafe and MUST be rejected. (Not "not JSON-representable".)
+    description: 'integer === 2^53 (MAX_SAFE_INTEGER+1) is outside the IEEE-754 safe-integer range and MUST be rejected',
+    build: () => ({ big: 9007199254740992 }),
+    reason: 'safe-integer-range',
+  },
+  {
+    id: 'number-large-magnitude-over-range',
+    // Fable review + Codex precision note: the reject bound is on MAGNITUDE (abs > 2^53-1), applying to
+    // every finite number. 1e300 is large and outside the safe range, so it rejects. (Note: in JS
+    // Number.isInteger(1e300) is true — JS cannot faithfully represent a *fractional* value this large —
+    // so this pins "large-magnitude number rejects", documenting the bound is not a literal integer test.)
+    description: 'large-magnitude number outside the IEEE-754 safe range (1e300) MUST be rejected (bound is on magnitude)',
+    build: () => ({ n: 1e300 }),
+    reason: 'safe-integer-range',
+  },
   { id: 'lone-surrogate', description: 'unpaired UTF-16 high surrogate has no valid UTF-8 encoding', build: () => ({ s: '\uD800' }), reason: 'unpaired-surrogate' },
   { id: 'bigint', description: 'BigInt is not JSON-encodable', build: () => ({ b: BigInt(1) }), reason: 'bigint-not-encodable' },
   {

@@ -1,7 +1,7 @@
 {
   "generatedBy": "pathos-dacs-ref vectors/canonical-form/generate.mts",
   "oracle": "src/jcs.ts (RFC 8785 JCS + DACS section B.2 pre-pass: NFC values+keys, safe-int, surrogate-reject, key-collision-reject)",
-  "note": "Accept vectors: sha256 of the JCS canonical form of input MUST equal expectedSha256. Reject vectors are not JSON-representable (BigInt / lone surrogate / over-2^53 / NFC key-collision) - construct per cases.ts builders; a conforming canonicaliser MUST reject each.",
+  "note": "Accept vectors: sha256(JCS canonical form of `input`) MUST equal expectedSha256; canonicalUtf8Hex carries the exact canonical bytes (editor-proof portable form). Reject vectors carry no `input` (BigInt / lone surrogate / over-safe-int / NFC key-collision are not always faithfully JSON-serialisable) — construct via the cases.ts builders; a conforming canonicaliser MUST reject each for the stated reason.",
   "acceptVectors": [
     {
       "id": "ascii-basic",
@@ -10,6 +10,7 @@
         "a": 1,
         "b": "hello"
       },
+      "canonicalUtf8Hex": "7b2261223a312c2262223a2268656c6c6f227d",
       "expectedSha256": "d84ab9f85753473707229d00b92623f0f9a1b8b9bf69763fc5cfc692b56c236b"
     },
     {
@@ -19,6 +20,7 @@
         "b": "hello",
         "a": 1
       },
+      "canonicalUtf8Hex": "7b2261223a312c2262223a2268656c6c6f227d",
       "expectedSha256": "d84ab9f85753473707229d00b92623f0f9a1b8b9bf69763fc5cfc692b56c236b",
       "sameHashAs": "ascii-basic"
     },
@@ -28,6 +30,7 @@
       "input": {
         "name": "café"
       },
+      "canonicalUtf8Hex": "7b226e616d65223a22636166c3a9227d",
       "expectedSha256": "645fa443126a8954fc6d871912b8fc67bc2ee8feae417efe55546251962ca74d"
     },
     {
@@ -36,6 +39,7 @@
       "input": {
         "name": "café"
       },
+      "canonicalUtf8Hex": "7b226e616d65223a22636166c3a9227d",
       "expectedSha256": "645fa443126a8954fc6d871912b8fc67bc2ee8feae417efe55546251962ca74d",
       "sameHashAs": "nfc-precomposed"
     },
@@ -45,6 +49,7 @@
       "input": {
         "café": 1
       },
+      "canonicalUtf8Hex": "7b22636166c3a9223a317d",
       "expectedSha256": "4ba6f859a6604763e30e1afc74dd00bf3b245be58d902b5d1ae0eaa119e8a141"
     },
     {
@@ -53,6 +58,7 @@
       "input": {
         "café": 1
       },
+      "canonicalUtf8Hex": "7b22636166c3a9223a317d",
       "expectedSha256": "4ba6f859a6604763e30e1afc74dd00bf3b245be58d902b5d1ae0eaa119e8a141",
       "sameHashAs": "unicode-key-nfc"
     },
@@ -62,7 +68,17 @@
       "input": {
         "n": 42
       },
+      "canonicalUtf8Hex": "7b226e223a34327d",
       "expectedSha256": "4e0730f238f81de137ff27d89ec3bcc3ebadf95107661387df82043c4ec25475"
+    },
+    {
+      "id": "safe-int-max",
+      "description": "Number.MAX_SAFE_INTEGER (2^53-1 = 9007199254740991) is the LARGEST accepted integer (boundary)",
+      "input": {
+        "n": 9007199254740991
+      },
+      "canonicalUtf8Hex": "7b226e223a393030373139393235343734303939317d",
+      "expectedSha256": "e1da48c6a6089f06ecb4e0a2259e658e3786b2420f52baccdf929ec6460d7b41"
     },
     {
       "id": "number-decimal",
@@ -70,6 +86,7 @@
       "input": {
         "n": 0.5
       },
+      "canonicalUtf8Hex": "7b226e223a302e357d",
       "expectedSha256": "aec38c68ae9784cd6c9391c1d52335984c2722d6ec167168b08027566480962d"
     },
     {
@@ -89,13 +106,19 @@
           "y"
         ]
       },
+      "canonicalUtf8Hex": "7b226c697374223a5b2278222c2279225d2c226f75746572223a7b2261223a747275652c227a223a5b332c322c315d7d7d",
       "expectedSha256": "048f40344a297ef97cc63b6ad6f846da8d5e5b9fb33b9a6cb0ac67cc796747cc"
     }
   ],
   "rejectVectors": [
     {
       "id": "number-over-2pow53",
-      "description": "integer above 2^53-1 has no reproducible JCS form; carry as a string",
+      "description": "integer === 2^53 (MAX_SAFE_INTEGER+1) is outside the IEEE-754 safe-integer range and MUST be rejected",
+      "reason": "safe-integer-range"
+    },
+    {
+      "id": "number-large-magnitude-over-range",
+      "description": "large-magnitude number outside the IEEE-754 safe range (1e300) MUST be rejected (bound is on magnitude)",
       "reason": "safe-integer-range"
     },
     {
