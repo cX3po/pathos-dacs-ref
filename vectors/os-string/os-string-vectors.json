@@ -90,6 +90,24 @@
       "bareBigIntAccepts": true
     },
     {
+      "id": "neg-zero",
+      "s": "-0",
+      "reason": "a SECOND byte-distinct encoding of zero on a money field (canonical zero is \"0\")",
+      "bareBigIntAccepts": true
+    },
+    {
+      "id": "upper-hex",
+      "s": "0X1F",
+      "reason": "uppercase 0X radix prefix — radix ambiguity",
+      "bareBigIntAccepts": true
+    },
+    {
+      "id": "newline-trim",
+      "s": "\n42",
+      "reason": "leading newline (BigInt trims ASCII whitespace incl \\n)",
+      "bareBigIntAccepts": true
+    },
+    {
       "id": "fractional",
       "s": "1.5",
       "reason": "OS is an integer denomination — no fraction",
