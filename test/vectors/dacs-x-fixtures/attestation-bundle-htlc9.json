@@ -1,7 +1,7 @@
 {
   "bundleVersion": "1",
   "jobId": "DACS-VERIFY-HTLC9",
-  "outcome": "failed-substrate",
+  "outcome": "failed-counterparty",
   "anchoredByRole": "buyer",
   "listingRef": {
     "listingId": "listing-dacs-verify-htlc9",
@@ -56,7 +56,7 @@
       "attestationRef": {
         "kind": "dacs-4-evidence",
         "id": "settlement-dacs-verify-htlc9",
-        "contentHash": "07f3577396f8a11bf8711cf6d4b745fa7ae83c3dce9f8ac97add0c785f5ea82b"
+        "contentHash": "55636c35a423e47876dab0732d6ecfab20c350a13ab851303047100d7c0205d1"
       }
     }
   ],
@@ -71,7 +71,7 @@
     {
       "kind": "dacs-4-evidence",
       "id": "settlement-dacs-verify-htlc9",
-      "contentHash": "07f3577396f8a11bf8711cf6d4b745fa7ae83c3dce9f8ac97add0c785f5ea82b"
+      "contentHash": "55636c35a423e47876dab0732d6ecfab20c350a13ab851303047100d7c0205d1"
     }
   ],
   "recipeRegistryVersion": 1,
@@ -81,12 +81,12 @@
     {
       "party": "did:demos:buyer",
       "algorithm": "ed25519",
-      "value": "E2UY59mwEf0OcTFKCxI9o1s_1Y-NYwUJWkVrtUwR8O5V-qXgL4rOx61OfCS8YeAMDpnuOWJw8oRCEiEuxWV-Dg"
+      "value": "pErKCIjrDUTrc3PAHlEhDb7dSLoK1EBMwMfChi3IWyjzzUkQA01fjesuhYyxboXaorSH8lhHFJJFSeP9w5_yAw"
     },
     {
       "party": "did:demos:seller",
       "algorithm": "ed25519",
-      "value": "vXIMQmBURHZNUS5crId1xtemjDi_0YeusX3NLobygW7KQiExRseP4Esbf5-D4Hir5HWOmVgRj-D16BU4tFWFBQ"
+      "value": "IHigNueNTQLmegunQl2X3uYezm3aD_Ma--_b16AkbXGCM2_zcmNv4O9TlNHgovz6tGVOgu_GmPCYwnAWwFrTCQ"
     }
   ]
 }

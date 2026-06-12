@@ -21,7 +21,8 @@ import type { ClaimRef } from '../types/identity.js';
 import type { AttestationRef } from '../types/verify-result.js';
 import { verify } from './sign.js';
 import { DOMAIN_SEPARATORS } from '../domain-sep.js';
-import { jcsHashHex, jcsCanonical } from '../jcs.js';
+import { jcsCanonical } from '../jcs.js';
+import { bundleSignedScopeHashV1 } from './bundle-signed-scope-v1.js';
 import { sha256 } from '@noble/hashes/sha2';
 import { fetchAnchored } from '../demos/storage.js';
 
@@ -223,18 +224,16 @@ export function verifyBundleV1(
   }
 
   const { signatures, ...unsigned } = bundle;
-  // Signed scope = bundle WITHOUT `signatures` (§10.4.1). This INCLUDES `anchoredByRole`.
+  // Signed scope = bundle WITHOUT `signatures` AND WITHOUT `anchoredByRole` (§10.4.1 + R5-1).
   //
-  // FIX 2 — anchoredByRole protection. CORE.md:477/:612 envision `anchoredByRole` being EXCLUDED
-  // from the canonical hash (so the two two-sided copies hash equal) and integrity-checked against
-  // the anchor address instead. This reference impl currently keeps `anchoredByRole` IN the signed
-  // hash to preserve the locked cross-impl fixture hash `98d7b565` (changing the hash scope needs
-  // separate Marius coordination — do NOT change it here). The COMPENSATING control that makes this
-  // safe is the FIX 1 anchor-address ↔ anchoredByRole cross-check in verifyV1TwoSided: a tampered
-  // `anchoredByRole` is caught by EITHER (a) the signature, because the flipped value changes
-  // bundleHash and the ed25519 sig no longer verifies, OR (b) the address-role mismatch on the
-  // two-sided path. In-hash signing + address cross-check is the chosen, documented protection.
-  const bundleHash = jcsHashHex(unsigned);
+  // anchoredByRole is EXCLUDED from the hashed canonical form (DACS-Standard v0.1, CHANGELOG R5-1):
+  // it is per-copy (buyer/seller/orchestrator), so excluding it makes the two two-sided copies hash
+  // EQUAL in the happy path (keeping it in-hash mis-routed every happy-path session to "disputed").
+  // Re-pin 2026-06-11 converged this impl to upstream: the prior in-hash choice (which preserved the
+  // old cross-impl fixture hash 98d7b565) is superseded. Integrity of anchoredByRole is now restored
+  // by the anchor-address ↔ anchoredByRole cross-check in verifyV1TwoSided (§10.4.2/§248) — the copy
+  // at the buyer address MUST declare "buyer", the seller address "seller" — NOT by the signature.
+  const bundleHash = bundleSignedScopeHashV1(unsigned);
 
   // Listed-party claim set; required signers = EVERY distinct party claim (buyer + seller +
   // each distinct orchestrator) — covers multiple/shared-claim orchestrators correctly. §10.4.1

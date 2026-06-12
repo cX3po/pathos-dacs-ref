@@ -51,7 +51,7 @@
       "attestationRef": {
         "kind": "dacs-4-evidence",
         "id": "settlement-dacs-verify-0004-seller",
-        "contentHash": "76083c8244ab27566fb3ae087bd98ecb26d98d1a3634662e3b1c010f0dcd3236"
+        "contentHash": "2deac1e76a2943e93f1b366a99b7b8d77016bef532b21759658342f37b9bb807"
       }
     }
   ],
@@ -66,7 +66,7 @@
     {
       "kind": "dacs-4-evidence",
       "id": "settlement-dacs-verify-0004-seller",
-      "contentHash": "76083c8244ab27566fb3ae087bd98ecb26d98d1a3634662e3b1c010f0dcd3236"
+      "contentHash": "2deac1e76a2943e93f1b366a99b7b8d77016bef532b21759658342f37b9bb807"
     }
   ],
   "recipeRegistryVersion": 1,
@@ -76,12 +76,12 @@
     {
       "party": "did:demos:buyer",
       "algorithm": "ed25519",
-      "value": "khYV1n8uVLotQt3ATLCcO40Tbf3nia8YwlmKyveKOW6k8nPfUNu7N8_FefYYnNt0aSVxU6wO9mV2CstNKM0qCw"
+      "value": "eHScvqdkwKjT3EzShbd34fWKdq94mHqe92p6IHsCQKYyIdHWagWzmW-z0kVQEg3QhjKx3XzZqGmrRJI2IEx2CQ"
     },
     {
       "party": "did:demos:seller",
       "algorithm": "ed25519",
-      "value": "VPMmCDyFXq49kui8jEb18eAZhYIL5zx3m-hkucGXaDHUgw7VJmpNXPTOMHviDwFF37FTtoT6WwZrLbJdC3OhDA"
+      "value": "IdSrvKhwy6xFlyJcaQXLIDQX216LeIyvJW5XzvGcjUhFtppb7LbUMXwgejQsvOQmLm4Zv4AWZvreHLjb4YODDg"
     }
   ]
 }

@@ -50,7 +50,7 @@
       "attestationRef": {
         "kind": "dacs-4-evidence",
         "id": "settlement-dacs-verify-0004",
-        "contentHash": "80ddb5b5f01b5c0831cb9f833a2cda28997f698c0389a89d163e2974b4b5033a"
+        "contentHash": "8d0b400b4530267381a5d2d8bdc052b0517097d132c6b3b69e9c2d6f421a758c"
       }
     }
   ],
@@ -65,7 +65,7 @@
     {
       "kind": "dacs-4-evidence",
       "id": "settlement-dacs-verify-0004",
-      "contentHash": "80ddb5b5f01b5c0831cb9f833a2cda28997f698c0389a89d163e2974b4b5033a"
+      "contentHash": "8d0b400b4530267381a5d2d8bdc052b0517097d132c6b3b69e9c2d6f421a758c"
     }
   ],
   "recipeRegistryVersion": 1,
@@ -75,12 +75,12 @@
     {
       "party": "did:demos:buyer",
       "algorithm": "ed25519",
-      "value": "-13GRbsqJO9vnU7QFgONkkUsTLXh7gCMV_xLDXYpyIEEc7zHTF2fztskIBWE23YMYGnekByHNiwbXS8PFINjDg"
+      "value": "oYyPHgz8ehrMsCLeSDdruuHDEsLbHZrTcIearhk6K2w9aiBgx7CdGOYHbJcr3imaPr4q21YGUiE_xSh-bT9wDA"
     },
     {
       "party": "did:demos:seller",
       "algorithm": "ed25519",
-      "value": "V-MLJpXIS8n4FF-x9AxOEpasCrrZ7ZS0JHzbcT05pkdBgY0JV7Z4yGmcUa-KniZsTM5H9P8JsOvgANOGq-NfBQ"
+      "value": "TiGFAa9ypWi4gMg-rDunkkipyNYe-asHLRF1m6Q6RFfptr7WnqULWDpCzWTjY-kaEjkrngAxJO7iRM4Jlga6AA"
     }
   ]
 }
