@@ -17,7 +17,7 @@ bytes (→ hash / signature drift on anything that includes an OS amount).
 
 `@kynesyslabs/demosdk` v4.0.8 `parseOsString` is bare `BigInt(s)` (`src/denomination/conversion.ts`),
 which **admits outside the canonical grammar** — `""`, surrounding whitespace, a leading `+`, `0x`/`0b`/`0o`
-radix prefixes, and leading zeros — **9 of the 13 reject cases here** (verified against `BigInt()` by the test).
+radix prefixes, and leading zeros — **12 of the 16 reject cases here** (verified against `BigInt()` by the test).
 
 ## The vectors
 - **`os-string-vectors.json`** — `grammar` (the strict regex) + `acceptVectors` (canonical, each
