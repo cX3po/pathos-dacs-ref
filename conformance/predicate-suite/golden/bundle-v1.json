@@ -1,0 +1,25 @@
+{
+  "set": "bundle-v1",
+  "hash": "3e632b0eb166c59decda1a19e302a1169fd0a21449655c0a8ccc3fe4d312c4e4",
+  "count": 18,
+  "predicates": [
+    "valid",
+    "bundleVersion",
+    "jobId",
+    "outcome-enum",
+    "anchoredByRole-known",
+    "anchoredByRole-listed",
+    "listingRef",
+    "registry-versions",
+    "finalisedAt",
+    "phaseSummary",
+    "attestation-ref-shape",
+    "party-shape",
+    "signature-shape",
+    "no-unlisted-signers",
+    "non-abort-needs-buyer-and-seller",
+    "non-abort-needs-all-parties-signed",
+    "signature-encoding",
+    "signature-verifies"
+  ]
+}

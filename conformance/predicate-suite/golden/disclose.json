@@ -1,0 +1,15 @@
+{
+  "set": "disclose",
+  "hash": "9e911f6babc444bcd1292f4da139746a5c60fa2e6f97ff291db328a5d242d31f",
+  "count": 8,
+  "predicates": [
+    "valid",
+    "audience-binding",
+    "nonce-binding",
+    "consent-scope-binding",
+    "freshness-window",
+    "salt-floor",
+    "merkle-membership",
+    "reveal-signature"
+  ]
+}

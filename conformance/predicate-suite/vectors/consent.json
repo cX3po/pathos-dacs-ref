@@ -1,0 +1,348 @@
+[
+  {
+    "name": "consent/valid",
+    "family": "consent",
+    "predicate": "valid",
+    "expected": "ACCEPT",
+    "reason": "grant in force, audience + commitment covered",
+    "input": {
+      "ledger": [
+        {
+          "action": "grant",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999990000,
+          "expiresAt": 1780001000000,
+          "recordId": "59edd06026dfc155a14aedd0d7e360b045422e1fc917c62562ac9a39cd2444cc",
+          "signature": "9f32967e1e35079dda8253c9af6dfe491b92000a413edbef0d9f1175c97273a4dcf34034c3242e9b30458c2d8a5d1252d413519cbf92545e8af4f8505b8ece03"
+        }
+      ],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-A",
+      "commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "now": 1780000000000
+    }
+  },
+  {
+    "name": "consent/action-grant-or-revoke",
+    "family": "consent",
+    "predicate": "action-grant-or-revoke",
+    "expected": "REJECT",
+    "reason": "action must be grant|revoke (unknown action dropped fail-closed)",
+    "input": {
+      "ledger": [
+        {
+          "action": "superseded",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999990000,
+          "expiresAt": 1780001000000,
+          "recordId": "59edd06026dfc155a14aedd0d7e360b045422e1fc917c62562ac9a39cd2444cc",
+          "signature": "9f32967e1e35079dda8253c9af6dfe491b92000a413edbef0d9f1175c97273a4dcf34034c3242e9b30458c2d8a5d1252d413519cbf92545e8af4f8505b8ece03"
+        }
+      ],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-A",
+      "commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "now": 1780000000000
+    }
+  },
+  {
+    "name": "consent/recordId-content-hash",
+    "family": "consent",
+    "predicate": "recordId-content-hash",
+    "expected": "REJECT",
+    "reason": "recordId must equal the content hash of the canonical body",
+    "input": {
+      "ledger": [
+        {
+          "action": "grant",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999990000,
+          "expiresAt": 1780001000000,
+          "recordId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "signature": "9f32967e1e35079dda8253c9af6dfe491b92000a413edbef0d9f1175c97273a4dcf34034c3242e9b30458c2d8a5d1252d413519cbf92545e8af4f8505b8ece03"
+        }
+      ],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-A",
+      "commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "now": 1780000000000
+    }
+  },
+  {
+    "name": "consent/grantor-signature-verifies",
+    "family": "consent",
+    "predicate": "grantor-signature-verifies",
+    "expected": "REJECT",
+    "reason": "grantor signature must verify",
+    "input": {
+      "ledger": [
+        {
+          "action": "grant",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999990000,
+          "expiresAt": 1780001000000,
+          "recordId": "59edd06026dfc155a14aedd0d7e360b045422e1fc917c62562ac9a39cd2444cc",
+          "signature": "0f32967e1e35079dda8253c9af6dfe491b92000a413edbef0d9f1175c97273a4dcf34034c3242e9b30458c2d8a5d1252d413519cbf92545e8af4f8505b8ece03"
+        }
+      ],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-A",
+      "commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "now": 1780000000000
+    }
+  },
+  {
+    "name": "consent/not-revoked",
+    "family": "consent",
+    "predicate": "not-revoked",
+    "expected": "REJECT",
+    "reason": "a later revoke by the establishing grantor supersedes the grant",
+    "input": {
+      "ledger": [
+        {
+          "action": "grant",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999990000,
+          "expiresAt": 1780001000000,
+          "recordId": "59edd06026dfc155a14aedd0d7e360b045422e1fc917c62562ac9a39cd2444cc",
+          "signature": "9f32967e1e35079dda8253c9af6dfe491b92000a413edbef0d9f1175c97273a4dcf34034c3242e9b30458c2d8a5d1252d413519cbf92545e8af4f8505b8ece03"
+        },
+        {
+          "action": "revoke",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999991000,
+          "expiresAt": 1780001000000,
+          "recordId": "b65f7cbddafd37041dcd8118b1e6b7921455529745cd221de5b863f33f7fdb2e",
+          "signature": "8d466d460a64f6e9db94ad7b5ca1372a5b544661f24b0368645dc13ca9fdd28ed54b474949cc20a3d3c6d68e227600472ae16fe173ed4e2457e2ee79b6c74e00"
+        }
+      ],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-A",
+      "commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "now": 1780000000000
+    }
+  },
+  {
+    "name": "consent/not-expired",
+    "family": "consent",
+    "predicate": "not-expired",
+    "expected": "REJECT",
+    "reason": "grant window has passed (now >= expiresAt)",
+    "input": {
+      "ledger": [
+        {
+          "action": "grant",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999990000,
+          "expiresAt": 1780001000000,
+          "recordId": "59edd06026dfc155a14aedd0d7e360b045422e1fc917c62562ac9a39cd2444cc",
+          "signature": "9f32967e1e35079dda8253c9af6dfe491b92000a413edbef0d9f1175c97273a4dcf34034c3242e9b30458c2d8a5d1252d413519cbf92545e8af4f8505b8ece03"
+        }
+      ],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-A",
+      "commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "now": 1780001000001
+    }
+  },
+  {
+    "name": "consent/audience-match",
+    "family": "consent",
+    "predicate": "audience-match",
+    "expected": "REJECT",
+    "reason": "disclosure audience must match the grant audience",
+    "input": {
+      "ledger": [
+        {
+          "action": "grant",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999990000,
+          "expiresAt": 1780001000000,
+          "recordId": "59edd06026dfc155a14aedd0d7e360b045422e1fc917c62562ac9a39cd2444cc",
+          "signature": "9f32967e1e35079dda8253c9af6dfe491b92000a413edbef0d9f1175c97273a4dcf34034c3242e9b30458c2d8a5d1252d413519cbf92545e8af4f8505b8ece03"
+        }
+      ],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-B",
+      "commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "now": 1780000000000
+    }
+  },
+  {
+    "name": "consent/commitment-covered",
+    "family": "consent",
+    "predicate": "commitment-covered",
+    "expected": "REJECT",
+    "reason": "queried commitment must be in the granted commitment set",
+    "input": {
+      "ledger": [
+        {
+          "action": "grant",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999990000,
+          "expiresAt": 1780001000000,
+          "recordId": "59edd06026dfc155a14aedd0d7e360b045422e1fc917c62562ac9a39cd2444cc",
+          "signature": "9f32967e1e35079dda8253c9af6dfe491b92000a413edbef0d9f1175c97273a4dcf34034c3242e9b30458c2d8a5d1252d413519cbf92545e8af4f8505b8ece03"
+        }
+      ],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-A",
+      "commitment": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "now": 1780000000000
+    }
+  },
+  {
+    "name": "consent/grant-present",
+    "family": "consent",
+    "predicate": "grant-present",
+    "expected": "REJECT",
+    "reason": "no authentic grant for this scope (empty ledger)",
+    "input": {
+      "ledger": [],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-A",
+      "commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "now": 1780000000000
+    }
+  },
+  {
+    "name": "consent/authority-guard-holds",
+    "family": "consent",
+    "predicate": "authority-guard-holds",
+    "expected": "ACCEPT",
+    "reason": "a revoke from a non-establishing grantor has no authority and is ignored",
+    "input": {
+      "ledger": [
+        {
+          "action": "grant",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999990000,
+          "expiresAt": 1780001000000,
+          "recordId": "59edd06026dfc155a14aedd0d7e360b045422e1fc917c62562ac9a39cd2444cc",
+          "signature": "9f32967e1e35079dda8253c9af6dfe491b92000a413edbef0d9f1175c97273a4dcf34034c3242e9b30458c2d8a5d1252d413519cbf92545e8af4f8505b8ece03"
+        },
+        {
+          "action": "revoke",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "2012cb90ca60e8e5d8daf66e2272d2233e0486d557e8c66141ed8920177d7eb7",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999991000,
+          "expiresAt": 1780001000000,
+          "recordId": "f71b6b6a199741c221d7e6252a4e673eed95e8445fda592a28f6fd1686cc59ee",
+          "signature": "6d27306e8e4d8169e6eb6d657854a9f89dd738058a02f86d7087b99e0add9057837861579e2ac34f61b181a4e6ceba95b924680865f1623e1f77393a71346d02"
+        }
+      ],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-A",
+      "commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "now": 1780000000000
+    }
+  },
+  {
+    "name": "consent/revoke-then-regrant",
+    "family": "consent",
+    "predicate": "revoke-then-regrant",
+    "expected": "ACCEPT",
+    "reason": "a later grant by the establishing grantor re-establishes consent after a revoke",
+    "input": {
+      "ledger": [
+        {
+          "action": "grant",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999990000,
+          "expiresAt": 1780001000000,
+          "recordId": "59edd06026dfc155a14aedd0d7e360b045422e1fc917c62562ac9a39cd2444cc",
+          "signature": "9f32967e1e35079dda8253c9af6dfe491b92000a413edbef0d9f1175c97273a4dcf34034c3242e9b30458c2d8a5d1252d413519cbf92545e8af4f8505b8ece03"
+        },
+        {
+          "action": "revoke",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999991000,
+          "expiresAt": 1780001000000,
+          "recordId": "b65f7cbddafd37041dcd8118b1e6b7921455529745cd221de5b863f33f7fdb2e",
+          "signature": "8d466d460a64f6e9db94ad7b5ca1372a5b544661f24b0368645dc13ca9fdd28ed54b474949cc20a3d3c6d68e227600472ae16fe173ed4e2457e2ee79b6c74e00"
+        },
+        {
+          "action": "grant",
+          "consent_receipt_id": "consent-scope-0001",
+          "grantor": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "audience": "verifier-A",
+          "commitments": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "issuedAt": 1779999992000,
+          "expiresAt": 1780001000000,
+          "recordId": "58ff44230ddc987ed26b8e1fad9f6a1cc1eff675205588767e847caa45c68f5e",
+          "signature": "a92b5f290ab4336eb3f23ba4aff2eda0d8478f7a319a6984e2d7290911c7ebea11bea032ddf22bca34c769435975d1e92ad3e59f6df560c5d9c0b1b7a038d00f"
+        }
+      ],
+      "scope": "consent-scope-0001",
+      "audience": "verifier-A",
+      "commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "now": 1780000000000
+    }
+  }
+]
