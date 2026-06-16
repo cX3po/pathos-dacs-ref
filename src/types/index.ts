@@ -23,7 +23,7 @@ export type { Listing, UnsignedListing, BundleRequirement, SubstrateRequirement 
 
 // DACS-2 Vet
 export type { VerifyDecision, VerifyResult, AttestationRef, CompositeVerificationRecord } from './verify-result.js';
-export { isPass, isFail, isIndeterminate } from './verify-result.js';
+export { isPass, isFail, isIndeterminate, isError } from './verify-result.js';
 
 // DACS-5 Verify
 export type { AttestationBundle, BundleAnchorPair, PhaseOutcome, PhaseRecord, SessionState, VerifyStep, VerifyVerdict } from './bundle.js';

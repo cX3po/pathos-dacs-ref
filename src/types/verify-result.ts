@@ -15,8 +15,18 @@
 
 import type { ClaimRef } from './identity.js';
 
-/** Per §7.5.1 — exactly three permitted decisions, no implicit boolean coercion. */
-export type VerifyDecision = 'pass' | 'fail' | 'indeterminate';
+/**
+ * Per §7.5.1 — the four permitted decisions, no implicit boolean coercion.
+ *   - pass          : ran cleanly, authority confirmed the claim.
+ *   - fail          : ran cleanly, authority conclusively contradicts the claim.
+ *   - indeterminate : ran cleanly, response parseable but neither confirms nor contradicts.
+ *   - error         : verification could not complete (transport failure, timeout,
+ *                     parser cannot consume the response, parser exception, unexpected
+ *                     authority API change). The verifier never received a decision.
+ * error vs indeterminate is the verifier's failure to obtain an answer vs the authority's
+ * answer being non-binary — consumers MUST NOT collapse them (§7.5.1 aggregation semantics).
+ */
+export type VerifyDecision = 'pass' | 'fail' | 'indeterminate' | 'error';
 
 /** Reference to an anchored attestation (§7.5.2). */
 export interface AttestationRef {
@@ -42,7 +52,7 @@ export interface VerifyResult {
   claim: ClaimRef;
   /** The recipe used (id@version) */
   recipe: string;
-  /** The decision — pass | fail | indeterminate, MUST NOT collapse */
+  /** The decision — pass | fail | indeterminate | error, MUST NOT collapse (§7.5.1) */
   decision: VerifyDecision;
   /** Reason for the decision (free-text, structured-where-possible) */
   reason: string;
@@ -63,11 +73,13 @@ export interface CompositeVerificationRecord {
   /** All individual VerifyResults aggregated here */
   results: VerifyResult[];
   /** Aggregate decision per §7.7.1:
-   *   - 'pass'         iff every result.decision === 'pass'
-   *   - 'fail'         iff any result.decision === 'fail'
-   *   - 'indeterminate' iff no 'fail' and at least one 'indeterminate'
+   *   - 'pass' iff every result.decision === 'pass'
+   *   - otherwise the aggregate is a non-pass outcome; §7.7.1 ranks the three non-pass
+   *     values by context (oneOf within-group: error > indeterminate > fail;
+   *     cross-accumulator: fail > error > indeterminate) and NEVER collapses any of
+   *     fail / indeterminate / error to pass (§7.5.1 aggregation invariant).
    *
-   * NB: aggregation keeps fail and indeterminate distinct — they do NOT collapse.
+   * NB: fail, indeterminate, and error stay distinct — they do not collapse.
    */
   aggregateDecision: VerifyDecision;
   /** Aggregate produced at (ISO 8601) */
@@ -89,4 +101,7 @@ export function isFail(d: VerifyDecision): d is 'fail' {
 }
 export function isIndeterminate(d: VerifyDecision): d is 'indeterminate' {
   return d === 'indeterminate';
+}
+export function isError(d: VerifyDecision): d is 'error' {
+  return d === 'error';
 }

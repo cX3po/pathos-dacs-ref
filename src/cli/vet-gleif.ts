@@ -9,9 +9,14 @@
  *   2. Fetch the LEI record via the open GLEIF public API (no key required)
  *      https://api.gleif.org/api/v1/lei-records/{LEI}
  *   3. Convert the response into a §7.5.1 VerifyResult with:
- *        decision = "pass" iff entity exists AND registration is ISSUED (active)
- *        decision = "fail" iff entity not found OR registration LAPSED/RETIRED
- *        decision = "indeterminate" iff network error / unparseable response (CM-4: MUST NOT coerce)
+ *        decision = "pass"  iff entity exists AND registration is ISSUED (active)
+ *        decision = "fail"  iff entity not found OR registration LAPSED/RETIRED/ANNULLED
+ *        decision = "indeterminate" iff the record parses but its status is non-binary
+ *                                   (authority answered; answer not conclusive — §7.5.1)
+ *        decision = "error" iff verification could not complete: transport failure,
+ *                                   timeout, or a response the parser cannot consume (§7.5.1).
+ *                                   error ≠ indeterminate: the verifier never got an answer
+ *                                   (per §7.5.1; CM-4 requires classifying into this 4-value enum).
  *   4. Produce an AttestationRef (DAHR-attested response hash) — STUB in v0.1
  *      (Demos SDK DAHR proxy will wire in v0.2)
  *   5. Print the structured VerifyResult to stdout
@@ -40,7 +45,7 @@ Options:
   --help                 Show this message
 
 Exit codes:
-  0 = pass    1 = fail    2 = indeterminate    3 = usage error
+  0 = pass    1 = fail    2 = indeterminate    3 = usage error    4 = error (§7.5.1)
 
 DACS spec sections: §7.3.5 (consensus-backed-proxy), §7.5.1 (VerifyResult), §7.5.2 (AttestationRef)
 `;
@@ -118,7 +123,7 @@ async function main(): Promise<void> {
     } catch (e) {
       console.error(`Error: Demos connection failed (${(e as Error).message})`);
       console.error('Pass --dry-run to explicitly skip anchoring, or fix the connection (DEMOS_MNEMONIC env, RPC URL).');
-      process.exit(2); // §7.5.1 indeterminate — verifier could not produce an anchored receipt
+      process.exit(4); // §7.5.1 error — verifier could not complete (transport/setup failure), NOT indeterminate
     }
   }
 
@@ -144,8 +149,11 @@ async function main(): Promise<void> {
       decision = 'fail';
       reason = `LEI not found at GLEIF: ${body.errors?.[0]?.detail ?? 'HTTP 404'}`;
     } else if (!body.data) {
-      decision = 'indeterminate';
-      reason = 'GLEIF response had neither data nor errors — unparseable';
+      // §7.5.1 error: a response the parser cannot consume / unexpected authority API
+      // shape — the verifier never obtained an authority decision. NOT indeterminate
+      // (which is reserved for a parseable record the authority left non-binary).
+      decision = 'error';
+      reason = 'GLEIF response had neither data nor errors — parser could not consume it (unexpected shape)';
     } else {
       entityName = body.data.attributes?.entity?.legalName?.name;
       regStatus = body.data.attributes?.registration?.status;
@@ -161,8 +169,10 @@ async function main(): Promise<void> {
       }
     }
   } catch (e) {
-    // §7.5.1 — CM-4: network/anchor error MUST NOT coerce to pass; map to indeterminate
-    decision = 'indeterminate';
+    // §7.5.1 error: transport failure / SR-3 fetch timeout / anchor failure — verification
+    // could not complete, so the verifier never received an authority decision. This is
+    // error, NOT indeterminate (and certainly never coerced to pass).
+    decision = 'error';
     reason = `DAHR fetch + anchor failed: ${(e as Error).message}`;
   }
 
@@ -190,7 +200,8 @@ async function main(): Promise<void> {
   console.error('');
 
   console.log(JSON.stringify(result, null, 2));
-  process.exit(decision === 'pass' ? 0 : decision === 'fail' ? 1 : 2);
+  // §7.5.1 exit codes: pass 0 · fail 1 · indeterminate 2 · error 4 (3 reserved for usage)
+  process.exit(decision === 'pass' ? 0 : decision === 'fail' ? 1 : decision === 'indeterminate' ? 2 : 4);
 }
 
 main().catch((err) => {
