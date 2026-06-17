@@ -1,0 +1,18 @@
+{
+  "set": "consent",
+  "hash": "9cd020220d67b8044f65a53491e49625cd7f425bfb14967b0e7cce9ce1475eaa",
+  "count": 11,
+  "predicates": [
+    "valid",
+    "action-grant-or-revoke",
+    "recordId-content-hash",
+    "grantor-signature-verifies",
+    "not-revoked",
+    "not-expired",
+    "audience-match",
+    "commitment-covered",
+    "grant-present",
+    "authority-guard-holds",
+    "revoke-then-regrant"
+  ]
+}

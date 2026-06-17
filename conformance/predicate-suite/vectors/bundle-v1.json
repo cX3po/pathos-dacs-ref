@@ -1,0 +1,1388 @@
+[
+  {
+    "name": "bundle-v1/valid",
+    "family": "bundle-v1",
+    "predicate": "valid",
+    "expected": "ACCEPT",
+    "reason": "all §10.4 offline predicates satisfied",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/bundleVersion",
+    "family": "bundle-v1",
+    "predicate": "bundleVersion",
+    "expected": "REJECT",
+    "reason": "bundleVersion must be \"1\"",
+    "input": {
+      "bundleVersion": "2",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/jobId",
+    "family": "bundle-v1",
+    "predicate": "jobId",
+    "expected": "REJECT",
+    "reason": "jobId missing",
+    "input": {
+      "bundleVersion": "1",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/outcome-enum",
+    "family": "bundle-v1",
+    "predicate": "outcome-enum",
+    "expected": "REJECT",
+    "reason": "unknown outcome (§10.4)",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "banana",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/anchoredByRole-known",
+    "family": "bundle-v1",
+    "predicate": "anchoredByRole-known",
+    "expected": "REJECT",
+    "reason": "anchoredByRole missing/invalid (§10.4)",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "overlord",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/anchoredByRole-listed",
+    "family": "bundle-v1",
+    "predicate": "anchoredByRole-listed",
+    "expected": "REJECT",
+    "reason": "anchoredByRole not a listed party role (§10.4)",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "orchestrator",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/listingRef",
+    "family": "bundle-v1",
+    "predicate": "listingRef",
+    "expected": "REJECT",
+    "reason": "listingRef malformed",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "not-a-hash"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/registry-versions",
+    "family": "bundle-v1",
+    "predicate": "registry-versions",
+    "expected": "REJECT",
+    "reason": "registry versions must be non-negative integers",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": -1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/finalisedAt",
+    "family": "bundle-v1",
+    "predicate": "finalisedAt",
+    "expected": "REJECT",
+    "reason": "finalisedAt must be a non-negative integer (unix ms)",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1.5,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/phaseSummary",
+    "family": "bundle-v1",
+    "predicate": "phaseSummary",
+    "expected": "REJECT",
+    "reason": "phaseSummary entries malformed",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "maybe"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/attestation-ref-shape",
+    "family": "bundle-v1",
+    "predicate": "attestation-ref-shape",
+    "expected": "REJECT",
+    "reason": "vetRecords entries must be AttestationRefs",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/party-shape",
+    "family": "bundle-v1",
+    "predicate": "party-shape",
+    "expected": "REJECT",
+    "reason": "party[i] invalid",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "not-a-hash",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/signature-shape",
+    "family": "bundle-v1",
+    "predicate": "signature-shape",
+    "expected": "REJECT",
+    "reason": "signatures[i] invalid",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/no-unlisted-signers",
+    "family": "bundle-v1",
+    "predicate": "no-unlisted-signers",
+    "expected": "REJECT",
+    "reason": "signature(s) from unlisted parties (§10.4.1)",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce"
+          },
+          "algorithm": "ed25519",
+          "value": "wQCISTag+UqCHUjrIhQ7XdUZmbYt5THZTfpzVOMg/QsyYVDWxzs+135+dmtR/4iexTtM8/yXT7ABwDWv1PWWDw=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/non-abort-needs-buyer-and-seller",
+    "family": "bundle-v1",
+    "predicate": "non-abort-needs-buyer-and-seller",
+    "expected": "REJECT",
+    "reason": "non-abort bundle must list buyer + seller parties (§10.4.1)",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "0Kwl5+cDPWPlEoyfunI5PLNe6Nc4x5lE3cNNYZygCYoPq/mjwwBvXmHF4wOUvONXdK6DTKsnWRUHRWEvSlZUCw=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/non-abort-needs-all-parties-signed",
+    "family": "bundle-v1",
+    "predicate": "non-abort-needs-all-parties-signed",
+    "expected": "REJECT",
+    "reason": "missing required signer(s) (§10.4.1)",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "qaU8s81mhK8AjmilucdIFJkM+0IuLOKDuc9/+DtZ86X5BVy97ZRHOr8OBiyI5HqiGOnIddVEhOceIRu4OQRiDQ=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/signature-encoding",
+    "family": "bundle-v1",
+    "predicate": "signature-encoding",
+    "expected": "REJECT",
+    "reason": "signature value is not a valid 64-byte ed25519 base64/base64url",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "not+valid+base64!!"
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "/5cE/VDHktkWQU9bxFUCZSrGpJRHc6guwR1ZRvw+lfCXSoCMO3bsc8BEf7qILoCqU3R0Rb22exOcmSSS2xzuBA=="
+        }
+      ]
+    }
+  },
+  {
+    "name": "bundle-v1/signature-verifies",
+    "family": "bundle-v1",
+    "predicate": "signature-verifies",
+    "expected": "REJECT",
+    "reason": "signature does not verify over dacs-bundle:v1: || bundleHash",
+    "input": {
+      "bundleVersion": "1",
+      "jobId": "CONFORMANCE-0001",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-conf-0001",
+        "version": 1,
+        "contentHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          }
+        },
+        {
+          "role": "seller",
+          "bundleHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "primaryClaim": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          }
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "vet-counterparty",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "vet-0001",
+          "contentHash": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "settle-0001",
+          "contentHash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780004000000,
+      "signatures": [
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+          },
+          "algorithm": "ed25519",
+          "value": "XADm/wWjEOxwx0bTdjzPr5vGyBqDEEIz/yJk0SDsm7hRBT4cihpb7mtkaOZ+zRCicOGkE7M87dHyUht3ExMPCQ=="
+        },
+        {
+          "party": {
+            "scheme": "cci",
+            "identifier": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+          },
+          "algorithm": "ed25519",
+          "value": "0GNgjt4ijeuTGBRFOUE+3QXyeHvY23A08JxvhJZMZ8ppCqrwB+B8lflEP8SQVwVK5GwuwPlsfaAfe3WNVoiuBg=="
+        }
+      ]
+    }
+  }
+]

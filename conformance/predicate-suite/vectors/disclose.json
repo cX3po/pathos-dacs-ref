@@ -1,0 +1,298 @@
+[
+  {
+    "name": "disclose/valid",
+    "family": "disclose",
+    "predicate": "valid",
+    "expected": "ACCEPT",
+    "reason": "audience+nonce+consent+freshness+membership+signature all satisfied",
+    "input": {
+      "disclosed": {
+        "claim": {
+          "scheme": "naics",
+          "identifier": "541511"
+        },
+        "salt": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+        "merkle_path": [
+          {
+            "sibling": "ba7562c768fa4b48449da3cebba26734ad57434eded4423085f908d46d8dca36",
+            "side": "right"
+          }
+        ],
+        "reveal_sig": "b7dc770ef3ff58d426eb9575c202d7b23ec159e872694a1d9cc401372503fc5e544b7860fa1ec2dc000f5b8fb23568855fd077e712d46aafb2533ab2f052f405",
+        "challenge": {
+          "verifier_id": "verifier-A",
+          "consent_receipt_id": "consent-scope-0001",
+          "nonce": "nonce-fixed-0001",
+          "expiry": 1780001000000
+        }
+      },
+      "options": {
+        "signedRoot": "0e1c0ea0946517c180720535ffc437eefb7aa4d51891e642ea96f74be5ce56e6",
+        "presentationPubKey": "af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d",
+        "expectedVerifierId": "verifier-A",
+        "expectedNonce": "nonce-fixed-0001",
+        "expectedConsentReceiptId": "consent-scope-0001",
+        "now": 1780000000000
+      }
+    }
+  },
+  {
+    "name": "disclose/audience-binding",
+    "family": "disclose",
+    "predicate": "audience-binding",
+    "expected": "REJECT",
+    "reason": "reveal must bind THIS verifier_id",
+    "input": {
+      "disclosed": {
+        "claim": {
+          "scheme": "naics",
+          "identifier": "541511"
+        },
+        "salt": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+        "merkle_path": [
+          {
+            "sibling": "ba7562c768fa4b48449da3cebba26734ad57434eded4423085f908d46d8dca36",
+            "side": "right"
+          }
+        ],
+        "reveal_sig": "b7dc770ef3ff58d426eb9575c202d7b23ec159e872694a1d9cc401372503fc5e544b7860fa1ec2dc000f5b8fb23568855fd077e712d46aafb2533ab2f052f405",
+        "challenge": {
+          "verifier_id": "verifier-A",
+          "consent_receipt_id": "consent-scope-0001",
+          "nonce": "nonce-fixed-0001",
+          "expiry": 1780001000000
+        }
+      },
+      "options": {
+        "signedRoot": "0e1c0ea0946517c180720535ffc437eefb7aa4d51891e642ea96f74be5ce56e6",
+        "presentationPubKey": "af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d",
+        "expectedVerifierId": "verifier-B",
+        "expectedNonce": "nonce-fixed-0001",
+        "expectedConsentReceiptId": "consent-scope-0001",
+        "now": 1780000000000
+      }
+    }
+  },
+  {
+    "name": "disclose/nonce-binding",
+    "family": "disclose",
+    "predicate": "nonce-binding",
+    "expected": "REJECT",
+    "reason": "reveal must carry the nonce THIS challenge issued",
+    "input": {
+      "disclosed": {
+        "claim": {
+          "scheme": "naics",
+          "identifier": "541511"
+        },
+        "salt": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+        "merkle_path": [
+          {
+            "sibling": "ba7562c768fa4b48449da3cebba26734ad57434eded4423085f908d46d8dca36",
+            "side": "right"
+          }
+        ],
+        "reveal_sig": "b7dc770ef3ff58d426eb9575c202d7b23ec159e872694a1d9cc401372503fc5e544b7860fa1ec2dc000f5b8fb23568855fd077e712d46aafb2533ab2f052f405",
+        "challenge": {
+          "verifier_id": "verifier-A",
+          "consent_receipt_id": "consent-scope-0001",
+          "nonce": "nonce-fixed-0001",
+          "expiry": 1780001000000
+        }
+      },
+      "options": {
+        "signedRoot": "0e1c0ea0946517c180720535ffc437eefb7aa4d51891e642ea96f74be5ce56e6",
+        "presentationPubKey": "af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d",
+        "expectedVerifierId": "verifier-A",
+        "expectedNonce": "nonce-other",
+        "expectedConsentReceiptId": "consent-scope-0001",
+        "now": 1780000000000
+      }
+    }
+  },
+  {
+    "name": "disclose/consent-scope-binding",
+    "family": "disclose",
+    "predicate": "consent-scope-binding",
+    "expected": "REJECT",
+    "reason": "reveal must bind the consent scope the verifier operates under",
+    "input": {
+      "disclosed": {
+        "claim": {
+          "scheme": "naics",
+          "identifier": "541511"
+        },
+        "salt": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+        "merkle_path": [
+          {
+            "sibling": "ba7562c768fa4b48449da3cebba26734ad57434eded4423085f908d46d8dca36",
+            "side": "right"
+          }
+        ],
+        "reveal_sig": "b7dc770ef3ff58d426eb9575c202d7b23ec159e872694a1d9cc401372503fc5e544b7860fa1ec2dc000f5b8fb23568855fd077e712d46aafb2533ab2f052f405",
+        "challenge": {
+          "verifier_id": "verifier-A",
+          "consent_receipt_id": "consent-scope-0001",
+          "nonce": "nonce-fixed-0001",
+          "expiry": 1780001000000
+        }
+      },
+      "options": {
+        "signedRoot": "0e1c0ea0946517c180720535ffc437eefb7aa4d51891e642ea96f74be5ce56e6",
+        "presentationPubKey": "af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d",
+        "expectedVerifierId": "verifier-A",
+        "expectedNonce": "nonce-fixed-0001",
+        "expectedConsentReceiptId": "other-scope",
+        "now": 1780000000000
+      }
+    }
+  },
+  {
+    "name": "disclose/freshness-window",
+    "family": "disclose",
+    "predicate": "freshness-window",
+    "expected": "REJECT",
+    "reason": "reveal must be unexpired (now < expiry)",
+    "input": {
+      "disclosed": {
+        "claim": {
+          "scheme": "naics",
+          "identifier": "541511"
+        },
+        "salt": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+        "merkle_path": [
+          {
+            "sibling": "ba7562c768fa4b48449da3cebba26734ad57434eded4423085f908d46d8dca36",
+            "side": "right"
+          }
+        ],
+        "reveal_sig": "b7dc770ef3ff58d426eb9575c202d7b23ec159e872694a1d9cc401372503fc5e544b7860fa1ec2dc000f5b8fb23568855fd077e712d46aafb2533ab2f052f405",
+        "challenge": {
+          "verifier_id": "verifier-A",
+          "consent_receipt_id": "consent-scope-0001",
+          "nonce": "nonce-fixed-0001",
+          "expiry": 1780001000000
+        }
+      },
+      "options": {
+        "signedRoot": "0e1c0ea0946517c180720535ffc437eefb7aa4d51891e642ea96f74be5ce56e6",
+        "presentationPubKey": "af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d",
+        "expectedVerifierId": "verifier-A",
+        "expectedNonce": "nonce-fixed-0001",
+        "expectedConsentReceiptId": "consent-scope-0001",
+        "now": 1780001000001
+      }
+    }
+  },
+  {
+    "name": "disclose/salt-floor",
+    "family": "disclose",
+    "predicate": "salt-floor",
+    "expected": "REJECT",
+    "reason": "salt must be >=128-bit",
+    "input": {
+      "disclosed": {
+        "claim": {
+          "scheme": "naics",
+          "identifier": "541511"
+        },
+        "salt": "ab",
+        "merkle_path": [
+          {
+            "sibling": "ba7562c768fa4b48449da3cebba26734ad57434eded4423085f908d46d8dca36",
+            "side": "right"
+          }
+        ],
+        "reveal_sig": "b7dc770ef3ff58d426eb9575c202d7b23ec159e872694a1d9cc401372503fc5e544b7860fa1ec2dc000f5b8fb23568855fd077e712d46aafb2533ab2f052f405",
+        "challenge": {
+          "verifier_id": "verifier-A",
+          "consent_receipt_id": "consent-scope-0001",
+          "nonce": "nonce-fixed-0001",
+          "expiry": 1780001000000
+        }
+      },
+      "options": {
+        "signedRoot": "0e1c0ea0946517c180720535ffc437eefb7aa4d51891e642ea96f74be5ce56e6",
+        "presentationPubKey": "af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d",
+        "expectedVerifierId": "verifier-A",
+        "expectedNonce": "nonce-fixed-0001",
+        "expectedConsentReceiptId": "consent-scope-0001",
+        "now": 1780000000000
+      }
+    }
+  },
+  {
+    "name": "disclose/merkle-membership",
+    "family": "disclose",
+    "predicate": "merkle-membership",
+    "expected": "REJECT",
+    "reason": "recomputed commitment must fold to the signed root",
+    "input": {
+      "disclosed": {
+        "claim": {
+          "scheme": "lei",
+          "identifier": "5493000000000000XXXX"
+        },
+        "salt": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+        "merkle_path": [
+          {
+            "sibling": "ba7562c768fa4b48449da3cebba26734ad57434eded4423085f908d46d8dca36",
+            "side": "right"
+          }
+        ],
+        "reveal_sig": "b7dc770ef3ff58d426eb9575c202d7b23ec159e872694a1d9cc401372503fc5e544b7860fa1ec2dc000f5b8fb23568855fd077e712d46aafb2533ab2f052f405",
+        "challenge": {
+          "verifier_id": "verifier-A",
+          "consent_receipt_id": "consent-scope-0001",
+          "nonce": "nonce-fixed-0001",
+          "expiry": 1780001000000
+        }
+      },
+      "options": {
+        "signedRoot": "0e1c0ea0946517c180720535ffc437eefb7aa4d51891e642ea96f74be5ce56e6",
+        "presentationPubKey": "af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d",
+        "expectedVerifierId": "verifier-A",
+        "expectedNonce": "nonce-fixed-0001",
+        "expectedConsentReceiptId": "consent-scope-0001",
+        "now": 1780000000000
+      }
+    }
+  },
+  {
+    "name": "disclose/reveal-signature",
+    "family": "disclose",
+    "predicate": "reveal-signature",
+    "expected": "REJECT",
+    "reason": "reveal_sig must verify under the presentation key",
+    "input": {
+      "disclosed": {
+        "claim": {
+          "scheme": "naics",
+          "identifier": "541511"
+        },
+        "salt": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+        "merkle_path": [
+          {
+            "sibling": "ba7562c768fa4b48449da3cebba26734ad57434eded4423085f908d46d8dca36",
+            "side": "right"
+          }
+        ],
+        "reveal_sig": "07dc770ef3ff58d426eb9575c202d7b23ec159e872694a1d9cc401372503fc5e544b7860fa1ec2dc000f5b8fb23568855fd077e712d46aafb2533ab2f052f405",
+        "challenge": {
+          "verifier_id": "verifier-A",
+          "consent_receipt_id": "consent-scope-0001",
+          "nonce": "nonce-fixed-0001",
+          "expiry": 1780001000000
+        }
+      },
+      "options": {
+        "signedRoot": "0e1c0ea0946517c180720535ffc437eefb7aa4d51891e642ea96f74be5ce56e6",
+        "presentationPubKey": "af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d",
+        "expectedVerifierId": "verifier-A",
+        "expectedNonce": "nonce-fixed-0001",
+        "expectedConsentReceiptId": "consent-scope-0001",
+        "now": 1780000000000
+      }
+    }
+  }
+]

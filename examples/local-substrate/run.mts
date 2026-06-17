@@ -32,7 +32,7 @@ function signedBundle(jobId: string, role: 'buyer' | 'seller', selfPub: string, 
     phases: [],
     finalisedAt: '2026-05-28T01:00:00Z',
   };
-  const sig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, jcsCanonical(unsigned), selfPriv, jcsHash(unsigned));
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, jcsCanonical(unsigned), selfPriv, jcsHash(unsigned));
   return { ...unsigned, signature: Buffer.from(sig).toString('base64') };
 }
 
