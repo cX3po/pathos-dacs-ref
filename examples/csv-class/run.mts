@@ -152,7 +152,7 @@ async function main() {
   };
   const buyerCanonical = jcsCanonical(buyerBundleUnsigned);
   const buyerHash = jcsHash(buyerBundleUnsigned);
-  const buyerSig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, buyerCanonical, buyer.privKey, buyerHash);
+  const buyerSig = sign(DOMAIN_SEPARATORS.BUNDLE, buyerCanonical, buyer.privKey, buyerHash);
   const buyerBundle: AttestationBundle = { ...buyerBundleUnsigned, signature: Buffer.from(buyerSig).toString('base64') };
 
   const sellerBundleUnsigned: AttestationBundle = {
@@ -163,7 +163,7 @@ async function main() {
   };
   const sellerCanonical = jcsCanonical(sellerBundleUnsigned);
   const sellerHash = jcsHash(sellerBundleUnsigned);
-  const sellerSig = sign(DOMAIN_SEPARATORS.BUNDLE_DACS5, sellerCanonical, seller.privKey, sellerHash);
+  const sellerSig = sign(DOMAIN_SEPARATORS.BUNDLE, sellerCanonical, seller.privKey, sellerHash);
   const sellerBundle: AttestationBundle = { ...sellerBundleUnsigned, signature: Buffer.from(sellerSig).toString('base64') };
   log(`✓ DACS-5 both bundles built + signed`);
 
