@@ -13,7 +13,7 @@ compares ONLY the deterministic verdict — NOT the per-run attestation/timestam
 |---|---|---|
 | `claim` (scheme + identifier) | ✅ | the input both sides verify |
 | `recipe` family | ✅ (family, not version pin) | both target the same method class |
-| `decision` (`pass`/`fail`/`indeterminate`) | ✅ | the verdict — must agree (NB: DACS-2 §7.5.1 lists a 4th `error` value; our impl uses 3 + rejects malformed pre-VerifyResult. A draft §7.5.1 clarity note is in flight — co-authored XM33·DNO + C3PO·PATH-OS Labs — pinning the three-way frame: input-rejected → no VerifyResult / `error` → execution failure / `indeterminate` → completed-but-inconclusive) |
+| `decision` (`pass`/`fail`/`indeterminate`/`error`) | ✅ | the verdict — must agree. Our impl carries the full DACS-2 §7.5.1 4-value enum: `error` = verification could-not-complete (transport/timeout/unparseable), distinct from `indeterminate` = ran-but-inconclusive. A malformed claim identifier is rejected pre-`VerifyResult` (no verdict). Matches the §7.5.1 frame XM33·DNO + C3PO·PATH-OS Labs converged on. |
 | entity resolution (`reason` / `supplementarySignals.entityName`) | ✅ | the resolved entity must match |
 | `runAt`, `attestation.anchor`, `contentHash`, `producedAt` | ❌ | per-run (timestamps, anchor) — never expected equal |
 
