@@ -60,6 +60,13 @@ function normCci(identifier: string): string {
 
 const HEX64 = /^[0-9a-f]{64}$/;
 const DID_GRAMMAR = /^did:[a-z0-9]+:[A-Za-z0-9._:-]+$/; // did:<lowercase-method>:<idchars>
+// Spec §B.1: a ClaimReference is the STRING "Scheme:Identifier". The legacy object form
+// { scheme, identifier } is this impl's own drift (surfaced cross-impl in #145/#146). We accept
+// the spec string form for the `cci` raw-key scheme — its identifier is an ed25519 key the verifier
+// resolves — and converge it to the SAME canonical key as the object form, so a string-form claim
+// and the equivalent object claim are ONE logical signer. DID/other-scheme claims keep their handling
+// (a generic scheme split would mis-route did:method:id, since `did` is itself a known scheme).
+const CCI_STRING = /^cci:(?:0x)?([0-9a-fA-F]{64})$/;
 /** A sha256 content/bundle hash: 64 hex chars, optionally a "sha256:" prefix. */
 function isHash(h: unknown): boolean {
   return typeof h === 'string' && /^(sha256:)?[0-9a-fA-F]{64}$/.test(h);
@@ -84,7 +91,13 @@ export type BundleV1Verdict = {
 function claimKey(c: unknown): string | null {
   // Keys are namespaced by representation ("str:" vs "obj:") so a bare-string claim can never
   // collide with a structured claim that stringifies to the same text (impersonation guard).
-  if (typeof c === 'string') return DID_GRAMMAR.test(c) ? `str:${c}` : null; // bare claims must be DIDs
+  if (typeof c === 'string') {
+    // Spec string-form cci ("cci:<hex>") canonicalises to the SAME "obj:cci:<hex>" key as the
+    // object form — it IS the same logical claim, not an impersonation of a different one.
+    const m = CCI_STRING.exec(c);
+    if (m) return `obj:cci:${m[1]!.toLowerCase()}`;
+    return DID_GRAMMAR.test(c) ? `str:${c}` : null; // other bare claims must be DIDs
+  }
   if (c && typeof c === 'object') {
     const o = c as Partial<ClaimRef>;
     if (typeof o.scheme === 'string' && KNOWN_SCHEMES.has(o.scheme) && typeof o.identifier === 'string' && o.identifier.length > 0) {
@@ -115,7 +128,12 @@ function claimKey(c: unknown): string | null {
  * so a 64-hex value under a non-cci scheme is NOT treated as a verifiable key (no scheme confusion).
  */
 function keyBytes(c: unknown): Uint8Array | null {
-  if (!c || typeof c !== 'object') return null; // bare-DID string claims are not raw keys
+  // Spec string-form cci ("cci:<hex>") resolves to the same ed25519 key as the object form.
+  if (typeof c === 'string') {
+    const sm = CCI_STRING.exec(c);
+    return sm ? Uint8Array.from(sm[1]!.toLowerCase().match(/../g)!.map((b) => parseInt(b, 16))) : null;
+  }
+  if (!c || typeof c !== 'object') return null; // other bare-DID string claims are not raw keys
   const o = c as Partial<ClaimRef>;
   if (o.scheme !== 'cci' || typeof o.identifier !== 'string') return null;
   const m = /^([0-9a-fA-F]{64})$/.exec(normCci(o.identifier));
