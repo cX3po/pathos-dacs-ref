@@ -1,13 +1,16 @@
 # `dacs-drift` — DACS conformance / drift check (GitHub Action)
 
-A drop-in CI check for **DACS-5 §10.4 AttestationBundle** fixtures: it computes each bundle's
-**signed-scope `bundleHash`** (v0.1 R5-1 `anchoredByRole`-excluded form), structurally verifies it,
-and — against an expected-hash manifest — **fails CI when a bundle drifts** from its golden value.
+A drop-in CI check for DACS artifact fixtures across two surfaces — it computes each artifact's
+**signed-scope hash**, structurally checks it, and — against an expected-hash manifest — **fails CI
+when an artifact drifts** from its golden value:
 
-It runs your fixtures through the same verifier this reference implementation uses
-(`verifyBundleV1` + `bundleSignedScopeHashV1`), so "does my implementation still agree with the
-reference?" is answered by the reference's own code — the cross-impl divergence layer where
-implementations silently disagree.
+- **DACS-5 §10.4 AttestationBundle** → `bundleHash` (v0.1 R5-1 `anchoredByRole`-excluded form).
+- **DACS-4 §9 SettlementEvidence** → `evidenceHash` (sha256 of JCS without `signature`).
+
+It runs your fixtures through the same primitives this reference implementation uses, so "does my
+implementation still agree with the reference (and the upstream §14 golden)?" is answered by the
+reference's own code — the cross-impl divergence layer where implementations silently disagree.
+dacs-drift reproduces the DACS-Standard golden `bundleHash` and `evidenceHash` byte-for-byte.
 
 ## Quick start
 
@@ -42,25 +45,27 @@ Pin to `@v1` for a stable contract; `@main` tracks the tip.
 
 ## What a green run means (honest scope)
 
-This checks the **§10.4 AttestationBundle signed-scope hash surface only** — not all of DACS, and it
-is **not** a full DACS conformance certification.
+This checks the **signed-scope hash surfaces** — DACS-5 AttestationBundle `bundleHash` and DACS-4
+SettlementEvidence `evidenceHash` — **only**. It is not all of DACS, and **not** a full conformance
+certification.
 
-- **With `expect-manifest`** — your fixtures reproduce the expected `bundleHash`es (match golden).
-- **Discovery mode (no manifest)** — your fixtures are computed + structurally verified; no hash asserted.
-- **Fails the job** on a structurally-invalid bundle in either mode, and additionally on hash **drift**
+- **With `expect-manifest`** — your fixtures reproduce the expected hashes (match golden).
+- **Discovery mode (no manifest)** — your fixtures are computed + structurally checked; no hash asserted.
+- **Fails the job** on a structurally-invalid artifact in either mode, and additionally on hash **drift**
   or an **expected-but-missing** fixture in manifest mode.
 
 The drift table is written to the **GitHub Step Summary**, so it renders in the Actions UI, not just the logs.
 
 ## Output table
 
-Columns: `fixture | our bundleHash | expected | status | verify`.
+Columns: `fixture | kind | our hash (signed-scope) | expected | status | verify`.
 
+- **`kind`** — `DACS-5 bundle` or `DACS-4 evidence`, auto-detected from the artifact.
 - **`status`** — `match` (hash reproduces the expected value) · `drift` (hash diverged — **fails**) ·
-  `computed` (discovery mode: hash computed, nothing asserted) · `skipped` (not an AttestationBundle —
-  no `bundleVersion`; skipped in discovery mode, but **fails** if a manifest expected it).
-- **`verify`** — `accept` / `reject` from the structural + signature verifier; a `reject` (structurally
-  invalid bundle) **fails the job** in either mode.
+  `computed` (discovery mode: hash computed, nothing asserted) · `skipped` (neither an AttestationBundle
+  nor a SettlementEvidence; skipped in discovery mode, but **fails** if a manifest expected it).
+- **`verify`** — `accept` / `reject`; a `reject` (structurally invalid artifact) **fails the job** in
+  either mode.
 
 The job also fails on an expected-but-missing fixture in manifest mode.
 

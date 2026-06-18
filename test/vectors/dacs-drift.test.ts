@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as path from 'node:path';
-import { evaluateBundle, summarise, isBundleCandidate, buildManifest } from '../../src/lib/dacs-drift.js';
+import { evaluateBundle, evaluateSettlement, evaluateArtifact, summarise, isBundleCandidate, buildManifest } from '../../src/lib/dacs-drift.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FX = (n: string) => path.join(HERE, 'dacs-x-fixtures', n);
@@ -100,4 +100,28 @@ test('dacs-drift — buildManifest pins only valid bundles (excludes struct-fail
   // round-trip: a manifest-pinned hash re-evaluates as match
   const recheck = evaluateBundle(load('attestation-bundle-0004.json'), 'attestation-bundle-0004.json', manifest['attestation-bundle-0004.json']);
   assert.equal(recheck.hashStatus, 'match');
+});
+
+test('dacs-drift — DACS-4 SettlementEvidence: reproduces the DACS-Standard golden evidenceHash (cross-impl convergence)', () => {
+  const ev = load('settlement-evidence-payment.json');
+  const r = evaluateSettlement(ev, 'settlement-evidence-payment.json', null);
+  assert.equal(r.kind, 'settlement');
+  assert.equal(r.structurallyValid, true);
+  // byte-for-byte agreement with the upstream golden.json settlement.evidenceHash
+  assert.equal(r.ourHash, '665d4604f4002a3a1f98ca4e719ecbd0deca9b67b827364cf89602f30de52ca2', 'reproduces golden evidenceHash');
+  // manifest mode: golden → match, wrong → drift
+  assert.equal(evaluateSettlement(ev, 'x', '665d4604f4002a3a1f98ca4e719ecbd0deca9b67b827364cf89602f30de52ca2').hashStatus, 'match');
+  assert.equal(evaluateSettlement(ev, 'x', 'de'.repeat(32)).hashStatus, 'drift');
+});
+
+test('dacs-drift — DACS-4 delivery SettlementEvidence reproduces its golden evidenceHash too', () => {
+  const r = evaluateSettlement(load('settlement-evidence-delivery.json'), 'settlement-evidence-delivery.json', null);
+  assert.equal(r.ourHash, '0b7e2e24b666de463059d9852a3c53558ff1ca961033072e87e516db2b0d979d', 'reproduces golden deliveryEvidenceHash');
+});
+
+test('dacs-drift — evaluateArtifact dispatches bundle vs settlement vs neither', () => {
+  assert.equal(evaluateArtifact(load('attestation-bundle-0004.json'), 'b.json', null).kind ?? 'bundle', 'bundle');
+  assert.equal(evaluateArtifact(load('settlement-evidence-payment.json'), 's.json', null).kind, 'settlement');
+  assert.equal(evaluateArtifact({ hello: 'world' }, 'x.json', null).hashStatus, 'skipped');     // neither → skip (discovery)
+  assert.equal(evaluateArtifact({ hello: 'world' }, 'x.json', 'de'.repeat(32)).decision, 'reject'); // neither + expected → fail
 });
