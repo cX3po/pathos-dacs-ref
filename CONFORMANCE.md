@@ -1,18 +1,24 @@
 # DACS conformance checking with `dacs-drift`
 
-`dacs-drift` checks whether your DACS-5 §10.4 **AttestationBundle** fixtures reproduce the expected
-**signed-scope bundleHash** (v0.1 R5-1 `anchoredByRole`-excluded form) — a layer where independent
-implementations can silently disagree. It reuses this implementation's verifier (`verifyBundleV1` +
-`bundleSignedScopeHashV1`), so "does my impl agree with this one" is answered by the same code this
-reference implementation uses.
+`dacs-drift` checks whether your DACS artifact fixtures reproduce the expected **signed-scope hash** —
+the layer where independent implementations can silently disagree. It covers two surfaces today:
 
-**Scope (honest):** this checks the **§10.4 AttestationBundle signed-scope hash** surface only — not
-all of DACS, and it is not a full DACS conformance certification. What a green run means depends on
-the mode: **with `--expect` (a hash manifest)**, your fixtures reproduce the expected bundleHashes
-(match the reference / golden values); **without it (discovery mode)**, your fixtures are computed +
-structurally verified, but no hash is asserted. The job **fails on a structurally-invalid bundle in
-either mode**, and **additionally fails on hash drift or an expected-but-missing fixture in `--expect`
-mode**.
+- **DACS-5 §10.4 AttestationBundle** → `bundleHash` (v0.1 R5-1 `anchoredByRole`-excluded form), via
+  `verifyBundleV1` + `bundleSignedScopeHashV1`.
+- **DACS-4 §9 SettlementEvidence** → `evidenceHash` = sha256(JCS(evidence without `signature`)).
+
+It reuses this implementation's own primitives, so "does my impl agree with the reference (and the
+upstream §14 golden)" is answered by the same code the reference uses. dacs-drift independently
+reproduces the DACS-Standard golden `bundleHash` **and** `evidenceHash` byte-for-byte (cross-impl
+convergence, locked by test).
+
+**Scope (honest):** this checks the **bundleHash / evidenceHash signed-scope surfaces** only — not all
+of DACS, and not a full conformance certification. With **`--expect` (a hash manifest)** your fixtures
+must reproduce the expected hashes (match the reference / golden); in **discovery mode** they are
+computed + structurally checked but no hash is asserted. The job **fails on a structurally-invalid
+artifact in either mode**, and **additionally on hash drift or an expected-but-missing fixture in
+`--expect` mode**. Each artifact is auto-detected (AttestationBundle vs SettlementEvidence); other
+JSON is skipped (discovery) or fails (if a manifest expected it).
 
 ## Use it in CI — a drop-in GitHub Action
 

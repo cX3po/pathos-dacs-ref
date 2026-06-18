@@ -4,7 +4,7 @@
  * Operationalises the "conformance partner" role: point it at ANY implementation's bundle
  * fixtures and get back the #99-format divergence table — does each artifact (a) structurally
  * conform to v0.1, and (b) reproduce its expected signed-scope bundleHash under the v0.1 R5-1
- * exclude rule. One tool serving upstream (DACS-Standard), Marius, hayk, PallyTin, anyone.
+ * exclude rule. One tool serving the upstream standard (DACS-Standard) and any DACS implementer.
  *
  * Core logic lives in src/lib/dacs-drift.ts (unit-tested); this file is the thin I/O wrapper.
  * Sibling to pathos-conformance-harness.mts (that one is the JCS/ed25519 crypto oracle).
@@ -24,7 +24,7 @@
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import * as path from 'node:path';
-import { evaluateBundle, summarise, buildManifest, normHash, type DriftRow } from './src/lib/dacs-drift.js';
+import { evaluateArtifact, summarise, buildManifest, normHash, type DriftRow } from './src/lib/dacs-drift.js';
 
 function parseArgs(argv: string[]): { dir?: string; expect?: string; json: boolean; emitManifest: boolean; error?: string } {
   const out: { dir?: string; expect?: string; json: boolean; emitManifest: boolean; error?: string } = { json: false, emitManifest: false };
@@ -70,7 +70,7 @@ function readRow(dir: string, file: string, expected: Record<string, string> | n
     return { fixture: file, ourHash: '', expected: null, hashStatus: 'computed',
       structurallyValid: false, decision: 'reject', notes: `not valid JSON: ${(e as Error).message}` };
   }
-  return evaluateBundle(parsed, file, expected ? (expected[file] ?? null) : null);
+  return evaluateArtifact(parsed, file, expected ? (expected[file] ?? null) : null);
 }
 
 function main(): number {
@@ -109,15 +109,16 @@ function main(): number {
   } else {
     const cell = (str: string, n: number) => (str.length > n ? str.slice(0, n - 1) + '…' : str).padEnd(n);
     process.stdout.write(`# DACS v0.1 drift report — ${rows.length} file(s) in ${dir}\n\n`);
-    process.stdout.write(`| fixture | our bundleHash | expected | status | verify |\n|---|---|---|---|---|\n`);
+    process.stdout.write(`| fixture | kind | our hash (signed-scope) | expected | status | verify |\n|---|---|---|---|---|---|\n`);
     for (const r of rows) {
       const status = !r.structurallyValid ? '❌ fail'
         : r.hashStatus === 'match' ? '✅ match'
         : r.hashStatus === 'drift' ? '⚠️ DRIFT'
         : r.hashStatus === 'skipped' ? '⏭ skipped' : '— (computed)';
-      const struct = r.decision === 'skipped' ? '— not a bundle' : r.structurallyValid ? r.decision : '❌ struct-fail';
+      const struct = r.decision === 'skipped' ? '— not a DACS artifact' : r.structurallyValid ? r.decision : '❌ struct-fail';
+      const kind = r.hashStatus === 'skipped' ? '—' : (r.kind === 'settlement' ? 'DACS-4 evidence' : 'DACS-5 bundle');
       const hashCell = r.ourHash ? `\`${r.ourHash.slice(0, 16)}…\`` : '—';
-      process.stdout.write(`| ${cell(r.fixture, 36)} | ${hashCell} | ${r.expected ? '`' + r.expected.slice(0, 16) + '…`' : '—'} | ${status} | ${struct} |\n`);
+      process.stdout.write(`| ${cell(r.fixture, 36)} | ${kind} | ${hashCell} | ${r.expected ? '`' + r.expected.slice(0, 16) + '…`' : '—'} | ${status} | ${struct} |\n`);
     }
     const notes = rows.filter((r) => r.notes);
     if (notes.length) {
@@ -125,7 +126,7 @@ function main(): number {
       for (const r of notes) process.stdout.write(`- \`${r.fixture}\`: ${r.notes}\n`);
     }
     if (missing.length) process.stdout.write(`\n⚠️ expected fixtures not found in dir: ${missing.join(', ')}\n`);
-    process.stdout.write(`\n**Summary:** ${s.checked} bundle(s) checked · ${s.drift} drift · ${s.structFail} struct-fail · ${s.skipped} skipped (non-bundle)` +
+    process.stdout.write(`\n**Summary:** ${s.checked} artifact(s) checked · ${s.drift} drift · ${s.structFail} struct-fail · ${s.skipped} skipped (non-DACS)` +
       (expected ? ` · ${missing.length} expected-but-missing` : ' · discovery mode (no --expect)') + `\n`);
   }
   return s.drift > 0 || s.structFail > 0 || missing.length > 0 ? 1 : 0;
