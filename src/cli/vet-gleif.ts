@@ -10,11 +10,15 @@
  *      https://api.gleif.org/api/v1/lei-records/{LEI}
  *   3. Convert the response into a §7.5.1 VerifyResult with:
  *        decision = "pass"  iff entity exists AND registration is ISSUED (active)
- *        decision = "fail"  iff entity not found OR registration LAPSED/RETIRED/ANNULLED
- *        decision = "indeterminate" iff the record parses but its status is non-binary
+ *        decision = "fail"  iff entity not found OR registration RETIRED/ANNULLED
+ *        decision = "indeterminate" iff registration LAPSED (§7.5.1: lapsed is not a
+ *                                   conclusive contradiction; locked with DNO in #146), OR
+ *                                   the record parses but its status is otherwise non-binary
  *                                   (authority answered; answer not conclusive — §7.5.1)
  *        decision = "error" iff verification could not complete: transport failure,
- *                                   timeout, or a response the parser cannot consume (§7.5.1).
+ *                                   timeout, a non-404 GLEIF API/service error (429/500/auth —
+ *                                   distinct from a 404 not-found, which is fail), or a response
+ *                                   the parser cannot consume (§7.5.1).
  *                                   error ≠ indeterminate: the verifier never got an answer
  *                                   (per §7.5.1; CM-4 requires classifying into this 4-value enum).
  *   4. Produce an AttestationRef (DAHR-attested response hash) — STUB in v0.1
@@ -27,6 +31,7 @@
 
 import { parseArgs } from 'node:util';
 import type { VerifyResult, VerifyDecision } from '../types/index.js';
+import { classifyRegistrationStatus, classifyFetchStatus } from '../lib/gleif-classify.js';
 import { connectDemos, mnemonicFromEnv, dahrFetch } from '../demos/index.js';
 
 const USAGE = `
@@ -145,9 +150,17 @@ async function main(): Promise<void> {
     attestation = dahr.attestation;
     const body = dahr.responseBody as GleifLeiResponse;
 
-    if (dahr.responseStatus === 404 || (body.errors && body.errors.length > 0)) {
-      decision = 'fail';
-      reason = `LEI not found at GLEIF: ${body.errors?.[0]?.detail ?? 'HTTP 404'}`;
+    // Fetch-level §7.5.1 verdict (pure + tested): 404 → fail (true not-found, conclusive);
+    // any other non-2xx / error response → error, NOT fail — a transient/service error
+    // (429/500/auth/proxy) must never become a conclusive negative verdict (that would
+    // corrupt the #146 drift-diff with DNO).
+    const fetchVerdict = classifyFetchStatus(
+      dahr.responseStatus,
+      !!(body.errors && body.errors.length > 0),
+      body.errors?.[0]?.detail,
+    );
+    if (fetchVerdict) {
+      ({ decision, reason } = fetchVerdict);
     } else if (!body.data) {
       // §7.5.1 error: a response the parser cannot consume / unexpected authority API
       // shape — the verifier never obtained an authority decision. NOT indeterminate
@@ -157,16 +170,8 @@ async function main(): Promise<void> {
     } else {
       entityName = body.data.attributes?.entity?.legalName?.name;
       regStatus = body.data.attributes?.registration?.status;
-      if (regStatus === 'ISSUED') {
-        decision = 'pass';
-        reason = `LEI active (ISSUED), entity="${entityName ?? 'unknown'}"`;
-      } else if (regStatus === 'LAPSED' || regStatus === 'RETIRED' || regStatus === 'ANNULLED') {
-        decision = 'fail';
-        reason = `LEI registration status=${regStatus}`;
-      } else {
-        decision = 'indeterminate';
-        reason = `LEI registration status=${regStatus ?? '(absent)'} — neither ISSUED nor a known failure value`;
-      }
+      // §7.5.1 status→decision is the contract DNO diffs against (#146) — kept pure + tested.
+      ({ decision, reason } = classifyRegistrationStatus(regStatus, entityName));
     }
   } catch (e) {
     // §7.5.1 error: transport failure / SR-3 fetch timeout / anchor failure — verification
