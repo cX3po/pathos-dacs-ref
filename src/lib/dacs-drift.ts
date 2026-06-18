@@ -83,3 +83,18 @@ export function summarise(rows: DriftRow[]): DriftSummary {
     skipped,
   };
 }
+
+/**
+ * Build an expected-hash manifest `{ "<fixture>.json": "<bundleHash>" }` from a set of evaluated
+ * rows — the bootstrap for `--expect` (drift-catching) mode. Includes ONLY rows that are a
+ * structurally-valid, verified bundle (`decision === 'accept'`) with a computed hash; non-bundles
+ * (`skipped`) and structural failures are excluded so a golden manifest never pins a bad fixture.
+ * Pure + deterministic (sorted keys) so re-running over the same fixtures yields identical bytes.
+ */
+export function buildManifest(rows: DriftRow[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const r of rows.filter((r) => r.decision === 'accept' && r.structurallyValid && r.ourHash).sort((a, b) => a.fixture.localeCompare(b.fixture))) {
+    out[r.fixture] = r.ourHash;
+  }
+  return out;
+}

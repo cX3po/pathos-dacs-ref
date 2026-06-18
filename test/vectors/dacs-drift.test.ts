@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as path from 'node:path';
-import { evaluateBundle, summarise, isBundleCandidate } from '../../src/lib/dacs-drift.js';
+import { evaluateBundle, summarise, isBundleCandidate, buildManifest } from '../../src/lib/dacs-drift.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FX = (n: string) => path.join(HERE, 'dacs-x-fixtures', n);
@@ -84,4 +84,20 @@ test('dacs-drift — summarise counts checked/drift/struct-fail/skipped correctl
   assert.equal(s.checked, 3, 'checked excludes skipped non-bundles');
   assert.equal(s.drift, 1);
   assert.equal(s.structFail, 1);
+});
+
+test('dacs-drift — buildManifest pins only valid bundles (excludes struct-fail + non-bundle), sorted', () => {
+  const good = evaluateBundle(load('attestation-bundle-0004.json'), 'attestation-bundle-0004.json', null);
+  const seller = evaluateBundle(load('attestation-bundle-0004-seller.json'), 'attestation-bundle-0004-seller.json', null);
+  const nonBundle = evaluateBundle({ hello: 'world' }, 'not-a-bundle.json', null);          // → skipped
+  const broken = evaluateBundle({ bundleVersion: '1' }, 'broken.json', null);                // → struct-fail
+  const manifest = buildManifest([seller, good, nonBundle, broken]);
+  // only the two valid bundles are pinned, to their computed hash
+  assert.deepEqual(Object.keys(manifest), ['attestation-bundle-0004-seller.json', 'attestation-bundle-0004.json'].sort());
+  assert.equal(manifest['attestation-bundle-0004.json'], good.ourHash);
+  assert.equal(manifest['not-a-bundle.json'], undefined, 'non-bundle excluded');
+  assert.equal(manifest['broken.json'], undefined, 'struct-fail excluded');
+  // round-trip: a manifest-pinned hash re-evaluates as match
+  const recheck = evaluateBundle(load('attestation-bundle-0004.json'), 'attestation-bundle-0004.json', manifest['attestation-bundle-0004.json']);
+  assert.equal(recheck.hashStatus, 'match');
 });

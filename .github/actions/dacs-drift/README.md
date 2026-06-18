@@ -36,6 +36,10 @@ Pin to `@v1` for a stable contract; `@main` tracks the tip.
 | `expect-manifest` | no | `''` | JSON `{ "<fixture>.json": "<expectedHashHex>" }`. Omit for **discovery mode** (compute + structurally verify, never fails on hash). |
 | `node-version` | no | `20` | Node version to run under. |
 
+> **Bootstrap the manifest** (instead of hand-writing hashes): run
+> `npx tsx dacs-drift.mts <fixtures-dir> --emit-manifest > expected.json` against your known-good
+> fixtures, commit the result, and point `expect-manifest` at it. See [`CONFORMANCE.md`](../../../CONFORMANCE.md).
+
 ## What a green run means (honest scope)
 
 This checks the **§10.4 AttestationBundle signed-scope hash surface only** — not all of DACS, and it

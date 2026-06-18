@@ -11,22 +11,27 @@
  *
  * Usage:
  *   npx tsx dacs-drift.mts <fixtures-dir> [--expect <manifest.json>] [--json]
- *     <fixtures-dir>   directory of *.json AttestationBundle fixtures (any impl's)
- *     --expect <file>  JSON manifest { "<basename.json>": "<expectedHashHex>", ... }; enables
- *                      MATCH/DRIFT comparison and non-zero exit on drift / struct-fail / missing.
- *     --json           machine-readable JSON instead of the markdown table.
+ *   npx tsx dacs-drift.mts <fixtures-dir> --emit-manifest > expected.json
+ *     <fixtures-dir>     directory of *.json AttestationBundle fixtures (any impl's)
+ *     --expect <file>    JSON manifest { "<basename.json>": "<expectedHashHex>", ... }; enables
+ *                        MATCH/DRIFT comparison and non-zero exit on drift / struct-fail / missing.
+ *     --emit-manifest    print an expected-hash manifest for the valid bundles in <dir> (the
+ *                        bootstrap for --expect mode) to stdout, then exit 0. Mutually exclusive
+ *                        with --expect.
+ *     --json             machine-readable JSON instead of the markdown table.
  *
  * Exit: 0 = all conform (and match, if --expect); 1 = drift/struct-fail/missing; 2 = bad usage.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import * as path from 'node:path';
-import { evaluateBundle, summarise, normHash, type DriftRow } from './src/lib/dacs-drift.js';
+import { evaluateBundle, summarise, buildManifest, normHash, type DriftRow } from './src/lib/dacs-drift.js';
 
-function parseArgs(argv: string[]): { dir?: string; expect?: string; json: boolean; error?: string } {
-  const out: { dir?: string; expect?: string; json: boolean; error?: string } = { json: false };
+function parseArgs(argv: string[]): { dir?: string; expect?: string; json: boolean; emitManifest: boolean; error?: string } {
+  const out: { dir?: string; expect?: string; json: boolean; emitManifest: boolean; error?: string } = { json: false, emitManifest: false };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--json') out.json = true;
+    else if (a === '--emit-manifest') out.emitManifest = true;
     else if (a === '--expect') {
       const v = argv[++i];
       if (v === undefined || v.startsWith('--')) return { ...out, error: '--expect requires a manifest path' };
@@ -35,6 +40,9 @@ function parseArgs(argv: string[]): { dir?: string; expect?: string; json: boole
     else if (!out.dir) out.dir = a;
     else return { ...out, error: `unexpected extra argument: ${a}` };
   }
+  // --emit-manifest GENERATES the expected hashes; comparing against an existing manifest at the
+  // same time is contradictory.
+  if (out.emitManifest && out.expect) return { ...out, error: '--emit-manifest cannot be combined with --expect' };
   return out;
 }
 
@@ -66,10 +74,10 @@ function readRow(dir: string, file: string, expected: Record<string, string> | n
 }
 
 function main(): number {
-  const { dir, expect, json, error } = parseArgs(process.argv);
+  const { dir, expect, json, emitManifest, error } = parseArgs(process.argv);
   if (error || !dir) {
     if (error) process.stderr.write(`error: ${error}\n`);
-    process.stderr.write('usage: npx tsx dacs-drift.mts <fixtures-dir> [--expect <manifest.json>] [--json]\n');
+    process.stderr.write('usage: npx tsx dacs-drift.mts <fixtures-dir> [--expect <manifest.json>] [--emit-manifest] [--json]\n');
     return 2;
   }
   let expected: Record<string, string> | null;
@@ -84,6 +92,17 @@ function main(): number {
   const rows = files.map((f) => readRow(dir, f, expected));
   const s = summarise(rows);
   const missing = expected ? Object.keys(expected).filter((k) => !files.includes(k)) : [];
+
+  // --emit-manifest: print the bootstrap expected-hash manifest (valid bundles only) and exit 0.
+  // Diagnostics go to stderr so stdout is a clean, redirectable manifest.
+  if (emitManifest) {
+    const manifest = buildManifest(rows);
+    const included = Object.keys(manifest).length;
+    process.stdout.write(JSON.stringify(manifest, null, 2) + '\n');
+    process.stderr.write(`# dacs-drift --emit-manifest: ${included} valid bundle(s) pinned · ` +
+      `${s.structFail} struct-fail + ${s.skipped} non-bundle excluded (of ${rows.length} file(s))\n`);
+    return 0;
+  }
 
   if (json) {
     process.stdout.write(JSON.stringify({ rows, summary: { ...s, missing } }, null, 2) + '\n');
