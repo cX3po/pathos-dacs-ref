@@ -1,0 +1,129 @@
+{
+  "vectorId": "dacs-v0.1-negative-paths",
+  "title": "Negative paths (regenerated) — tampered artifacts the reference verifiers REJECT",
+  "dacsVersion": "0.1",
+  "description": "Each artifact is a valid one that was then tampered; the pathos-dacs-ref verifiers reject it. Conformance use: a compliant verifier MUST NOT accept these.",
+  "artifacts": [
+    {
+      "stage": "DACS-5",
+      "kind": "AttestationBundleV1",
+      "tamper": "one party signature byte flipped",
+      "artifact": {
+        "bundleVersion": "1",
+        "jobId": "regen-lifecycle-0001",
+        "outcome": "completed",
+        "anchoredByRole": "buyer",
+        "listingRef": {
+          "listingId": "lst-regen-0001",
+          "version": 1,
+          "contentHash": "fa8f61b621e5c45c8cf226f3c67bc7b3042f06afaf9998f11639b15ba52b5569"
+        },
+        "parties": [
+          {
+            "role": "buyer",
+            "bundleHash": "ffa1e49081af8c35f14da2a7b928416a9b981e729f95e9bd1a2b71a44b5291b9",
+            "primaryClaim": {
+              "scheme": "cci",
+              "identifier": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d"
+            }
+          },
+          {
+            "role": "seller",
+            "bundleHash": "a001bd5927fdd14669b57de2f568fd9839801748c894a88e9cbd8984efa1de1a",
+            "primaryClaim": {
+              "scheme": "cci",
+              "identifier": "2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12"
+            }
+          }
+        ],
+        "phaseSummary": [
+          {
+            "index": 0,
+            "kind": "vet-credentials",
+            "outcome": "ok"
+          },
+          {
+            "index": 1,
+            "kind": "settle",
+            "outcome": "ok"
+          }
+        ],
+        "vetRecords": [],
+        "settlementEvidence": [],
+        "recipeRegistryVersion": 1,
+        "railRegistryVersion": 1,
+        "finalisedAt": 1767225600000,
+        "signatures": [
+          {
+            "party": {
+              "scheme": "cci",
+              "identifier": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d"
+            },
+            "algorithm": "ed25519",
+            "value": "AYS+9se78kv2FkyQtYDblJpKb2PFcjARro8t37UEPzP++f19BbxFZatfsbGx/5JOcA7js8ktCIyUBmf3T224BQ=="
+          },
+          {
+            "party": {
+              "scheme": "cci",
+              "identifier": "2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12"
+            },
+            "algorithm": "ed25519",
+            "value": "k08pOBCAKt1dn7aKtVxypNQD6G9yYjawm4hA+p4qhHCM16LGrWgK34mY2JYxgUzcTjKnQNvihN0BhJPIXTJxAg=="
+          }
+        ]
+      }
+    },
+    {
+      "stage": "DACS-4",
+      "kind": "SettlementEvidence",
+      "tamper": "reveal preimage replaced (no longer hashes to hashlock)",
+      "artifact": {
+        "v": "dacs-4-settlement-evidence:0.1",
+        "jobId": "regen-lifecycle-0001",
+        "method": "htlc",
+        "rail": "mocked",
+        "price": {
+          "amount": "1.500000",
+          "asset": "USDC",
+          "decimals": 6
+        },
+        "settler": "buyer",
+        "settlerPubkey": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+        "outcome": "settled",
+        "txRefs": [
+          {
+            "phase": "htlc-lock",
+            "chain": "eip155:8453",
+            "txHash": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "hashlock": "7969ec0fcb8b648dfde24b1d0ae24568d398dcc3a83b80a850f973238cdfd3d9",
+            "observedAt": "2026-01-01T00:00:00.000Z",
+            "timelockExpiry": "2026-01-02T00:00:00.000Z",
+            "amount": {
+              "amount": "1.50",
+              "asset": "USDC",
+              "decimals": 6
+            }
+          },
+          {
+            "phase": "htlc-reveal",
+            "chain": "eip155:8453",
+            "txHash": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+            "hashlock": "7969ec0fcb8b648dfde24b1d0ae24568d398dcc3a83b80a850f973238cdfd3d9",
+            "observedAt": "2026-01-01T06:00:00.000Z",
+            "preimage": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "revealDeadline": "2026-01-01T12:00:00.000Z"
+          }
+        ],
+        "settledAt": "2026-01-01T00:00:00.000Z",
+        "signature": "TH+O+vi8oF/Q0xSa636vlpoJmiSaSecpox4J9S/vWITOKlnHy4Yu/KjMbyFgT817DwQ2IW7zCXTFEr+gNaIZBw=="
+      }
+    }
+  ],
+  "expectedResult": {
+    "verifies": false,
+    "perArtifact": {
+      "DACS-5 AttestationBundleV1": "verifyBundleV1 → reject (tampered signature does not verify)",
+      "DACS-4 SettlementEvidence": "verifyHtlcSettlementEvidence → fail (preimage no longer matches hashlock; signature breaks)"
+    }
+  }
+}
