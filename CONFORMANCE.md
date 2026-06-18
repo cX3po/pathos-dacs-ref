@@ -37,10 +37,25 @@ jobs:
 - **Omit it** for *discovery mode*: dacs-drift computes the hash + structurally verifies each bundle and
   reports — it never fails on a hash, but **still fails on a structurally-invalid bundle**.
 
+## Bootstrap your `expect-manifest`
+
+Drift mode needs a manifest of expected hashes — generate it from your known-good fixtures instead of
+hand-writing hashes:
+
+```bash
+npx tsx dacs-drift.mts test/fixtures/bundles --emit-manifest > test/fixtures/expected.json
+```
+
+It pins **only the valid bundles** (structurally-valid + verified) to their computed bundleHash; non-
+bundles and struct-fails are excluded (diagnostics go to stderr, so stdout is a clean, redirectable
+manifest). Commit `expected.json`, wire it as `expect-manifest`, and CI fails the moment a bundle drifts
+from those pinned hashes. (`--emit-manifest` is mutually exclusive with `--expect`.)
+
 ## Run it locally
 
 ```bash
 npx tsx dacs-drift.mts <fixtures-dir> [--expect <manifest.json>] [--json]
+npx tsx dacs-drift.mts <fixtures-dir> --emit-manifest > expected.json   # bootstrap the manifest
 # exit 0 = all conform · 1 = drift/struct-fail/missing · 2 = usage error
 ```
 
