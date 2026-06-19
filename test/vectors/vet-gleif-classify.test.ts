@@ -5,10 +5,10 @@
  * convergence issue #146 (Mode-A positions). The compared triple is claim + decision +
  * resolvedEntity; this test pins the `decision` half of that for each GLEIF registration status.
  *
- * The headline change (2026-06-18, locked with DNO): LAPSED → `indeterminate`, not `fail`.
- * A lapsed LEI is "was valid, no longer current" — §7.5.1 "not a conclusive contradiction".
- * RETIRED stays `fail` for now (the open Mode-B-blind hypothesis to revisit toward
- * indeterminate); ANNULLED stays `fail` (issued in error / invalid ab initio).
+ * Mapping is source-grounded against LEI-CDF 3.1 (DNO #146 convergence): LAPSED + RETIRED →
+ * `indeterminate` (lifecycle-end states GLEIF treats as still-valid-but-not-current — §7.5.1 "not a
+ * conclusive contradiction"); ANNULLED + DUPLICATE + CANCELLED → `fail` (GLEIF assignment-error
+ * states). RETIRED moved fail→indeterminate on 2026-06-19 to converge with DNO's grounding.
  */
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -44,13 +44,18 @@ test('LAPSED → indeterminate (locked with DNO, #146 — was fail before)', () 
   assert.equal(classifyRegistrationStatus('LAPSED').decision, 'indeterminate');
 });
 
-test('RETIRED + ANNULLED → fail (RETIRED is the Mode-B-blind hypothesis to revisit)', () => {
-  assert.equal(classifyRegistrationStatus('RETIRED').decision, 'fail');
+test('RETIRED → indeterminate (lifecycle-end; converged with DNO LEI-CDF 3.1, #146)', () => {
+  assert.equal(classifyRegistrationStatus('RETIRED').decision, 'indeterminate');
+});
+
+test('assignment-error states ANNULLED + DUPLICATE + CANCELLED → fail (LEI-CDF 3.1)', () => {
   assert.equal(classifyRegistrationStatus('ANNULLED').decision, 'fail');
+  assert.equal(classifyRegistrationStatus('DUPLICATE').decision, 'fail');
+  assert.equal(classifyRegistrationStatus('CANCELLED').decision, 'fail');
 });
 
 test('non-binary / absent status → indeterminate (authority answered; never coerced to pass)', () => {
   assert.equal(classifyRegistrationStatus(undefined).decision, 'indeterminate');
   assert.equal(classifyRegistrationStatus('PENDING_ARCHIVAL').decision, 'indeterminate');
-  assert.equal(classifyRegistrationStatus('DUPLICATE').decision, 'indeterminate');
+  assert.equal(classifyRegistrationStatus('MERGED').decision, 'indeterminate');
 });
