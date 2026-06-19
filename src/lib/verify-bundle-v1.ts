@@ -74,7 +74,13 @@ function isHash(h: unknown): boolean {
 
 export type SigCheck = { party: string; decision: 'pass' | 'fail' | 'unverifiable'; reason?: string };
 export type BundleV1Verdict = {
-  decision: 'accept' | 'reject';
+  /**
+   * CONSUMER CONTRACT (§7.5.1, do-not-collapse): ONLY `accept` is success. Treat BOTH `reject`
+   * (hard failure — invalid signature / structural / unlisted signer) AND `indeterminate`
+   * (undecidable — unresolvable key / placeholder DID / unsupported algorithm) as NOT-accepted.
+   * Never write `decision !== 'reject'` to mean success — that would wrongly accept `indeterminate`.
+   */
+  decision: 'accept' | 'reject' | 'indeterminate';
   bundleHash: string;
   structurallyValid: boolean;
   signerRuleSatisfied: boolean;
@@ -294,12 +300,17 @@ export function verifyBundleV1(
   const cryptographicallyVerified = signatureChecks.length > 0 && signatureChecks.every((c) => c.decision === 'pass');
   if (anyHardFail) reasons.push('one or more resolvable signatures failed verification');
 
-  let decision: 'accept' | 'reject';
+  let decision: 'accept' | 'reject' | 'indeterminate';
   if (!signerRuleSatisfied || anyHardFail) {
     decision = 'reject';
   } else if (requireSignatures && !cryptographicallyVerified) {
-    decision = 'reject';
-    reasons.push('enforcing mode: not every signature cryptographically verified (e.g. placeholder DID / unsupported algorithm) — pass requireSignatures:false for illustrative fixtures');
+    // §7.5.1 DO-NOT-COLLAPSE: there is no hard signature FAILURE (that path is `anyHardFail` → reject
+    // above), but >=1 signature is UNVERIFIABLE — its key could not be resolved (placeholder DID), or the
+    // algorithm is unsupported. We cannot decide, so the honest verdict is INDETERMINATE, not reject.
+    // (Surfaced by the cross-impl convergence harness 2026-06-19: dacs-verify returns `indeterminate`
+    // here; we were collapsing it to `reject`, conflating "can't decide" with "signature is invalid".)
+    decision = 'indeterminate';
+    reasons.push('indeterminate: not every signature could be cryptographically verified (unresolvable key / placeholder DID / unsupported algorithm) — no hard failure, but undecidable. Pass requireSignatures:false for illustrative fixtures.');
   } else {
     decision = 'accept';
   }
@@ -563,8 +574,12 @@ async function verifyV1TwoSided(
   // fixture mode (requireSignatures:false) is honored ONLY when the caller explicitly requested it.
   const bv = verifyBundleV1(buyerBundle, { requireSignatures });
   const sv = verifyBundleV1(sellerBundle, { requireSignatures });
-  if (bv.decision !== 'accept') return { outcome: 'fail', detail: `buyer-anchor bundle did not pass single-bundle verify: ${bv.reasons.join('; ')}` };
-  if (sv.decision !== 'accept') return { outcome: 'fail', detail: `seller-anchor bundle did not pass single-bundle verify: ${sv.reasons.join('; ')}` };
+  // §7.5.1 propagation: a REJECT anchored copy is a hard fail; an INDETERMINATE copy (unresolvable key /
+  // placeholder DID) is undecidable, not a failure — propagate it as indeterminate, never collapse to fail.
+  if (bv.decision === 'reject') return { outcome: 'fail', detail: `buyer-anchor bundle failed single-bundle verify: ${bv.reasons.join('; ')}` };
+  if (sv.decision === 'reject') return { outcome: 'fail', detail: `seller-anchor bundle failed single-bundle verify: ${sv.reasons.join('; ')}` };
+  if (bv.decision === 'indeterminate' || sv.decision === 'indeterminate')
+    return { outcome: 'indeterminate', detail: `anchored copy undecidable (unresolvable key / placeholder DID): ${[...bv.reasons, ...sv.reasons].join('; ')}` };
 
   // §10.4.3(d) divergence detection.
   const div = v1Divergence(buyerBundle, sellerBundle);
@@ -606,7 +621,7 @@ export async function verifyBundleV1Full(
   const walk = await walkV1AttestationRefs(bundle, rpc, fetchImpl);
 
   // §7.5.1 rollup. `skipped` two-sided is informational (does not block), exactly like legacy.
-  const baseDecision: ChainOutcome = base.decision === 'accept' ? 'pass' : 'fail';
+  const baseDecision: ChainOutcome = base.decision === 'accept' ? 'pass' : base.decision === 'indeterminate' ? 'indeterminate' : 'fail';
   const outcomes: ChainOutcome[] = [baseDecision];
   if (twoSided.outcome !== 'skipped') outcomes.push(twoSided.outcome);
   outcomes.push(...walk.steps.map((s) => s.outcome));
