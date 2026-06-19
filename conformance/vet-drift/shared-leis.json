@@ -2,6 +2,7 @@
   "_note": "Shared DACS-2 Vet drift-test inputs. Each impl verifies these via its own public-authority path; the deterministic verdicts (decision + resolved entity) must converge. Status→decision mapping is source-grounded against LEI-CDF 3.1 (DNO #146). Snapshot rows (e.g. a LAPSED LEI that may renew) MUST be pinned to a recorded GLEIF response, NOT re-fetched live, or the test flakes on renewal.",
   "leis": [
     { "lei": "506700GE1G29325QX363", "expectDecision": "pass", "note": "GLEIF Foundation's own LEI — active/ISSUED" },
-    { "lei": "743700SEJ147Y3TSFE83", "expectDecision": "indeterminate", "note": "Dadaal Service Oy (FI) — registration LAPSED, entity ACTIVE (DNO-sourced 2026-06-19). Tests registration-primary precedence: entity ACTIVE must NOT yield pass. nextRenewalDate was 2026-06-17 so it may flip to ISSUED — recorded snapshot, not a live re-fetch target." }
+    { "lei": "743700SEJ147Y3TSFE83", "expectDecision": "indeterminate", "note": "Dadaal Service Oy (FI) — registration LAPSED, entity ACTIVE (DNO-sourced 2026-06-19). Tests registration-primary precedence: entity ACTIVE must NOT yield pass. nextRenewalDate was 2026-06-17 so it may flip to ISSUED — recorded snapshot, not a live re-fetch target." },
+    { "lei": "9845006A7A5583CF9B64", "expectDecision": "indeterminate", "note": "ΤΑΜΕΙΟ ΠΡΟΝΟΙΑΣ ΕΡΓΑΤΩΝ ΔΗΜΟΥ ΑΓΛΑΝΤΖΙΑΣ (CY) — registration RETIRED, entity INACTIVE (DNO-sourced 2026-06-19). The record carries a COMPLETED DISSOLUTION Legal Entity Event (effective 2026-03-19) — the LEI-CDF 3.1 mechanism that ties RETIRED to lifecycle-end → indeterminate (mappingConfidence B; alternate-defensible=fail, the open #152 steward call). Recorded snapshot." }
   ]
 }
