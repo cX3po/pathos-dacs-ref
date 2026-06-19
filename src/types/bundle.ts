@@ -124,7 +124,9 @@ export interface ChainTxRef {
 export interface BundleParty {
   role: 'buyer' | 'seller' | 'orchestrator';
   bundleHash: string;
-  primaryClaim: ClaimRef;
+  /** §B.1 ClaimReference. Spec form is the string "Scheme:Identifier"; the object form is accepted
+   *  for backward-compat but the string form is canonical (and what verifier-emitted bundles use). */
+  primaryClaim: ClaimRef | string;
 }
 
 /** §10.4 BundlePhaseEntry — per-phase summary (phase-level outcome is ok|fail). */
@@ -139,7 +141,7 @@ export interface BundlePhaseEntry {
 
 /** §10.4 BundleSignature — structured per signer (vs the legacy scalar sig fields). */
 export interface BundleSignature {
-  party: ClaimRef; // primary claim of the signer
+  party: ClaimRef | string; // primary claim of the signer (§B.1 — string "Scheme:Identifier" is canonical)
   algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate';
   value: string; // signature over the "dacs-bundle:v1:" || bundleHash payload (§10.4.1)
 }

@@ -23,7 +23,7 @@ const enc = new TextEncoder();
 
 /** A signer: the primary claim it presents + the ed25519 private key that controls it. */
 export interface BundleSigner {
-  party: ClaimReference;
+  party: ClaimReference | string; // §B.1 — string "Scheme:Identifier" is the canonical claim form
   privKey: Uint8Array;
   algorithm?: BundleSignature['algorithm']; // default 'ed25519'
 }

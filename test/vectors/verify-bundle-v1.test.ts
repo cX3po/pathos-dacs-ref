@@ -84,6 +84,43 @@ test('§10.4 — real-key bundle: signatures verify (accept), tamper rejects', (
   assert.ok(vt.signatureChecks.some((c) => c.decision === 'fail'), 'tampering breaks signature verification');
 });
 
+test('§B.1 — spec string-form ClaimReference ("cci:<hex>") verifies (accept) and converges with object form (#145/#146)', () => {
+  const mk = (fill: number) => { const priv = new Uint8Array(32).fill(fill); return { priv, pubHex: hex(ed25519.getPublicKey(priv)) }; };
+  const buyer = mk(0x43), seller = mk(0x44);
+  // string-form claims per spec §B.1 — what a spec-conformant verifier-emitted bundle carries
+  const buyerClaim = `cci:${buyer.pubHex}`, sellerClaim = `cci:${seller.pubHex}`;
+  const unsigned: Omit<AttestationBundleV1, 'signatures'> = {
+    bundleVersion: '1', jobId: 'string-claimref-0001', outcome: 'completed', anchoredByRole: 'buyer',
+    listingRef: { listingId: 'lst-1', version: 1, contentHash: 'ab'.repeat(32) },
+    parties: [
+      { role: 'buyer', bundleHash: 'aa'.repeat(32), primaryClaim: buyerClaim },
+      { role: 'seller', bundleHash: 'bb'.repeat(32), primaryClaim: sellerClaim },
+    ],
+    phaseSummary: [{ index: 0, kind: 'vet-credentials', outcome: 'ok' }],
+    vetRecords: [], settlementEvidence: [], recipeRegistryVersion: 1, railRegistryVersion: 1, finalisedAt: 1735689600000,
+  };
+  const bundleHash = bundleSignedScopeHashV1(unsigned);
+  const enc = new TextEncoder();
+  const sigOf = (k: { priv: Uint8Array; pubHex: string }, claim: string) => ({
+    party: claim, algorithm: 'ed25519' as const,
+    value: Buffer.from(sign(DOMAIN_SEPARATORS.BUNDLE, enc.encode(bundleHash), k.priv)).toString('base64'),
+  });
+  const v = verifyBundleV1({ ...unsigned, signatures: [sigOf(buyer, buyerClaim), sigOf(seller, sellerClaim)] });
+  assert.equal(v.decision, 'accept', 'string-form cci claims verify-accept');
+  assert.equal(v.cryptographicallyVerified, true, 'string-form party resolves to the ed25519 key + sig verifies');
+  assert.ok(v.signatureChecks.every((c) => c.decision === 'pass'));
+  // the string form and the object form of the SAME key are ONE logical signer (no party-set split)
+  const objForm = verifyBundleV1({
+    ...unsigned,
+    parties: [
+      { role: 'buyer', bundleHash: 'aa'.repeat(32), primaryClaim: { scheme: 'cci', identifier: buyer.pubHex } },
+      { role: 'seller', bundleHash: 'bb'.repeat(32), primaryClaim: { scheme: 'cci', identifier: seller.pubHex } },
+    ],
+    signatures: [sigOf(buyer, buyerClaim), sigOf(seller, sellerClaim)],
+  });
+  assert.equal(objForm.signerRuleSatisfied, true, 'object-form parties + string-form signers resolve to the same signer set');
+});
+
 // ── hardening / edge cases ──────────────────────────────────────────────────
 function realKey(fill: number) { const priv = new Uint8Array(32).fill(fill); return { priv, pubHex: hex(ed25519.getPublicKey(priv)) }; }
 function baseUnsigned(over: Partial<AttestationBundleV1> = {}): Omit<AttestationBundleV1, 'signatures'> {
