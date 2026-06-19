@@ -1,6 +1,7 @@
 {
-  "_note": "Shared DACS-2 Vet drift-test inputs. Each impl verifies these via its own public-authority path and the deterministic verdicts (decision + resolved entity) must converge. Seed = 1 active LEI; DNO/XM33 to co-author lapsed/retired (fail/indeterminate) + malformed cases (our impl rejects pre-VerifyResult; spec lists a 4th `error` decision — to reconcile).",
+  "_note": "Shared DACS-2 Vet drift-test inputs. Each impl verifies these via its own public-authority path; the deterministic verdicts (decision + resolved entity) must converge. Status→decision mapping is source-grounded against LEI-CDF 3.1 (DNO #146). Snapshot rows (e.g. a LAPSED LEI that may renew) MUST be pinned to a recorded GLEIF response, NOT re-fetched live, or the test flakes on renewal.",
   "leis": [
-    { "lei": "506700GE1G29325QX363", "expectDecision": "pass", "note": "GLEIF Foundation's own LEI — active/ISSUED" }
+    { "lei": "506700GE1G29325QX363", "expectDecision": "pass", "note": "GLEIF Foundation's own LEI — active/ISSUED" },
+    { "lei": "743700SEJ147Y3TSFE83", "expectDecision": "indeterminate", "note": "Dadaal Service Oy (FI) — registration LAPSED, entity ACTIVE (DNO-sourced 2026-06-19). Tests registration-primary precedence: entity ACTIVE must NOT yield pass. nextRenewalDate was 2026-06-17 so it may flip to ISSUED — recorded snapshot, not a live re-fetch target." }
   ]
 }

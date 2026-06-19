@@ -4,12 +4,14 @@ import type { VerifyDecision } from '../types/index.js';
  * §7.5.1 GLEIF registration-status → decision mapping (PURE — the deterministic contract the
  * DNO drift-test diffs against; see DACS-Standard convergence issue #146, Mode-A positions).
  *
- *   ISSUED            → pass
- *   LAPSED            → indeterminate  (locked #146: "was valid, no longer current" is NOT a
- *                                       conclusive contradiction — §7.5.1)
- *   RETIRED, ANNULLED → fail           (RETIRED is the open Mode-B-blind hypothesis to move to
- *                                       indeterminate next; ANNULLED = invalid ab initio = fail)
- *   anything else     → indeterminate  (authority answered; status non-binary; CM-4: never coerce)
+ * Source-grounded against LEI-CDF 3.1 (DNO convergence, #146) — the deterministic contract the
+ * DNO drift-test diffs against:
+ *   ISSUED                       → pass
+ *   LAPSED, RETIRED              → indeterminate  (lifecycle-end; GLEIF treats as still-valid-but-
+ *                                                  not-current — NOT a conclusive contradiction §7.5.1)
+ *   ANNULLED, DUPLICATE, CANCELLED → fail         (GLEIF assignment-error states — erroneous /
+ *                                                  invalid / non-surviving registration)
+ *   anything else (incl MERGED)  → indeterminate  (authority answered; status non-binary; never coerce)
  *
  * `error` (verification could-not-complete) and `not found → fail` are decided upstream in the
  * fetch/parse path, not here — this maps a parsed registration status only.
@@ -49,11 +51,16 @@ export function classifyRegistrationStatus(
   if (regStatus === 'ISSUED') {
     return { decision: 'pass', reason: `LEI active (ISSUED), entity="${entityName ?? 'unknown'}"` };
   }
-  if (regStatus === 'LAPSED') {
-    return { decision: 'indeterminate', reason: `LEI registration status=LAPSED — lapsed, not a conclusive contradiction (§7.5.1)` };
+  // Source-grounded against LEI-CDF 3.1 (DNO, #146 convergence) — not model opinion.
+  if (regStatus === 'LAPSED' || regStatus === 'RETIRED') {
+    // Lifecycle-end states GLEIF treats as still-valid-but-not-current — NOT a conclusive
+    // contradiction (§7.5.1). RETIRED moved fail→indeterminate to converge with DNO's LEI-CDF 3.1
+    // grounding (it reads like LAPSED: "was valid, no longer current", not "invalid ab initio").
+    return { decision: 'indeterminate', reason: `LEI registration status=${regStatus} — lifecycle-end, not a conclusive contradiction (§7.5.1; LEI-CDF 3.1)` };
   }
-  if (regStatus === 'RETIRED' || regStatus === 'ANNULLED') {
-    return { decision: 'fail', reason: `LEI registration status=${regStatus}` };
+  if (regStatus === 'ANNULLED' || regStatus === 'DUPLICATE' || regStatus === 'CANCELLED') {
+    // GLEIF assignment-error states (erroneous / invalid / non-surviving registration) → conclusive fail.
+    return { decision: 'fail', reason: `LEI registration status=${regStatus} — GLEIF assignment-error state (LEI-CDF 3.1)` };
   }
   return { decision: 'indeterminate', reason: `LEI registration status=${regStatus ?? '(absent)'} — neither ISSUED nor a known failure value` };
 }

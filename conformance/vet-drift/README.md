@@ -28,10 +28,10 @@ npx tsx src/cli/vet-gleif.ts --lei 506700GE1G29325QX363 --jobId <uuid> --dry-run
 See `exemplar-506700GE1G29325QX363.json` for our normalized verdict.
 
 ## Proposed shared set (expand together)
-Start with a mix that exercises every `decision`: an active LEI (→ `pass`), a **LAPSED** LEI
-(→ `indeterminate` — locked with DNO in DACS-Standard #146, Mode-A: lapsed is not a conclusive
-contradiction; **RETIRED**/**ANNULLED** stay `→ fail` for now, with RETIRED the open Mode-B-blind
-hypothesis to move toward `indeterminate`), and a malformed LEI (in our impl: rejected
+Start with a mix that exercises every `decision`, source-grounded against LEI-CDF 3.1 (DNO #146):
+an active LEI (→ `pass`); **LAPSED** and **RETIRED** (→ `indeterminate` — lifecycle-end states GLEIF
+treats as still-valid-but-not-current, not a conclusive contradiction); **ANNULLED** / **DUPLICATE** /
+**CANCELLED** (→ `fail` — GLEIF assignment-error states); and a malformed LEI (in our impl: rejected
 pre-VerifyResult as a usage error; the 4th `error` decision is reserved for verification that
 could-not-complete — transport/timeout/unparseable). We seed one active exemplar; DNO/XM33
 to co-author the rest so the set isn't biased to our path.
