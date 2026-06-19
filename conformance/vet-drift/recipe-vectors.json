@@ -1,0 +1,30 @@
+{
+  "recipe": "gleif-cbp",
+  "dacsStage": "DACS-2",
+  "description": "Deterministic GLEIF public-authority vet conformance vectors — the cross-impl convergence target for a real DACS-2 verification recipe (PATH-OS Labs <-> DNO <-> any SDK impl). Each case maps a GLEIF response (HTTP status, or a parsed registration status) to the §7.5.1 decision a conformant verifier MUST produce. These encode the Mode-A semantics locked with DNO in DACS-Standard #146. Deterministic by construction (no live fetch) so two impls converge on the same verdicts.",
+  "endpoint": "https://api.gleif.org/api/v1/lei-records/{LEI}",
+  "notes": [
+    "decision enum is §7.5.1 four-value: pass | fail | indeterminate | error (never collapsed).",
+    "fetch-level (before reading the record): 404 not-found -> fail (conclusive); any other non-2xx / error body -> error (verification could-not-complete, NOT a verdict).",
+    "registration-status (parsed record): ISSUED -> pass; LAPSED -> indeterminate (was-valid-no-longer-current, not a conclusive contradiction); RETIRED/ANNULLED -> fail; any other/absent -> indeterminate (authority answered, non-binary).",
+    "RETIRED is an OPEN Mode-B-blind hypothesis (may move to indeterminate, following LAPSED) — pinned to fail here as the current contract; revisit on drift signal.",
+    "entity-name normalization for resolvedEntity comparison: NFC + trim + collapse-internal-whitespace (no NFKC / case-fold / accent-strip)."
+  ],
+  "fetchCases": [
+    { "id": "http-404-not-found", "responseStatus": 404, "hasErrors": true, "expected": { "decision": "fail" } },
+    { "id": "http-429-rate-limited", "responseStatus": 429, "hasErrors": true, "expected": { "decision": "error" } },
+    { "id": "http-500-server-error", "responseStatus": 500, "hasErrors": true, "expected": { "decision": "error" } },
+    { "id": "http-403-auth", "responseStatus": 403, "hasErrors": false, "expected": { "decision": "error" } },
+    { "id": "http-3xx-redirect", "responseStatus": 302, "hasErrors": false, "expected": { "decision": "error" } },
+    { "id": "http-200-ok-proceed", "responseStatus": 200, "hasErrors": false, "expected": { "decision": null, "note": "no fetch-level verdict — proceed to the registration-status cases" } }
+  ],
+  "statusCases": [
+    { "id": "issued-active", "registrationStatus": "ISSUED", "expected": { "decision": "pass" } },
+    { "id": "lapsed", "registrationStatus": "LAPSED", "expected": { "decision": "indeterminate" } },
+    { "id": "retired", "registrationStatus": "RETIRED", "expected": { "decision": "fail" } },
+    { "id": "annulled", "registrationStatus": "ANNULLED", "expected": { "decision": "fail" } },
+    { "id": "duplicate", "registrationStatus": "DUPLICATE", "expected": { "decision": "indeterminate" } },
+    { "id": "pending-archival", "registrationStatus": "PENDING_ARCHIVAL", "expected": { "decision": "indeterminate" } },
+    { "id": "status-absent", "registrationStatus": null, "expected": { "decision": "indeterminate" } }
+  ]
+}
