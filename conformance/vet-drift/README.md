@@ -35,3 +35,21 @@ hypothesis to move toward `indeterminate`), and a malformed LEI (in our impl: re
 pre-VerifyResult as a usage error; the 4th `error` decision is reserved for verification that
 could-not-complete — transport/timeout/unparseable). We seed one active exemplar; DNO/XM33
 to co-author the rest so the set isn't biased to our path.
+
+## `gleif-cbp` recipe conformance vectors (`recipe-vectors.json`)
+
+`recipe-vectors.json` is the **deterministic conformance set** for a real DACS-2 GLEIF
+public-authority verification recipe — the cross-impl convergence target. Each case maps a GLEIF
+response (HTTP status, or a parsed registration status) to the §7.5.1 `decision` a conformant
+verifier MUST produce, encoding the Mode-A semantics locked with DNO (#146). It is deterministic by
+construction (no live fetch), so any two impls converge on the same verdicts. This impl reproduces
+every case (`test/vectors/gleif-recipe-vectors.test.ts`); a second impl (DNO, an SDK) checks its
+recipe the same way — the GLEIF analogue of the bundle/settlement drift checks.
+
+**Draft recipe (non-normative).** A reference verifier already implements this: `src/cli/vet-gleif.ts`
+(the GLEIF `consensus-backed-proxy` fetch) + `src/lib/gleif-classify.ts` (the pure status→decision
+mapping). For an SDK whose vet dispatches by `recipe.method`, the natural shape is a new method
+`gleif-cbp` resolving the GLEIF record-by-id endpoint and applying this mapping. **The recipe
+*descriptor* (its registry entry / `method` name) is steward-owned normative content — this is a draft
+proposal + a working reference + the conformance vectors, not a registry entry we assert.** The
+steward decides whether/how it enters the recipe registry.
