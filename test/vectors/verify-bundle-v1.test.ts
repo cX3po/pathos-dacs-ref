@@ -197,10 +197,14 @@ test('§10.4 — orchestrator sharing the buyer claim is not an extra required s
   assert.equal(v.decision, 'accept');
 });
 
-test('§10.4 — enforcing mode: placeholder-DID fixture is NOT accepted (unverifiable signatures)', () => {
+test('§10.4 — enforcing mode: placeholder-DID fixture is INDETERMINATE, not accepted (unverifiable signatures, §7.5.1)', () => {
   const v = verifyBundleV1(load('attestation-bundle-0004.json')); // default requireSignatures:true
   assert.equal(v.cryptographicallyVerified, false);
-  assert.equal(v.decision, 'reject', 'enforcing mode rejects unverifiable signatures');
+  // §7.5.1 do-not-collapse: an unresolvable/placeholder-DID key is UNDECIDABLE → `indeterminate`, NOT a hard
+  // `reject` (which means the signature is invalid). It is still NOT accepted. (Fixed 2026-06-19 — was
+  // wrongly collapsed to 'reject'; surfaced by the cross-impl convergence harness vs dacs-verify.)
+  assert.equal(v.decision, 'indeterminate', 'enforcing mode → indeterminate for unverifiable signatures');
+  assert.notEqual(v.decision, 'accept', 'must never be accepted');
   assert.equal(v.structurallyValid, true, 'still structurally valid + hash reproduced');
 });
 

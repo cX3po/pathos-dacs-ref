@@ -294,17 +294,20 @@ function makeUnverifiableSellerCopy(jobId: string): AttestationBundleV1 {
   };
 }
 
-test('FIX 3: counterparty (seller) anchor with UNVERIFIABLE signatures → fail (enforcing default)', async () => {
+test('FIX 3: counterparty (seller) anchor with UNVERIFIABLE signatures → indeterminate, NOT accepted (enforcing default, §7.5.1)', async () => {
   const jobId = 'fix3-unverifiable-counterparty';
   const buyerCopy = makeV1({ jobId, anchoredByRole: 'buyer' }); // local binds here (real keys)
   const sellerUnverifiable = makeUnverifiableSellerCopy(jobId);
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(buyerCopy)], [pair.seller, JSON.stringify(sellerUnverifiable)]]);
-  // DEFAULT (enforcing) — the unverifiable seller anchor must NOT be accepted.
+  // DEFAULT (enforcing) — the unverifiable seller anchor must NOT be accepted. §7.5.1 do-not-collapse:
+  // an unresolvable-key anchor is UNDECIDABLE → indeterminate, not a hard fail (fixed 2026-06-19; was 'fail').
+  // FIX 3's security property ("not accepted") is preserved — indeterminate ≠ pass.
   const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
-  assert.equal(v.twoSided.outcome, 'fail', JSON.stringify(v.twoSided));
-  assert.match(v.twoSided.detail, /seller-anchor bundle did not pass single-bundle verify/);
-  assert.equal(v.rollup, 'fail');
+  assert.equal(v.twoSided.outcome, 'indeterminate', JSON.stringify(v.twoSided));
+  assert.match(v.twoSided.detail, /undecidable/);
+  assert.equal(v.rollup, 'indeterminate');
+  assert.notEqual(v.rollup, 'pass'); // never silently pass an unverifiable counterparty
 });
 
 test('FIX 3: caller may OPT IN to fixture mode (requireSignatures:false) → unverifiable counterparty accepted', async () => {

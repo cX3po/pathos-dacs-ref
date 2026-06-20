@@ -19,7 +19,7 @@ export interface DriftRow {
   expected: string | null;
   hashStatus: HashStatus;
   structurallyValid: boolean;
-  decision: 'accept' | 'reject' | 'skipped';
+  decision: 'accept' | 'reject' | 'indeterminate' | 'skipped';
   /** Which DACS artifact this row checked. Absent ⇒ legacy bundle row (evaluateBundle). */
   kind?: 'bundle' | 'settlement';
   notes: string;
