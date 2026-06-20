@@ -1,0 +1,689 @@
+{
+  "set": "membership-v0.1",
+  "spec": "wayfare/conformance/cci-membership-verifier-contract.md §9",
+  "network": "demos-devnet",
+  "rosterA": {
+    "rosterId": "roster:family-lane-A",
+    "admin": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+    "epoch": 7,
+    "root": "139bf2132d740a7aa4ffa0d99264df114a6b4cb98740ee440fe6ecb0e882a54d"
+  },
+  "rosterB": {
+    "rosterId": "roster:subnet-B",
+    "admin": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "epoch": 7,
+    "root": "1d2671487536b39e90c6a4f73750d0b1f403cdcc58b38612e833e5538ba7abc5"
+  },
+  "artifacts": {
+    "epochHeadA": {
+      "protocol": "cci-membership-epoch",
+      "v": 1,
+      "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+      "rosterId": "roster:family-lane-A",
+      "currentEpoch": 7,
+      "acceptedEpochs": [],
+      "sig": "cd741f5cb452d5f0bc33e6252d28713dea5a3998ed41cf79ccf4224437382cf8ea3550e12606da0ffd26f85e4435e9d8b0d0fef5a8d0ffc8544d9c229b59a203"
+    },
+    "rootArtifactA": {
+      "protocol": "cci-membership",
+      "v": 1,
+      "network": "demos-devnet",
+      "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+      "rosterId": "roster:family-lane-A",
+      "epoch": 7,
+      "treeHashAlg": "rfc6962-sha256",
+      "treeDepth": 2,
+      "root": "139bf2132d740a7aa4ffa0d99264df114a6b4cb98740ee440fe6ecb0e882a54d",
+      "publishedAt": 1800000000000,
+      "adminBinding": "2df72c089235fac4fc567e1109976012243424c8b12bdde0483269fb82a42c71b67705a9b29b1a82b81d35d99f97c9a3491d06a7c9db1a3737641bb33922e602"
+    },
+    "epochHeadB": {
+      "protocol": "cci-membership-epoch",
+      "v": 1,
+      "rosterAdminCCI": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "rosterId": "roster:subnet-B",
+      "currentEpoch": 7,
+      "sig": "2ee65e721cc95d2e33a471f9fb74aed704e25385790250a342356e66f67384811337641f22bae6d18d33ee422b36c5b5fd65ee7f2336d3b5c92ade6616fdbb01"
+    },
+    "rootArtifactB": {
+      "protocol": "cci-membership",
+      "v": 1,
+      "network": "demos-devnet",
+      "rosterAdminCCI": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "rosterId": "roster:subnet-B",
+      "epoch": 7,
+      "treeHashAlg": "rfc6962-sha256",
+      "treeDepth": 1,
+      "root": "1d2671487536b39e90c6a4f73750d0b1f403cdcc58b38612e833e5538ba7abc5",
+      "publishedAt": 1800000000000,
+      "adminBinding": "d79d1a1bb92a426b5d19846ec524cf0bf86587c6590e88cbea6c2167dd708fa14b4cda1609befbd43e8a68e70351dbab904c55901c23376960d6605a88c87e07"
+    }
+  },
+  "count": 20,
+  "vectors": [
+    {
+      "name": "accept",
+      "expected": "accept",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "reject-non-member",
+      "expected": "reject",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+          "presentationKeyPub": "4a72e4035bb435d0aa42d43b8873d9f07cb9bf476fe2ade0aba49983eebd425e",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "542abe3d87e0b971f18d30ad933317c4b675bd303577bc573f17d9c42c631ad318d7b9ff2dce4f0bc4d863afa8cbf26bb2abc0585b628272377953c7dbe7d20c",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "reject-tampered-merkle-path",
+      "expected": "reject",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "f7f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "reject-bad-admin-binding",
+      "expected": "reject",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "reject-bad-member-binding",
+      "expected": "reject",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "0096b7cd1ee641eedbb08ce55e636c526c1d4aaf34939dd81d298cd3ecdc76aecab6563441591f8b3c8c7629aa376213c7b3d27939094adad67b40ac40b2cc0d",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "reject-revoked-member",
+      "expected": "reject",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "reject-cross-roster-replay",
+      "expected": "reject",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "rosterId": "roster:subnet-B",
+          "cci": "884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b",
+          "presentationKeyPub": "48075a597e721a156e2e0799de5cc0c5324dc6e7eaf1cdd46250868ec53215dd",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "dd3594999af1478db6b35668879a973243f067abc6b2e6fd823610e07c4a1001",
+            "side": "left"
+          }
+        ],
+        "bindingSig": "9805c3d1e036d598ade9518a4d09f616089f8796ac370156b01e80f1d519a08b9706e370510688178701eae2d5390282245b5190c12b27bccfb20b406465ea00",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "reject-cross-admin-replay",
+      "expected": "reject",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "reject-precedence-stale+forged-binding",
+      "expected": "reject",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 6
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83468c69fd363b58e4b86445d4df2c4fb0fb82e82bd267dc6ae8b91e3d9e91fd1adec8efc70ffebd3fb3bfbac4e5ae85b9d0b3c98fff33116a99268c05d5c800",
+        "epoch": 6
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "accept-audience-scoped-revoke-other-audience",
+      "expected": "accept",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:audience-B"
+      }
+    },
+    {
+      "name": "reject-audience-scoped-revoke-same-audience",
+      "expected": "reject",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:audience-A"
+      }
+    },
+    {
+      "name": "indeterminate-stale-epoch",
+      "expected": "indeterminate",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 6
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "0e8d21046909cb28c86b228341b4c7bec020d67c1b7f6e9fe79fbbf27a3b14ecf7604923db3fa7658b59e3c95f9b7ec5353b6cf79fce5fcec3158685b5aaa007",
+        "epoch": 6
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "indeterminate-root-unreadable",
+      "expected": "indeterminate",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "indeterminate-epoch-head-unreadable",
+      "expected": "indeterminate",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "indeterminate-malformed-epoch-head",
+      "expected": "indeterminate",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "indeterminate-malformed-root-artifact",
+      "expected": "indeterminate",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "indeterminate-admin-key-unresolvable",
+      "expected": "indeterminate",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "zz",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "indeterminate-revoke-ledger-unreadable",
+      "expected": "indeterminate",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "error-malformed-proof",
+      "expected": "error",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64",
+            "side": "right"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    },
+    {
+      "name": "error-malformed-merkle-path-element",
+      "expected": "error",
+      "proof": {
+        "leafPreimage": {
+          "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+          "rosterId": "roster:family-lane-A",
+          "cci": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+          "presentationKeyPub": "1ba4075b77c9e3fb3ecde15cdaf5221f3c10373e623f7b0e1ef76366b0af7137",
+          "epoch": 7
+        },
+        "salt": "abababababababababababababababababababababababababababababababab",
+        "merklePath": [
+          {
+            "sibling": "37f29b804a2ec4eb8d22eeec971faa2c213f3eed3c140354e7d620edf76c7a64"
+          },
+          {
+            "sibling": "91431aab4f47af576d48ee83994ba33432680750a47ec44d1004352845a66195",
+            "side": "right"
+          }
+        ],
+        "bindingSig": "83a30b32d767a8e8c39f95e8983cc59b6b2e28b1a07d85d4b397da4af9ce134f64b82e7d3fdab1fd9f8be7d0ce197c4b13e4728feda465463a9b24948c6c7f0b",
+        "epoch": 7
+      },
+      "expected_context": {
+        "rosterId": "roster:family-lane-A",
+        "rosterAdminCCI": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+        "audience": "verifier:acme-marketplace"
+      }
+    }
+  ],
+  "keys": {
+    "note": "ed25519 priv = 32 bytes filled with the seed byte; pub = getPublicKey(priv)",
+    "admin": "5c9c6df261c9cb840475776aaefcd944b405328fab28f9b3a95ef40490d3de84",
+    "adminB": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "member": "4ed32f63bf35f0eeefcb25f28a2e1fbdc873ae2835671b0c9460f5f12e4556a8",
+    "memberB": "884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b",
+    "outsider": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "attacker": "74f85cda34d1c27c4621484731e91579c3d9c6cfc0d94b281aa11e9162058aa9"
+  },
+  "hash": "0540dc5746f733cdd2d2ee3489b95a2c4e3de6897d226eb6a94c01de9fb70720"
+}

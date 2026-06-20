@@ -80,7 +80,7 @@ test('§B.7 — verify() returns false for unknown separator (does NOT throw)', 
   assert.equal(result, false);
 });
 
-test('§B.7 — registry separator count (13 registry + 12 dacs-x extension)', () => {
+test('§B.7 — registry separator count (13 registry + 15 dacs-x extension)', () => {
   // v0.1 §B.7 alignment 2026-06-07 (dacs-repin cutover): the 6 drifted strings were renamed
   // to their canonical §B.7 form, the legacy `dacs5-bundle:v1:` was folded into `dacs-bundle:v1:`,
   // and the 7 residual non-registry kinds moved to the SIG-4 `dacs-x-` extension map.
@@ -97,10 +97,17 @@ test('§B.7 — registry separator count (13 registry + 12 dacs-x extension)', (
   // 2026-07-24 #248 registry alignment: +3 §B.7 registry kinds (BUNDLE_BINDING, FAULT_BUNDLE,
   // FAULT_BUNDLE_POINTER) — added to the CORE §B.7 table by #248 and previously only defined locally
   // in src/lib/bundle-binding-v1.ts; now centralized into DOMAIN_SEPARATORS → 10 → 13.
+  // 2026-08-13 cci-membership rebase: +3 dacs-x kinds (ROSTER_ROOT, ROSTER_BIND, ROSTER_EPOCH)
+  // for the CCI-keyed roster membership engine → 12 → 15. See src/lib/membership.ts +
+  // wayfare/conformance/cci-membership-verifier-contract.md.
+  // NOTE: this branch was written against a 10-registry/11-extension tree; main has since added
+  // the #248 registry alignment (+3 registry) and AP2_MOCK_RECEIPT (+1 extension). The counts
+  // below are the RECONCILED post-rebase totals, not either branch's original numbers — the two
+  // sets of assertions were mutually contradictory and could not both be kept.
   assert.equal(Object.keys(DOMAIN_SEPARATORS).length, 13,
     `expected 13 §B.7-registry separators, got ${Object.keys(DOMAIN_SEPARATORS).length}`);
-  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 12,
-    `expected 12 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
+  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 15,
+    `expected 15 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
   assert.equal(Object.keys(PATHOS_EXTENSION_SEPARATORS).length, 4,
     `expected 4 PATH-OS extension separators, got ${Object.keys(PATHOS_EXTENSION_SEPARATORS).length}`);
   // Pin the exact canonical strings — a count check alone can't catch a remove-one/add-one substitution.

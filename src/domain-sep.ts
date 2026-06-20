@@ -123,6 +123,17 @@ export const DACS_X_EXTENSION_SEPARATORS = {
   // A real deployment uses the PSP's own signature verified under SR-3 attestation, not this.
   //   AP2_MOCK_RECEIPT body := utf8(sha256hex(JCS(receipt minus facilitatorSignature)))
   AP2_MOCK_RECEIPT: 'dacs-x-ap2-receipt:v1:',
+  // cci-membership — CCI-keyed roster membership proof (minimal-disclosure, NOT anonymity).
+  // SIG-4 extension surface; salted-hash CCI-keyed Merkle leaves + ed25519 admin/member bindings
+  // (no ZK/L2PS/FHE). Contract: wayfare/conformance/cci-membership-verifier-contract.md.
+  //   ROSTER_ROOT  body := JCS({protocol,v,network,rosterAdminCCI,rosterId,epoch,treeHashAlg,treeDepth,root,publishedAt})
+  //                        (admin-signed full-tuple binding — §3; see src/lib/membership.ts buildRosterRoot)
+  //   ROSTER_BIND  body := JCS({rosterId,epoch,presentationKeyPub}) (member CCI-signed binding — §9.6)
+  //   ROSTER_EPOCH body := JCS({protocol,v,rosterAdminCCI,rosterId,currentEpoch,acceptedEpochs?})
+  //                        (admin-signed epoch-head pointer — §2/§9.2)
+  ROSTER_ROOT: 'dacs-x-roster-root:v1:',
+  ROSTER_BIND: 'dacs-x-roster-bind:v1:',
+  ROSTER_EPOCH: 'dacs-x-roster-epoch:v1:',
 } as const;
 
 /**
