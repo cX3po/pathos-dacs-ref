@@ -10,3 +10,5 @@ dist/
 .vscode/
 .idea/
 *.swp
+conformance/security-vectors/convergence-harness/report.json
+conformance/security-vectors/convergence-harness/report.md
