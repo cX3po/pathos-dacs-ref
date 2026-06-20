@@ -251,3 +251,101 @@ export interface SettlementEvidence {
   /** base64 ed25519 signature (absent on the unsigned payload that gets hashed). */
   signature?: string;
 }
+
+/* -------------------------------------------------------------------------- */
+/*  SettlementEvidence — spec/SDK v0.1 uniform form (§9.7)                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The §9.7 universal evidence shape, keyed by `evidenceVersion: "1"`.
+ *
+ * This is the spec/SDK form (uniform across every payment + delivery phase),
+ * distinct from the HTLC-specific {@link SettlementEvidence} above. It exists so
+ * pathos can INDEPENDENTLY EMIT the exact bytes the dacs-sdk emits for the same
+ * logical settlement (a byte-match convergence, not a shared-fixture re-hash).
+ *
+ * Signature discipline (§9.7): `signature` is OMITTED from the canonical form that
+ * gets hashed; evidenceHash = sha256(JCS(evidence minus `signature`)), and the
+ * signature value is ed25519 over "dacs-evidence:v1:" || evidenceHash.
+ */
+
+/** §9.7 ComponentSignature (object form — algorithm/signer/value). */
+export interface SettlementSignatureV1 {
+  algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate';
+  /** Signer ClaimReference (phase orchestrator), carried as a string DID/ref. */
+  signer: string;
+  /** Signature over "dacs-evidence:v1:" || evidenceHash (§B.7). */
+  value: string;
+}
+
+/** §9.7 SettlementFinalityRecord — REQUIRED on success-outcome PAYMENT evidence (PC-6). */
+export interface SettlementFinalityRecordV1 {
+  model: 'block-depth' | 'commitment-level' | 'provider-receipt' | 'htlc-reveal' | 'liquidity-tank';
+  /** model == "block-depth": number of blocks waited. */
+  finalityBlocks?: number;
+  /** model == "commitment-level": Solana commitment level accepted. */
+  finalityCommitmentLevel?: 'processed' | 'confirmed' | 'finalized';
+  /** unix ms at which the finality condition was observed to be met. */
+  finalityObservedAt: number;
+}
+
+/** §9.7 ChainTxRef (payment rail tx reference, as carried in the cross-impl fixtures). */
+export interface PaymentTxRefV1 {
+  rail: string;
+  txHash: string;
+  kind: string;
+}
+
+/** §9.7 PriceTerm carried on the spec evidence form (amount as a decimal STRING). */
+export interface SettlementPriceV1 {
+  amount: string;
+  currency: string;
+}
+
+/** Fields shared by every spec-form SettlementEvidence (§9.7). */
+interface SettlementEvidenceV1Base {
+  evidenceVersion: '1';
+  jobId: string;
+  /** PaymentPhaseType | DeliveryPhaseType — opaque phase id string. */
+  phase: string;
+  /**
+   * Bare-integer pipeline phase index. REQUIRED here because it matches the SDK/
+   * cross-impl fixture convention (phaseIndex carried in the evidence body); NOTE the
+   * spec §9.7 SettlementEvidence type block does not list it (it appears in PC-2 anchor
+   * addressing + the cross-impl fixtures) — to be reconciled with RB. (F4)
+   */
+  phaseIndex: number;
+  outcome: 'success' | 'failure';
+  /** When the evidence was observed (unix ms). */
+  observedAt: number;
+  /** §9.7 ComponentSignature — OMITTED from the hashed canonical form. */
+  signature?: SettlementSignatureV1;
+}
+
+/**
+ * PAYMENT evidence (produced by every pay-* phase). On a success outcome,
+ * `settlementFinality` is REQUIRED (PC-6).
+ */
+export interface SettlementEvidenceV1Payment extends SettlementEvidenceV1Base {
+  paymentTxRefs: PaymentTxRefV1[];
+  paymentAmount: SettlementPriceV1;
+  /**
+   * REQUIRED on success-outcome payment evidence (PC-6); MUST be omitted on a
+   * failure-outcome payment (settlement.ts L240) and never present on delivery.
+   */
+  settlementFinality?: SettlementFinalityRecordV1;
+  /** Optional failure-outcome explanation (§9.7 `reason`). */
+  reason?: string;
+}
+
+/**
+ * DELIVERY evidence (produced by every deliver-* phase). `settlementFinality`
+ * MUST be absent (PC-6).
+ */
+export interface SettlementEvidenceV1Delivery extends SettlementEvidenceV1Base {
+  deliverableContentHash: string;
+  deliverableAnchor: { kind: string; locator: string };
+}
+
+/** Discriminated union over the spec/SDK v0.1 evidence form. */
+export type SettlementEvidenceV1 = SettlementEvidenceV1Payment | SettlementEvidenceV1Delivery;
