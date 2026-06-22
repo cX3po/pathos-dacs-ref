@@ -31,52 +31,70 @@ const base: Presentation = { credential, holderProof: { challenge: validChalleng
 // issuer resolver: knows the genuine issuer, not an unknown one
 const resolve = (issuer: string) => (issuer === issuerPub ? issuerPub : null);
 
-type C = { name: string; expected: 'pass' | 'fail' | 'indeterminate' | 'error'; p: Presentation; nonce: string; resolve: (i: string) => string | null };
+// `sn` maps each vector to the CORE §B.8 session-nonce rule (SN-1..SN-4, PR #143) it exercises, or to the
+// §7.3.2/§7.5.1 surface when it isn't an SN rule — so a second impl can DIFF SN-rule agreement (RB's ask,
+// 2026-06-22: "point these at the SN rules → cross-impl validation that two impls agree on SN-1..4").
+type C = { name: string; expected: 'pass' | 'fail' | 'indeterminate' | 'error'; p: Presentation; nonce: string; resolve: (i: string) => string | null; sn: string };
 const m = (f: (p: Presentation) => void) => { const p = clone(base); f(p); return p; };
 
 const cases: C[] = [
-  { name: 'valid-holder-binding', expected: 'pass', p: base, nonce: NONCE, resolve },
+  // SN-1: the verifier-issued nonce is the binding; a matching challenge nonce is accepted (happy path).
+  // (Not tagged SN-4 — this does not exercise single-use/replay-ledger; it only shows match-accept.)
+  { name: 'valid-holder-binding', expected: 'pass', p: base, nonce: NONCE, resolve, sn: 'SN-1' },
   // the headline: a genuine, issuer-valid credential with NO holder proof must NOT pass (issuer-genuine ≠ holder-presents)
-  { name: 'issuer-genuine-but-no-holder-proof', expected: 'fail', p: m((p) => { delete p.holderProof; }), nonce: NONCE, resolve },
-  // cross-session replay: the REAL holder's proof from an OLD session re-presented now
+  { name: 'issuer-genuine-but-no-holder-proof', expected: 'fail', p: m((p) => { delete p.holderProof; }), nonce: NONCE, resolve, sn: '§7.3.2-step6' },
+  // SN-4 single-use: the REAL holder's proof from an OLD session re-presented now → reject (nonce not issued for THIS session)
   { name: 'cross-session-nonce-replay', expected: 'fail',
     p: { credential, holderProof: { challenge: { sessionNonce: OLD_NONCE, audience: 'verifier-1' }, signature: edSign(holderSignedBytes({ sessionNonce: OLD_NONCE, audience: 'verifier-1' }), SUBJECT) } },
-    nonce: NONCE, resolve },
+    nonce: NONCE, resolve, sn: 'SN-4' },
   // replay by a non-holder: attacker signs THIS session's challenge, but is not the credential subject
   { name: 'non-holder-presenter', expected: 'fail',
     p: { credential, holderProof: { challenge: validChallenge, signature: edSign(holderSignedBytes(validChallenge), ATTACKER) } },
-    nonce: NONCE, resolve },
+    nonce: NONCE, resolve, sn: '§7.3.2-step6' },
   // tampered credential: claims mutated after issuer signed → issuer sig fails
-  { name: 'tampered-credential', expected: 'fail', p: m((p) => { p.credential.claims = { kind: 'kyb', status: 'FORGED' }; }), nonce: NONCE, resolve },
+  { name: 'tampered-credential', expected: 'fail', p: m((p) => { p.credential.claims = { kind: 'kyb', status: 'FORGED' }; }), nonce: NONCE, resolve, sn: '§7.3.2-step1' },
   // malformed presentation → error (verifier-side, retryable; never fail)
-  { name: 'malformed-presentation', expected: 'error', p: ({ credential: { subject: subjectPub } } as unknown as Presentation), nonce: NONCE, resolve },
+  { name: 'malformed-presentation', expected: 'error', p: ({ credential: { subject: subjectPub } } as unknown as Presentation), nonce: NONCE, resolve, sn: '§7.5.1-error' },
   // issuer key unresolvable → indeterminate (genuineness undecidable), holder-binding otherwise valid
-  { name: 'issuer-unresolvable-indeterminate', expected: 'indeterminate', p: base, nonce: NONCE, resolve: () => null },
+  { name: 'issuer-unresolvable-indeterminate', expected: 'indeterminate', p: base, nonce: NONCE, resolve: () => null, sn: '§7.5.1-indeterminate' },
   // ── edge cases the security review demanded ──
-  // verifier handed NO session nonce to bind against → indeterminate, MUST NOT silently pass
-  { name: 'empty-expected-nonce-indeterminate', expected: 'indeterminate', p: base, nonce: '', resolve },
-  // challenge omits sessionNonce entirely (holder validly signed it) → fail (the SIWD-note bypass, closed)
+  // SN-1: verifier handed NO issued session nonce to bind against → indeterminate, MUST NOT silently pass
+  { name: 'empty-expected-nonce-indeterminate', expected: 'indeterminate', p: base, nonce: '', resolve, sn: 'SN-1' },
+  // SN-4: challenge omits sessionNonce entirely (holder validly signed it) → fail (the SIWD-note bypass, closed)
   { name: 'challenge-omits-session-nonce', expected: 'fail',
     p: { credential, holderProof: { challenge: { audience: 'verifier-1' }, signature: edSign(holderSignedBytes({ audience: 'verifier-1' }), SUBJECT) } },
-    nonce: NONCE, resolve },
-  // empty-string challenge nonce → fail (a vacuous nonce must not clear the guard)
+    nonce: NONCE, resolve, sn: 'SN-4' },
+  // SN-4: empty-string challenge nonce → fail (a vacuous nonce must not clear the guard)
   { name: 'empty-challenge-nonce', expected: 'fail',
     p: { credential, holderProof: { challenge: { sessionNonce: '', audience: 'verifier-1' }, signature: edSign(holderSignedBytes({ sessionNonce: '', audience: 'verifier-1' }), SUBJECT) } },
-    nonce: NONCE, resolve },
+    nonce: NONCE, resolve, sn: 'SN-4' },
   // malformed holderProof signature (not 64-byte hex) → error (verifier-side parse, not fail)
-  { name: 'malformed-holderproof-sig', expected: 'error', p: m((p) => { p.holderProof!.signature = 'zz'; }), nonce: NONCE, resolve },
+  { name: 'malformed-holderproof-sig', expected: 'error', p: m((p) => { p.holderProof!.signature = 'zz'; }), nonce: NONCE, resolve, sn: '§7.5.1-error' },
   // malformed subject key hex → error
-  { name: 'malformed-subject-key', expected: 'error', p: m((p) => { p.credential.subject = 'zz'; }), nonce: NONCE, resolve },
+  { name: 'malformed-subject-key', expected: 'error', p: m((p) => { p.credential.subject = 'zz'; }), nonce: NONCE, resolve, sn: '§7.5.1-error' },
   // self-issued (issuer === subject), resolvable + holder-signed → pass (issuer allow-list is scoped out;
   //   documented intentional — a self-issued VC still requires a valid holder proof to be presented)
   { name: 'self-issued-with-holder-proof', expected: 'pass',
     p: (() => { const cb = { subject: subjectPub, issuer: subjectPub, claims: { kind: 'self', status: 'asserted' } }; const cred = { ...cb, issuerSig: edSign(issuerSignedBytes(cb), SUBJECT) }; return { credential: cred, holderProof: { challenge: validChallenge, signature: edSign(holderSignedBytes(validChallenge), SUBJECT) } }; })(),
-    nonce: NONCE, resolve: (i: string) => (i === subjectPub ? subjectPub : null) },
+    nonce: NONCE, resolve: (i: string) => (i === subjectPub ? subjectPub : null), sn: '§7.3.2-step6' },
 ];
 
-const vectors = cases.map((c) => ({ name: c.name, expected: c.expected, sessionNonce: c.nonce, presentation: c.p }));
+const vectors = cases.map((c) => ({ name: c.name, expected: c.expected, sn: c.sn, sessionNonce: c.nonce, presentation: c.p }));
 const setHash = sha(JSON.stringify(vectors));
-writeFileSync(`${DIR}/vectors/vp-replay-v0.1.json`, JSON.stringify({ set: 'vp-replay-v0.1', spec: 'DACS §7.3.2', hash: setHash, count: vectors.length, vectors, keys: { subjectPub, issuerPub, note: 'seeds 0x51/0x52/0x53; raw ed25519' } }, null, 2));
+// SN-1..4 (CORE §B.8) coverage map so a second impl can diff agreement per rule, and so the gaps are honest.
+const snTags = [...new Set(vectors.flatMap((v) => v.sn.split(',').map((s) => s.trim())))].filter((s) => s.startsWith('SN-')).sort();
+const snCoverage = {
+  exercised: snTags,                            // SN rules this set actually drives a verdict for
+  notEnforcedHere: {
+    'SN-2': 'session-nonce entropy/format (≥128-bit CSPRNG, native ≥32 lowercase-hex) is NOT verifier-enforced in this validator — OPEN CONVERGENCE QUESTION for #143: do both impls enforce SN-2 format verifier-side, or is it issuance-side only? (our test nonces are intentionally non-hex placeholders to expose this.)',
+    'SN-3': 'issuance/travel + jobId-binding is transport/substrate-specific (out of scope per SN-3); our challenge carries sessionNonce+audience, not jobId.',
+  },
+  sn4Scope: 'SN-4 is exercised ONLY on its "reject a nonce the verifier did not issue for this session" branch (challenge nonce ≠ the single expected/issued nonce). The "never accept the same nonce twice" replay-ledger branch is NOT exercised — this validator compares against one expected nonce and keeps no used-nonce ledger.',
+  note: 'Each vector carries an `sn` tag = the SN-1..4 rule it exercises, or the §7.3.2/§7.5.1 surface when not an SN rule. SN-1 (verifier-generated nonce is the binding) is exercised; SN-4 partially (see sn4Scope); SN-2/SN-3 flagged above for the #143 cross-impl discussion.',
+  spec: 'CORE §B.8 SN-1..SN-4 (PR #143, closes D9/#133)',
+};
+writeFileSync(`${DIR}/vectors/vp-replay-v0.1.json`, JSON.stringify({ set: 'vp-replay-v0.1', spec: 'DACS §7.3.2 + CORE §B.8 (SN-1..4)', hash: setHash, count: vectors.length, snCoverage, vectors, keys: { subjectPub, issuerPub, note: 'seeds 0x51/0x52/0x53; raw ed25519' } }, null, 2));
+console.log(`SN coverage: exercised ${snTags.join(',')} | SN-2 (format) + SN-3 (transport) flagged as open/out-of-scope`);
 
 let pass = 0;
 console.log('\n=== DACS §7.3.2 VP holder-binding conformance vectors v0.1 (GAP #11 VP-replay) ===');
