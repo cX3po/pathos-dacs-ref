@@ -1,0 +1,111 @@
+{
+  "set": "sealed-envelope-deadline-v0.1",
+  "spec": "DACS-3 §8.4.3 sealed-envelope deadline (chain-timestamp anchoring) — GAP #27 (DACS-Standard#158)",
+  "note": "Behaviour-keyed (survives v0.2 §-renumber). accept=anchored time valid for phase; reject=post-deadline commit / pre-deadline reveal / post-window reveal; indeterminate=no anchored timestamp (timing unverifiable, never assume on-time); error=malformed params. Timing rests on the CHAIN-ANCHORED ts only — never a self-claimed time (the #27 hole).",
+  "conventionNote": "Boundary ts == commitDeadline (commit) and ts == windowEnd (reveal) are treated INCLUSIVE here — an open convergence question for the spec/#158: are the deadline boundaries inclusive or exclusive? Flagging rather than asserting. Asymmetry by design: ts == commitDeadline is COMMIT phase (commit accepts, reveal rejects).",
+  "scope": "Validates PHASE TIMING vs a caller-supplied anchored timestamp only. Does NOT verify the commitment hash, that the reveal opens it, identity/replay/uniqueness, that anchoredTs is genuinely chain-anchored, or chain finality/confirmation-depth. Closes #27 only if callers never substitute self-claimed time and treat ONLY accept as valid (indeterminate is non-accepted). Out of scope: commitDeadline-in-past at setup, revealWindow upper bound, anchoredTs-before-commit-open.",
+  "hash": "2a517cebb213faa0017b14247f4049cd950211a284588da3398d308d502def0b",
+  "count": 10,
+  "vectors": [
+    {
+      "name": "commit-before-deadline",
+      "expected": "accept",
+      "input": {
+        "phase": "commit",
+        "anchoredTs": 1799999995000,
+        "commitDeadline": 1800000000000,
+        "revealWindow": 600
+      }
+    },
+    {
+      "name": "commit-at-deadline-boundary",
+      "expected": "accept",
+      "input": {
+        "phase": "commit",
+        "anchoredTs": 1800000000000,
+        "commitDeadline": 1800000000000,
+        "revealWindow": 600
+      }
+    },
+    {
+      "name": "commit-post-deadline-LATE",
+      "expected": "reject",
+      "input": {
+        "phase": "commit",
+        "anchoredTs": 1800000000001,
+        "commitDeadline": 1800000000000,
+        "revealWindow": 600
+      }
+    },
+    {
+      "name": "reveal-in-window",
+      "expected": "accept",
+      "input": {
+        "phase": "reveal",
+        "anchoredTs": 1800000060000,
+        "commitDeadline": 1800000000000,
+        "revealWindow": 600
+      }
+    },
+    {
+      "name": "reveal-before-deadline-breaks-seal",
+      "expected": "reject",
+      "input": {
+        "phase": "reveal",
+        "anchoredTs": 1799999999999,
+        "commitDeadline": 1800000000000,
+        "revealWindow": 600
+      }
+    },
+    {
+      "name": "reveal-post-window-LATE",
+      "expected": "reject",
+      "input": {
+        "phase": "reveal",
+        "anchoredTs": 1800000600001,
+        "commitDeadline": 1800000000000,
+        "revealWindow": 600
+      }
+    },
+    {
+      "name": "reveal-at-window-end-boundary",
+      "expected": "accept",
+      "input": {
+        "phase": "reveal",
+        "anchoredTs": 1800000600000,
+        "commitDeadline": 1800000000000,
+        "revealWindow": 600
+      }
+    },
+    {
+      "name": "no-anchored-ts-indeterminate",
+      "expected": "indeterminate",
+      "input": {
+        "phase": "commit",
+        "anchoredTs": null,
+        "commitDeadline": 1800000000000,
+        "revealWindow": 600
+      }
+    },
+    {
+      "name": "revealWindow-too-short-error",
+      "expected": "error",
+      "input": {
+        "phase": "reveal",
+        "anchoredTs": 1800000001000,
+        "commitDeadline": 1800000000000,
+        "revealWindow": 30
+      }
+    },
+    {
+      "name": "nonfinite-deadline-error",
+      "expected": "error",
+      "input": {
+        "phase": "commit",
+        "anchoredTs": 1800000000000,
+        "commitDeadline": null,
+        "revealWindow": 600
+      }
+    }
+  ]
+}
