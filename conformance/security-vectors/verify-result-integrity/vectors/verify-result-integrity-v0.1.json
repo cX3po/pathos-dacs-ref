@@ -1,0 +1,262 @@
+{
+  "set": "verify-result-integrity-v0.1",
+  "spec": "DACS-2 VerifyResult binding (behaviour-keyed) — GAP #17/#6/#7 (DACS-Standard#158)",
+  "note": "Behaviour-keyed not §-number-keyed (spec restructure renumbers sections at v0.2). accept=bound; reject=replay/substitution/poisoning; indeterminate=unpinnable; error=malformed.",
+  "scope": "Validates CONTEXT BINDING of a presented VerifyResult (right result for this session+claim+pinned-recipe). Does NOT verify a self-signature (v0.1 VerifyResult is not self-signed — producer authenticity rests on the enclosing signed bundle) and does NOT prove the recipe was run. accept = \"correctly bound\", not \"party passed vetting\". scheme matched case-insensitively; claim.identifier + recipe id matched NFC-exact (case-insensitivity is scheme/registry-specific).",
+  "hash": "2fdbb6812f87d06362805094f1988ea438671035bb0b005792fd7fbb8580d5db",
+  "count": 11,
+  "vectors": [
+    {
+      "name": "valid-bound-result",
+      "gap": "-",
+      "expected": "accept",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp@1"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "recipe": "gleif-cbp@1",
+        "decision": "pass"
+      }
+    },
+    {
+      "name": "valid-bound-indeterminate-decision",
+      "gap": "-",
+      "expected": "accept",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp@1"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "recipe": "gleif-cbp@1",
+        "decision": "indeterminate"
+      }
+    },
+    {
+      "name": "replay-wrong-jobid",
+      "gap": "#17",
+      "expected": "reject",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp@1"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "jobId": "job-OTHER",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "recipe": "gleif-cbp@1",
+        "decision": "pass"
+      }
+    },
+    {
+      "name": "replay-mismatched-claim",
+      "gap": "#17",
+      "expected": "reject",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp@1"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "999999OTHERLEI0000000"
+        },
+        "recipe": "gleif-cbp@1",
+        "decision": "pass"
+      }
+    },
+    {
+      "name": "method-substitution",
+      "gap": "#6",
+      "expected": "reject",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp@1"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "recipe": "self-attest@1",
+        "decision": "pass"
+      }
+    },
+    {
+      "name": "recipe-version-poisoning",
+      "gap": "#7",
+      "expected": "reject",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp@1"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "recipe": "gleif-cbp@0",
+        "decision": "pass"
+      }
+    },
+    {
+      "name": "unversioned-recipe-indeterminate",
+      "gap": "#7",
+      "expected": "indeterminate",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "recipe": "gleif-cbp",
+        "decision": "pass"
+      }
+    },
+    {
+      "name": "empty-version-indeterminate",
+      "gap": "#7",
+      "expected": "indeterminate",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp@1"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "recipe": "gleif-cbp@",
+        "decision": "pass"
+      }
+    },
+    {
+      "name": "double-delimiter-recipe",
+      "gap": "#6",
+      "expected": "reject",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp@1"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "recipe": "gleif-cbp@1@evil",
+        "decision": "pass"
+      }
+    },
+    {
+      "name": "malformed-decision-error",
+      "gap": "-",
+      "expected": "error",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp@1"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "recipe": "gleif-cbp@1",
+        "decision": "ok"
+      }
+    },
+    {
+      "name": "missing-jobid-error",
+      "gap": "-",
+      "expected": "error",
+      "context": {
+        "jobId": "job-7f3a",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "pinnedRecipe": "gleif-cbp@1"
+      },
+      "result": {
+        "v": "dacs-2-verify-result:0.1",
+        "claim": {
+          "scheme": "lei",
+          "identifier": "506700GE1G29325QX363"
+        },
+        "recipe": "gleif-cbp@1",
+        "decision": "pass"
+      }
+    }
+  ]
+}
