@@ -1,0 +1,86 @@
+{
+  "set": "sn4-single-use-v0.1",
+  "spec": "CORE §B.8 SN-4 single-use (consume/reject-reuse) — DACS-Standard#143 / §14.6",
+  "note": "Covers the SN-4 branch the stateless vp-replay set (PR #18) does NOT: per-jobId consume-on-attempt + reject-reuse. Behaviour-keyed. accept=first use (then mark consumed); reject=already-consumed (replay); indeterminate=ledger unreadable (never assume fresh); error=malformed. Single-use scoped to (jobId,nonce) — a nonce consumed for one job does not block another (each session issued its own nonce per SN-1/SN-3).",
+  "hash": "15177906ff7a7aad880b2bbeda6ff2d1315774edd7295690cd843fb54ef18c85",
+  "count": 7,
+  "vectors": [
+    {
+      "name": "first-use",
+      "expected": "accept",
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "consumedBefore": []
+      }
+    },
+    {
+      "name": "reuse-same-job-rejected",
+      "expected": "reject",
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "consumedBefore": [
+          [
+            "job-7f3a",
+            "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "same-nonce-different-job-ok",
+      "expected": "accept",
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "consumedBefore": [
+          [
+            "job-OTHER",
+            "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "different-nonce-same-job-ok",
+      "expected": "accept",
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "consumedBefore": [
+          [
+            "job-7f3a",
+            "b3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "unreadable-ledger-indeterminate",
+      "expected": "indeterminate",
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "ledgerReadable": false
+      }
+    },
+    {
+      "name": "missing-nonce-error",
+      "expected": "error",
+      "input": {
+        "jobId": "job-7f3a",
+        "consumedBefore": []
+      }
+    },
+    {
+      "name": "empty-jobid-error",
+      "expected": "error",
+      "input": {
+        "jobId": "",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "consumedBefore": []
+      }
+    }
+  ]
+}
