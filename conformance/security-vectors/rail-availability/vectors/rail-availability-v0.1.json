@@ -1,0 +1,70 @@
+{
+  "set": "rail-availability-v0.1",
+  "spec": "DACS-4 rail-availability §9.5 pinning (read-before-pin) — GAP #13 (DACS-Standard#158)",
+  "note": "Behaviour-keyed (survives the v0.2 §-renumber). accept=pin held; reject=post-pin change (UPGRADE = the dangerous poisoning direction); indeterminate=presented absent (never assume live); error=unrecognized value / no trusted pinned baseline. Mirrors the §7.4.5 recipe-availability preflight, adding the read-before-pin comparison.",
+  "scope": "Validates PIN-CONSISTENCY of the rail availability FIELD only — NOT that the rail settled on-chain, nor finality/receipt/registry-signature/version. Verdict is pure exact-match; the favorability rank is diagnostic-only (labels poison direction, no verdict effect). indeterminate is non-success; absent availability is never defaulted to live. No case/whitespace coercion (a variant is unrecognized → error).",
+  "hash": "9d29df42619a96ac6d45af12251aec2a3b4527593444cabc4f1af9156183e99d",
+  "count": 10,
+  "vectors": [
+    {
+      "name": "pin-holds-live",
+      "expected": "accept",
+      "presented": "live",
+      "pinned": "live"
+    },
+    {
+      "name": "pin-holds-failed",
+      "expected": "accept",
+      "presented": "failed",
+      "pinned": "failed"
+    },
+    {
+      "name": "poison-upgrade-mocked-to-live",
+      "expected": "reject",
+      "presented": "live",
+      "pinned": "mocked"
+    },
+    {
+      "name": "poison-upgrade-failed-to-live",
+      "expected": "reject",
+      "presented": "live",
+      "pinned": "failed"
+    },
+    {
+      "name": "poison-upgrade-disabled-to-operator_gated",
+      "expected": "reject",
+      "presented": "operator_gated",
+      "pinned": "disabled"
+    },
+    {
+      "name": "change-downgrade-live-to-failed",
+      "expected": "reject",
+      "presented": "failed",
+      "pinned": "live"
+    },
+    {
+      "name": "absent-presented-indeterminate",
+      "expected": "indeterminate",
+      "presented": null,
+      "pinned": "live"
+    },
+    {
+      "name": "unknown-presented-error",
+      "expected": "error",
+      "presented": "super-live",
+      "pinned": "live"
+    },
+    {
+      "name": "case-variant-not-coerced",
+      "expected": "error",
+      "presented": "Live",
+      "pinned": "live"
+    },
+    {
+      "name": "unknown-pinned-error",
+      "expected": "error",
+      "presented": "live",
+      "pinned": "totally-live"
+    }
+  ]
+}
