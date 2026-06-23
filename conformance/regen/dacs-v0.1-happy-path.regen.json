@@ -66,26 +66,39 @@
       ],
       "domainSeparator": "dacs-composite:v1:",
       "artifact": {
-        "v": "dacs-2-composite-verify:0.1",
+        "recordVersion": "1",
         "jobId": "regen-lifecycle-0001",
-        "results": [
+        "evaluatedParty": "cci:db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+        "bundleHash": "72005563414f30b6c4db43b9bb37bec753081d16092a3caa5effe272ac19a5ed",
+        "requirementHash": "c16aa2de7405bff7ffebe44bd06197f9d20f658fc3aa81857c068e905b2cbdd0",
+        "freshness": [],
+        "supplementary": [
           {
-            "v": "dacs-2-verify-result:0.1",
-            "jobId": "regen-lifecycle-0001",
-            "claim": {
-              "scheme": "cci",
-              "identifier": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d"
-            },
-            "recipe": "cci-self-signed@1",
-            "decision": "pass",
-            "reason": "buyer CCI self-signature verified",
-            "runAt": "2026-01-01T00:00:00.000Z"
+            "source": "dacs-5",
+            "signalType": "completion-rate",
+            "value": 1,
+            "observedAt": 1767225600000
           }
         ],
-        "aggregateDecision": "pass",
-        "aggregatedAt": "2026-01-01T00:00:00.000Z"
+        "dealSpecific": [
+          {
+            "anchor": {
+              "kind": "storage-program",
+              "locator": "demos:vr:regen-lifecycle-0001"
+            },
+            "contentHash": "1feefd0c9e2411e1edcfc05f5dde13b7ce2272c5a9136d720a2a5d76d623da2d",
+            "recipeVersion": 1
+          }
+        ],
+        "overallDecision": "pass",
+        "generatedAt": 1767225600000,
+        "signature": {
+          "algorithm": "ed25519",
+          "signer": "cci:22fc297792f0b6ffc0bfcfdb7edb0c0aa14e025a365ec0e342e86e3829cb74b6",
+          "value": "HlcHuKJjPKurUzMkFO1ssW0Vjb8oaNb6KMkUC1W+mHY9d2pQSpMGO8YyOTeA8KWh33A/WB60aidaSFOkjlVmBw=="
+        }
       },
-      "contentHash": "sha256:141cd256eb18251bbf6f4617f40913415a72a5a9dd25fb3942f004328021158b"
+      "contentHash": "sha256:f9214f4c11486b772c53a36109f2a2cf1714f8391c8217cb2e8b32e06e3f5f75"
     },
     {
       "id": "agreement-fixed-price",
@@ -114,7 +127,7 @@
                 "kind": "storage-program",
                 "locator": "demos:vet:regen-lifecycle-0001"
               },
-              "contentHash": "141cd256eb18251bbf6f4617f40913415a72a5a9dd25fb3942f004328021158b"
+              "contentHash": "f9214f4c11486b772c53a36109f2a2cf1714f8391c8217cb2e8b32e06e3f5f75"
             }
           },
           {
@@ -126,7 +139,7 @@
                 "kind": "storage-program",
                 "locator": "demos:vet:regen-lifecycle-0001"
               },
-              "contentHash": "141cd256eb18251bbf6f4617f40913415a72a5a9dd25fb3942f004328021158b"
+              "contentHash": "f9214f4c11486b772c53a36109f2a2cf1714f8391c8217cb2e8b32e06e3f5f75"
             }
           }
         ],
@@ -151,16 +164,16 @@
           {
             "party": "cci:db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
             "algorithm": "ed25519",
-            "value": "yvgw1zHsmKJ/n8jisAvfVoDfLvX5opXyBmK2HUxMlNo42oYLNu49B0hHTyAK7MYusZFOPOMt8mu1J5sakD2dCA=="
+            "value": "EV+f75w5dXpxu5wk/nJD+7WHFP656t2ZNeMxYTvcrh1kjd2J5KIPj0trvivHyG1VwihOyD9WLVNkNBqOVJkjAQ=="
           },
           {
             "party": "cci:2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12",
             "algorithm": "ed25519",
-            "value": "XJmZm6WZu11XkzxzbsANdlDLKEeb59nfDmoCPXb8TpSTRALgIXzJB6WqAT/bPEQZJDUDHUr5Z+PzBGv0jug5Bg=="
+            "value": "z7ul6a/Kb3JtJSbEZRxdfpRgbhnQy1Cf5rH2DAjjI2MySlcL5Rj6ZM1Phz3U7xTLSd5hTEIR1N8rc/AI3TnpAQ=="
           }
         ]
       },
-      "contentHash": "sha256:8cb8efeae33048d7fdd65aecf825cde850d853eb539364917ba27dac88f3d832"
+      "contentHash": "sha256:5e129d7c2691e0078fcb1875e00a8aa62a351136f20de001da11122359d0a658"
     },
     {
       "id": "settlement-htlc-release",
@@ -281,7 +294,7 @@
     "verifies": true,
     "perArtifact": {
       "DACS-1 Listing": "structurally valid (no listing signature verifier in this impl)",
-      "DACS-2 CompositeVerificationRecord": "aggregation invariant holds: all results pass → aggregateDecision pass (§7.7.1)",
+      "DACS-2 CompositeVerificationRecord": "current §7.7 shape; overallDecision pass and the verifier ComponentSignature over \"dacs-composite:v1:\"||record_hash verifies",
       "DACS-3 AgreementDocument": "fixed-price agreement; buyer+seller ed25519 signatures over \"dacs-agreement:v1:\"||agreement_hash verify (§8.5). bundleHash = real per-party anchored-identity digest (jobId,role,primaryClaim); this lifecycle does not separately materialise an IdentityBundle.",
       "DACS-4 SettlementEvidence": "verifyHtlcSettlementEvidence → pass (real preimage→hashlock, reveal<timelock, signature checks)",
       "DACS-5 AttestationBundleV1": "verifyBundleV1 → accept (both party signatures verify)"

@@ -90,14 +90,33 @@ const listing: Listing = {
   publishedAt: T,
 };
 
-// ── DACS-2: CompositeVerificationRecord (wraps a VerifyResult) ────────────────
+// ── DACS-2: CompositeVerificationRecord (§7.7, current spec shape, verifier-signed) ──
+const verifier = mk(0x43);
+const verifierClaim = `cci:${verifier.pubHex}`;
+// the underlying single VerifyResult, referenced (not inlined) per spec VerifyResultRef.
 const vr: VerifyResult = {
   v: 'dacs-2-verify-result:0.1', jobId: JOB,
   claim: { scheme: 'cci', identifier: buyer.pubHex }, recipe: 'cci-self-signed@1',
   decision: 'pass', reason: 'buyer CCI self-signature verified', runAt: T,
 };
+const vrRef = { anchor: { kind: 'storage-program', locator: `demos:vr:${JOB}` }, contentHash: jcsHashHex(vr), recipeVersion: 1 };
+const compositeUnsigned = {
+  recordVersion: '1' as const,
+  jobId: JOB,
+  evaluatedParty: buyerClaim,                            // §B.1 ClaimReference string
+  bundleHash: partyHash('buyer', buyerClaim),           // sha256 of the IdentityBundle this Vet ran against
+  requirementHash: jcsHashHex({ required: ['cci'], oneOf: [] }), // sha256 of the listing's BundleRequirement
+  freshness: [] as Array<typeof vrRef>,
+  supplementary: [{ source: 'dacs-5', signalType: 'completion-rate', value: 1, observedAt: Tn }],
+  dealSpecific: [vrRef],
+  overallDecision: 'pass' as const,
+  generatedAt: Tn,
+};
+// §7.7 signature: verifier signs "dacs-composite:v1:" || record_hash (record minus `signature`).
+const compositeHash = jcsHashHex(compositeUnsigned);
 const composite: CompositeVerificationRecord = {
-  v: 'dacs-2-composite-verify:0.1', jobId: JOB, results: [vr], aggregateDecision: 'pass', aggregatedAt: T,
+  ...compositeUnsigned,
+  signature: { algorithm: 'ed25519', signer: verifierClaim, value: Buffer.from(sign(DOMAIN_SEPARATORS.COMPOSITE_VERIFY, enc.encode(compositeHash), verifier.priv)).toString('base64') },
 };
 
 // ── DACS-3: AgreementDocument (fixed-price) — REAL, signed by buyer + seller ──
@@ -189,8 +208,9 @@ const bundle: AttestationBundleV1 = emitAttestationBundleV1(unsigned, [
 // ── self-verify: every artifact our impl can verify must pass ────────────────
 const v = verifyBundleV1(bundle);
 const bundleOk = v.decision === 'accept' && v.signatureChecks.every((c) => c.decision === 'pass');
-// DACS-2 §7.7.1 aggregation invariant (this vector is all-pass): every result pass AND aggregate pass.
-const compositeOk = composite.results.every((r) => r.decision === 'pass') && composite.aggregateDecision === 'pass';
+// DACS-2 §7.7 invariant: overallDecision pass AND the verifier signature verifies.
+const compositeOk = composite.overallDecision === 'pass' &&
+  verify(DOMAIN_SEPARATORS.COMPOSITE_VERIFY, Buffer.from(composite.signature.value, 'base64'), enc.encode(compositeHash), ed25519.getPublicKey(verifier.priv));
 const allOk = bundleOk && settleOk && compositeOk && agreementOk;
 
 // ── per-stage artifact wrappers (DACS-Standard REQUIRED_ARTIFACT schema) ──────
@@ -218,7 +238,7 @@ const happy = {
     verifies: true,
     perArtifact: {
       'DACS-1 Listing': 'structurally valid (no listing signature verifier in this impl)',
-      'DACS-2 CompositeVerificationRecord': 'aggregation invariant holds: all results pass → aggregateDecision pass (§7.7.1)',
+      'DACS-2 CompositeVerificationRecord': 'current §7.7 shape; overallDecision pass and the verifier ComponentSignature over "dacs-composite:v1:"||record_hash verifies',
       'DACS-3 AgreementDocument': 'fixed-price agreement; buyer+seller ed25519 signatures over "dacs-agreement:v1:"||agreement_hash verify (§8.5). bundleHash = real per-party anchored-identity digest (jobId,role,primaryClaim); this lifecycle does not separately materialise an IdentityBundle.',
       'DACS-4 SettlementEvidence': 'verifyHtlcSettlementEvidence → pass (real preimage→hashlock, reveal<timelock, signature checks)',
       'DACS-5 AttestationBundleV1': 'verifyBundleV1 → accept (both party signatures verify)',

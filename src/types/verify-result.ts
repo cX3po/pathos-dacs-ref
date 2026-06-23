@@ -13,7 +13,7 @@
  * verifier CLI level (separate exit codes for pass / fail / indeterminate).
  */
 
-import type { ClaimRef } from './identity.js';
+import type { ClaimRef, VerifyResultRef } from './identity.js';
 
 /**
  * Per §7.5.1 — the four permitted decisions, no implicit boolean coercion.
@@ -66,24 +66,68 @@ export interface VerifyResult {
   supplementarySignals?: Record<string, unknown>;
 }
 
-/** Aggregated verification across all claims for a session (§7.7). */
+/** §7.7 ComponentSignature — {algorithm, signer (ClaimReference string), value}. */
+export interface ComponentSignature {
+  algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate';
+  /** §B.1 ClaimReference, carried as the canonical "Scheme:Identifier" string. */
+  signer: string;
+  /** Signature over "dacs-composite:v1:" || record_hash (record minus `signature`), §B.7. */
+  value: string;
+}
+
+/** §7.7 SupplementarySignal — soft reputation/quality signal accompanying a Vet record. */
+export interface SupplementarySignal {
+  source: 'dacs-5' | 'cci-nomis' | 'cci-ethos' | 'cci-humanpassport' | 'external' | string;
+  signalType: string; // e.g. "completion-rate", "dispute-rate", "rating-avg"
+  value: number | string;
+  observedAt: number;
+  attestation?: AttestationRef; // required for "external" sources
+}
+
+/** §7.7 WarningCode — enumerated advisory codes aligned to the §7.6.1 retry taxonomy. */
+export type WarningCode =
+  | 'AUTHORITY_UNAVAILABLE'
+  | 'AUTHORITY_RATE_LIMITED'
+  | 'DNS_RESOLUTION_FAILED'
+  | 'TLS_HANDSHAKE_FAILED'
+  | 'RESPONSE_MALFORMED'
+  | 'RETRY_EXHAUSTED';
+
+/** §7.7 VerificationWarning — advisory only; MUST NOT affect overallDecision (WN-1). */
+export interface VerificationWarning {
+  claimRef: string; // §B.1 ClaimReference string
+  code: WarningCode;
+  retryable: boolean;
+  suggestedRetryAfterMs?: number;
+}
+
+/**
+ * §7.7 CompositeVerificationRecord — aggregated Vet result for a session, signed by the verifier.
+ *
+ * §7.7.1 aggregation: `overallDecision` is 'pass' iff every required claim has a passing
+ * VerifyResult (oneOf within-group precedence error > indeterminate > fail; cross-accumulator
+ * fail > error > indeterminate); fail / indeterminate / error NEVER collapse to pass (§7.5.1).
+ */
 export interface CompositeVerificationRecord {
-  v: 'dacs-2-composite-verify:0.1';
+  recordVersion: '1';
+  /** DACS-5 session id */
   jobId: string;
-  /** All individual VerifyResults aggregated here */
-  results: VerifyResult[];
-  /** Aggregate decision per §7.7.1:
-   *   - 'pass' iff every result.decision === 'pass'
-   *   - otherwise the aggregate is a non-pass outcome; §7.7.1 ranks the three non-pass
-   *     values by context (oneOf within-group: error > indeterminate > fail;
-   *     cross-accumulator: fail > error > indeterminate) and NEVER collapses any of
-   *     fail / indeterminate / error to pass (§7.5.1 aggregation invariant).
-   *
-   * NB: fail, indeterminate, and error stay distinct — they do not collapse.
-   */
-  aggregateDecision: VerifyDecision;
-  /** Aggregate produced at (ISO 8601) */
-  aggregatedAt: string;
+  /** counterparty's primary identity claim (§B.1 ClaimReference string) */
+  evaluatedParty: string;
+  /** sha256 of the IdentityBundle this Vet ran against */
+  bundleHash: string;
+  /** sha256 of the listing's BundleRequirement */
+  requirementHash: string;
+  /** re-verifications of pre-attested claims */
+  freshness: VerifyResultRef[];
+  supplementary: SupplementarySignal[];
+  dealSpecific: VerifyResultRef[];
+  overallDecision: VerifyDecision;
+  /** advisory only; MUST NOT affect overallDecision (WN-1) */
+  warnings?: VerificationWarning[];
+  generatedAt: number;
+  /** signed by the verifier (§7.7); OMITTED from the hashed canonical form */
+  signature: ComponentSignature;
 }
 
 /**
