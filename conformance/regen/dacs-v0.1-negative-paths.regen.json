@@ -234,46 +234,33 @@
       ],
       "domainSeparator": "dacs-evidence:v1:",
       "artifact": {
-        "v": "dacs-4-settlement-evidence:0.1",
+        "evidenceVersion": "1",
         "jobId": "regen-lifecycle-0001",
-        "method": "htlc",
-        "rail": "mocked",
-        "price": {
-          "amount": "1.500000",
-          "asset": "USDC",
-          "decimals": 6
-        },
-        "settler": "buyer",
-        "settlerPubkey": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
-        "outcome": "settled",
-        "txRefs": [
+        "phase": "pay-cross-chain-htlc",
+        "outcome": "failure",
+        "paymentTxRefs": [
           {
-            "phase": "htlc-lock",
-            "chain": "eip155:8453",
-            "txHash": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
-            "hashlock": "7969ec0fcb8b648dfde24b1d0ae24568d398dcc3a83b80a850f973238cdfd3d9",
-            "observedAt": "2026-01-01T00:00:00.000Z",
-            "timelockExpiry": "2026-01-02T00:00:00.000Z",
-            "amount": {
-              "amount": "1.50",
-              "asset": "USDC",
-              "decimals": 6
-            }
+            "kind": "htlc-lock",
+            "chainId": 8453,
+            "contractAddress": "0xabababababababababababababababababababab",
+            "lockTxHash": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
           },
           {
-            "phase": "htlc-reveal",
-            "chain": "eip155:8453",
-            "txHash": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
-            "hashlock": "7969ec0fcb8b648dfde24b1d0ae24568d398dcc3a83b80a850f973238cdfd3d9",
-            "observedAt": "2026-01-01T06:00:00.000Z",
-            "preimage": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-            "revealDeadline": "2026-01-01T12:00:00.000Z"
+            "kind": "htlc-reveal",
+            "chainId": 8453,
+            "contractAddress": "0xabababababababababababababababababababab",
+            "revealTxHash": "0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
           }
         ],
-        "settledAt": "2026-01-01T00:00:00.000Z",
-        "signature": "TH+O+vi8oF/Q0xSa636vlpoJmiSaSecpox4J9S/vWITOKlnHy4Yu/KjMbyFgT817DwQ2IW7zCXTFEr+gNaIZBw=="
+        "observedAt": 1767225600000,
+        "reason": "underlying HTLC rejected by verifyHtlcSettlementEvidence → fail (reveal preimage replaced; no longer hashes to the lock hashlock)",
+        "signature": {
+          "algorithm": "ed25519",
+          "signer": "cci:db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "value": "KK9NYX305GfIw5C06Fo7A/v+K8+bU2srvrwjZwlyjiIdnYVHern6U0zkAeCYaytFqmXPaP7EfxRPCnJxIJMcDQ=="
+        }
       },
-      "contentHash": "sha256:2ee8d041a3fcc55dcb26dd6cf9ba3100df11a355ef78e683ae5bda49f33bcb79"
+      "contentHash": "sha256:d0eac0ec7e29e0b9cef0f2a9094ecb9792084624ace24a24319472fd1fc0e7dc"
     },
     {
       "id": "neg-bundle-tampered-signature",

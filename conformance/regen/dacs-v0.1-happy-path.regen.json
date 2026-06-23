@@ -234,46 +234,39 @@
       ],
       "domainSeparator": "dacs-evidence:v1:",
       "artifact": {
-        "v": "dacs-4-settlement-evidence:0.1",
+        "evidenceVersion": "1",
         "jobId": "regen-lifecycle-0001",
-        "method": "htlc",
-        "rail": "mocked",
-        "price": {
-          "amount": "1.500000",
-          "asset": "USDC",
-          "decimals": 6
-        },
-        "settler": "buyer",
-        "settlerPubkey": "db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
-        "outcome": "settled",
-        "txRefs": [
+        "phase": "pay-cross-chain-htlc",
+        "outcome": "success",
+        "paymentTxRefs": [
           {
-            "phase": "htlc-lock",
-            "chain": "eip155:8453",
-            "txHash": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
-            "hashlock": "7969ec0fcb8b648dfde24b1d0ae24568d398dcc3a83b80a850f973238cdfd3d9",
-            "observedAt": "2026-01-01T00:00:00.000Z",
-            "timelockExpiry": "2026-01-02T00:00:00.000Z",
-            "amount": {
-              "amount": "1.50",
-              "asset": "USDC",
-              "decimals": 6
-            }
+            "kind": "htlc-lock",
+            "chainId": 8453,
+            "contractAddress": "0xabababababababababababababababababababab",
+            "lockTxHash": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
           },
           {
-            "phase": "htlc-reveal",
-            "chain": "eip155:8453",
-            "txHash": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
-            "hashlock": "7969ec0fcb8b648dfde24b1d0ae24568d398dcc3a83b80a850f973238cdfd3d9",
-            "observedAt": "2026-01-01T06:00:00.000Z",
-            "preimage": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
-            "revealDeadline": "2026-01-01T12:00:00.000Z"
+            "kind": "htlc-reveal",
+            "chainId": 8453,
+            "contractAddress": "0xabababababababababababababababababababab",
+            "revealTxHash": "0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
           }
         ],
-        "settledAt": "2026-01-01T00:00:00.000Z",
-        "signature": "TH+O+vi8oF/Q0xSa636vlpoJmiSaSecpox4J9S/vWITOKlnHy4Yu/KjMbyFgT817DwQ2IW7zCXTFEr+gNaIZBw=="
+        "observedAt": 1767225600000,
+        "paymentAmount": {
+          "amount": "1.5",
+          "currency": "USDC"
+        },
+        "settlementFinality": {
+          "model": "htlc-reveal"
+        },
+        "signature": {
+          "algorithm": "ed25519",
+          "signer": "cci:db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
+          "value": "RAY7Y5j83kxY0VBLsKlmrT4FoNEHf/F+EeSgLxH5v8EQc2j50/Tsz1gRe6uHrDRkDzlc1yVNCXPQ0pLktRIYCA=="
+        }
       },
-      "contentHash": "sha256:7ddc4c420c9544426d5a3b25d7b6cea670aa65f7ad85caa75efc36f0d6410868"
+      "contentHash": "sha256:78de66d54228b6c13954a62be9a311f3ba1d266cab438c2d57aec8db7efd3486"
     },
     {
       "id": "attestation-bundle-happy",
@@ -345,7 +338,7 @@
       "DACS-1 Listing": "current §6.3.4 spec shape (wire-form string claims); seller ListingSignature over \"dacs-listing:v1:\"||listing_hash verifies, and the seller IdentityBundle per-claim presentation signature verifies",
       "DACS-2 CompositeVerificationRecord": "current §7.7 shape; overallDecision pass and the verifier ComponentSignature over \"dacs-composite:v1:\"||record_hash verifies",
       "DACS-3 AgreementDocument": "fixed-price agreement; buyer+seller ed25519 signatures over \"dacs-agreement:v1:\"||agreement_hash verify (§8.5). bundleHash = real per-party anchored-identity digest (jobId,role,primaryClaim); this lifecycle does not separately materialise an IdentityBundle.",
-      "DACS-4 SettlementEvidence": "verifyHtlcSettlementEvidence → pass (real preimage→hashlock, reveal<timelock, signature checks)",
+      "DACS-4 SettlementEvidence": "current §9.7 spec shape, projected from a settlement our verifyHtlcSettlementEvidence accepts (real preimage→hashlock, reveal<timelock); orchestrator ComponentSignature over \"dacs-evidence:v1:\"||evidence_hash",
       "DACS-5 AttestationBundleV1": "verifyBundleV1 → accept (both party signatures verify)"
     }
   }

@@ -227,6 +227,28 @@ const settlement: SettlementEvidence = buildHtlcSettlementEvidence({
 const settleV = verifyHtlcSettlementEvidence(settlement);
 const settleOk = settleV.decision === 'pass';
 
+// ── DACS-4 spec projection for the VECTOR (§9.7) ─────────────────────────────
+// The impl HTLC evidence above (settlement / negSettlement) is the crypto-verified source: our
+// native verifyHtlcSettlementEvidence checks preimage→hashlock on the bespoke internal shape and
+// gates self-verify (unchanged — no risk to the suite). The spec emitter→shape migration is deferred;
+// here we emit a faithful spec SettlementEvidence DERIVED from that same verified settlement, signed
+// under "dacs-evidence:v1:". §B.1 ClaimReference (signature.signer) carried as the wire-form string.
+const projectSettlement = (outcome: 'success' | 'failure', reason?: string) => {
+  const base: Record<string, unknown> = {
+    evidenceVersion: '1', jobId: JOB, phase: 'pay-cross-chain-htlc', outcome,
+    paymentTxRefs: [
+      { kind: 'htlc-lock', chainId: 8453, contractAddress: '0x' + 'ab'.repeat(20), lockTxHash: '0x' + lock.txHash },
+      { kind: 'htlc-reveal', chainId: 8453, contractAddress: '0x' + 'ab'.repeat(20), revealTxHash: '0x' + reveal.txHash },
+    ],
+    observedAt: Tn,
+  };
+  if (outcome === 'success') { base.paymentAmount = { amount: '1.5', currency: 'USDC' }; base.settlementFinality = { model: 'htlc-reveal' }; }
+  if (reason) base.reason = reason;
+  const h = jcsHashHex(base);
+  return { ...base, signature: { algorithm: 'ed25519' as const, signer: buyerClaim, value: Buffer.from(sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, enc.encode(h), buyer.priv)).toString('base64') } };
+};
+const settlementSpec = projectSettlement('success');
+
 // ── DACS-5: AttestationBundleV1 (signed, two-sided) → must verify ACCEPT ──────
 const unsigned: Omit<AttestationBundleV1, 'signatures'> = {
   bundleVersion: '1', jobId: JOB, outcome: 'completed', anchoredByRole: 'buyer',
@@ -263,7 +285,7 @@ const happyArtifacts: Wrapped[] = [
   wrap({ id: 'listing-analyze-csv', stage: 'DACS-1', kind: 'Listing', specRefs: ['§6.3', '§14.2'], domainSeparator: DOMAIN_SEPARATORS.LISTING, artifact: listing }),
   wrap({ id: 'composite-verify-cci', stage: 'DACS-2', kind: 'CompositeVerificationRecord', specRefs: ['§7.7', '§14.3'], domainSeparator: DOMAIN_SEPARATORS.COMPOSITE_VERIFY, artifact: composite }),
   wrap({ id: 'agreement-fixed-price', stage: 'DACS-3', kind: 'AgreementDocument', specRefs: ['§8.5', '§14.4'], domainSeparator: DOMAIN_SEPARATORS.AGREEMENT, artifact: agreement }),
-  wrap({ id: 'settlement-htlc-release', stage: 'DACS-4', kind: 'SettlementEvidence', specRefs: ['§9.7', '§14.5'], domainSeparator: DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, artifact: settlement }),
+  wrap({ id: 'settlement-htlc-release', stage: 'DACS-4', kind: 'SettlementEvidence', specRefs: ['§9.7', '§14.5'], domainSeparator: DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, artifact: settlementSpec }),
   // kind 'AttestationBundle' (spec §10.4 name): our AttestationBundleV1 emit's top-level fields
   // match the spec AttestationBundle type exactly. Internal TS type is still named …V1 (cosmetic
   // rename is a separate convergence follow-on; the artifact bytes are identical either way).
@@ -284,7 +306,7 @@ const happy = {
       'DACS-1 Listing': 'current §6.3.4 spec shape (wire-form string claims); seller ListingSignature over "dacs-listing:v1:"||listing_hash verifies, and the seller IdentityBundle per-claim presentation signature verifies',
       'DACS-2 CompositeVerificationRecord': 'current §7.7 shape; overallDecision pass and the verifier ComponentSignature over "dacs-composite:v1:"||record_hash verifies',
       'DACS-3 AgreementDocument': 'fixed-price agreement; buyer+seller ed25519 signatures over "dacs-agreement:v1:"||agreement_hash verify (§8.5). bundleHash = real per-party anchored-identity digest (jobId,role,primaryClaim); this lifecycle does not separately materialise an IdentityBundle.',
-      'DACS-4 SettlementEvidence': 'verifyHtlcSettlementEvidence → pass (real preimage→hashlock, reveal<timelock, signature checks)',
+      'DACS-4 SettlementEvidence': 'current §9.7 spec shape, projected from a settlement our verifyHtlcSettlementEvidence accepts (real preimage→hashlock, reveal<timelock); orchestrator ComponentSignature over "dacs-evidence:v1:"||evidence_hash',
       'DACS-5 AttestationBundleV1': 'verifyBundleV1 → accept (both party signatures verify)',
     },
   },
@@ -303,6 +325,8 @@ const negSettlement: SettlementEvidence = { ...settlement, txRefs: [settlement.t
 const negSettleV = verifyHtlcSettlementEvidence(negSettlement);
 const negSettleRejected = negSettleV.decision !== 'pass';
 const negOk = negBundleRejected && negSettleRejected;
+// negative DACS-4 spec projection: our HTLC verifier REJECTED the tampered settlement → spec failure record.
+const negSettlementSpec = projectSettlement('failure', `underlying HTLC rejected by verifyHtlcSettlementEvidence → ${negSettleV.decision} (reveal preimage replaced; no longer hashes to the lock hashlock)`);
 
 // The validator requires EVERY vector file to cover DACS-1..5 in order. The negative vector reuses
 // the VALID DACS-1/2/3 artifacts (context the verifier accepts) and tampers ONLY DACS-4 + DACS-5.
@@ -310,7 +334,7 @@ const negativeArtifacts: Wrapped[] = [
   wrap({ id: 'neg-listing-analyze-csv', stage: 'DACS-1', kind: 'Listing', specRefs: ['§6.3', '§14.2'], domainSeparator: DOMAIN_SEPARATORS.LISTING, artifact: listing }),
   wrap({ id: 'neg-composite-verify-cci', stage: 'DACS-2', kind: 'CompositeVerificationRecord', specRefs: ['§7.7', '§14.3'], domainSeparator: DOMAIN_SEPARATORS.COMPOSITE_VERIFY, artifact: composite }),
   wrap({ id: 'neg-agreement-fixed-price', stage: 'DACS-3', kind: 'AgreementDocument', specRefs: ['§8.5', '§14.4'], domainSeparator: DOMAIN_SEPARATORS.AGREEMENT, artifact: agreement }),
-  wrap({ id: 'neg-settlement-tampered-preimage', stage: 'DACS-4', kind: 'SettlementEvidence', specRefs: ['§9.7', '§14.5'], domainSeparator: DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, artifact: negSettlement }),
+  wrap({ id: 'neg-settlement-tampered-preimage', stage: 'DACS-4', kind: 'SettlementEvidence', specRefs: ['§9.7', '§14.5'], domainSeparator: DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, artifact: negSettlementSpec }),
   wrap({ id: 'neg-bundle-tampered-signature', stage: 'DACS-5', kind: 'AttestationBundle', specRefs: ['§10.4', '§14.6'], domainSeparator: DOMAIN_SEPARATORS.BUNDLE, artifact: negBundle }),
 ];
 
