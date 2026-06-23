@@ -338,7 +338,7 @@
       "DACS-1 Listing": "current §6.3.4 spec shape (wire-form string claims); seller ListingSignature over \"dacs-listing:v1:\"||listing_hash verifies, and the seller IdentityBundle per-claim presentation signature verifies",
       "DACS-2 CompositeVerificationRecord": "current §7.7 shape; overallDecision pass and the verifier ComponentSignature over \"dacs-composite:v1:\"||record_hash verifies",
       "DACS-3 AgreementDocument": "fixed-price agreement; buyer+seller ed25519 signatures over \"dacs-agreement:v1:\"||agreement_hash verify (§8.5). bundleHash = real per-party anchored-identity digest (jobId,role,primaryClaim); this lifecycle does not separately materialise an IdentityBundle.",
-      "DACS-4 SettlementEvidence": "current §9.7 spec shape, projected from a settlement our verifyHtlcSettlementEvidence accepts (real preimage→hashlock, reveal<timelock); orchestrator ComponentSignature over \"dacs-evidence:v1:\"||evidence_hash",
+      "DACS-4 SettlementEvidence": "current §9.7 spec shape, projected from a settlement our verifyHtlcSettlementEvidence accepts (real preimage→hashlock, reveal<timelock); ComponentSignature signed by the settling/orchestrating party (buyer) over \"dacs-evidence:v1:\"||evidence_hash",
       "DACS-5 AttestationBundleV1": "verifyBundleV1 → accept (both party signatures verify)"
     }
   }

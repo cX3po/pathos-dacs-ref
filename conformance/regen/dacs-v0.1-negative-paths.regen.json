@@ -2,7 +2,7 @@
   "vectorId": "dacs-v0.1-negative-paths",
   "title": "Negative paths (regenerated) — tampered DACS-4/5 artifacts the reference verifiers REJECT",
   "dacsVersion": "0.1",
-  "description": "DACS-1/2/3 are the valid happy-path artifacts (accepted context); DACS-4 and DACS-5 are each a valid artifact that was then tampered, and the pathos-dacs-ref verifiers reject them. Conformance use: a compliant verifier MUST NOT accept the tampered stages.",
+  "description": "DACS-1/2/3 are the valid happy-path artifacts (accepted context). DACS-5 is the valid bundle with one party signature byte flipped (verifyBundleV1 rejects it). DACS-4 is a spec §9.7 failure-outcome SettlementEvidence (newly signed) PROJECTED from an internal HTLC settlement whose reveal preimage was tampered so it no longer hashes to the lock hashlock — our verifyHtlcSettlementEvidence rejects that underlying settlement. Conformance use: a compliant verifier MUST NOT accept the tampered DACS-5 bundle nor treat the DACS-4 settlement as successful.",
   "artifacts": [
     {
       "id": "neg-listing-analyze-csv",
@@ -345,7 +345,7 @@
       "DACS-2 CompositeVerificationRecord": "valid (context)",
       "DACS-3 AgreementDocument": "valid (context); signatures verify",
       "DACS-4 SettlementEvidence": "REJECTED — fail",
-      "DACS-5 AttestationBundleV1": "REJECTED — reject"
+      "DACS-5 AttestationBundle": "REJECTED — reject"
     }
   }
 }

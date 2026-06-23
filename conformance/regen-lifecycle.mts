@@ -1,19 +1,23 @@
 /**
- * Regenerate DACS-Standard's quarantined lifecycle vectors FROM OUR VERIFIER, in current v0.1
- * shapes AND in DACS-Standard's `validate_conformance_vectors.py` schema (#133 / D2). This
- * ADDRESSES THE DACS-3 §8.5 GAP of #133; it does NOT lift the full quarantine — the deep shape
- * validator (validate_artifact_shapes.py) still fails DACS-1/2/4/5 because the reference impl's
- * Listing / CompositeVerificationRecord / SettlementEvidence types + bundle naming have drifted
- * from the spec's current type blocks (core type convergence, tracked separately).
- * Deterministic (fixed keys/timestamps) → byte-stable.
+ * Regenerate DACS-Standard's quarantined lifecycle vectors in current v0.1 spec shapes AND in
+ * DACS-Standard's `validate_conformance_vectors.py` schema (#133 / D2). LIFTS the #133 quarantine:
+ * all five stages now pass BOTH standard-side validators — `validate_conformance_vectors.py`
+ * (wrapper) AND `validate_artifact_shapes.py` (deep per-type spec-shape check, "OK — all artifacts
+ * match their spec type shape"). Deterministic (fixed keys/timestamps) → byte-stable.
  *
  * Emits ALL FIVE stages — DACS-1 Listing · DACS-2 CompositeVerificationRecord ·
- * DACS-3 AgreementDocument · DACS-4 SettlementEvidence · DACS-5 AttestationBundleV1. DACS-1/2/4/5
- * are produced by this repo's emitters/types; the DACS-3 AgreementDocument is constructed per §8.5
- * with this repo's signing/canonicalisation helpers (buyer + seller, ed25519, under
- * dacs-agreement:v1:) — not emitted by a production AgreementDocument builder — and self-verified
- * here (recompute agreement hash + verify both signatures). Nothing is fabricated — every signature
- * verifies and every hash is a real sha256 of real content.
+ * DACS-3 AgreementDocument · DACS-4 SettlementEvidence · DACS-5 AttestationBundleV1. Provenance,
+ * stage by stage (NOT all from production emitters):
+ *   - DACS-2: migrated to the current spec §7.7 type; emitted via this repo's types, verifier-signed.
+ *   - DACS-5: this repo's AttestationBundleV1 emitter output; its top-level fields already match the
+ *     spec `AttestationBundle` block (vector kind labelled accordingly).
+ *   - DACS-3: constructed per §8.5 with this repo's signing/canonicalisation helpers (no production
+ *     AgreementDocument builder exists), self-verified.
+ *   - DACS-1: spec §6.3.4 Listing WIRE-FORM CONSTRUCTION (§B.1 string claims), real ListingSignature
+ *     + seller bundle presentation signature, self-verified. (Impl Listing-type migration deferred.)
+ *   - DACS-4: spec §9.7 SettlementEvidence PROJECTION derived from a settlement our native
+ *     verifyHtlcSettlementEvidence accepts (real preimage→hashlock); signed. (Impl emitter migration deferred.)
+ * Nothing is fabricated — every signature verifies and every hash is a real sha256 of real content.
  *
  * Output schema = DACS-Standard's REQUIRED_ARTIFACT contract (validate_conformance_vectors.py):
  *   top-level { vectorId, title, dacsVersion:"0.1", description, artifacts[], expectedResult }
@@ -56,7 +60,11 @@ const Tn = Date.parse(T); // epoch-ms for finalisedAt — derived from T so they
 // §B.1 ClaimReference canonical wire form is the STRING "Scheme:Identifier".
 const buyerClaim = `cci:${buyer.pubHex}`;
 const sellerClaim = `cci:${seller.pubHex}`;
-// per-party anchored-identity digest (real, distinct, non-circular — excludes any bundleHash itself).
+// per-party anchored-identity digest. This lifecycle does not separately materialise a per-party
+// post-Vet IdentityBundle, so wherever the spec asks for a BundleParty.bundleHash / "sha256 of the
+// IdentityBundle" (composite, DACS-5 bundle parties, agreement parties) we bind to this SAME real,
+// distinct, non-circular digest over {jobId, role, primaryClaim} — a real hash, NOT a fabricated
+// IdentityBundle hash. Disclosed in expectedResult.perArtifact + flagged to RB.
 const partyHash = (role: string, claim: string) => jcsHashHex({ jobId: JOB, role, primaryClaim: claim });
 
 // ── validator-mirroring contentHash ──────────────────────────────────────────
@@ -145,7 +153,7 @@ const compositeUnsigned = {
   recordVersion: '1' as const,
   jobId: JOB,
   evaluatedParty: buyerClaim,                            // §B.1 ClaimReference string
-  bundleHash: partyHash('buyer', buyerClaim),           // sha256 of the IdentityBundle this Vet ran against
+  bundleHash: partyHash('buyer', buyerClaim),           // per-party anchored-identity digest (stands in for the IdentityBundle hash — see partyHash note)
   requirementHash: jcsHashHex({ required: ['cci'], oneOf: [] }), // sha256 of the listing's BundleRequirement
   freshness: [] as Array<typeof vrRef>,
   supplementary: [{ source: 'dacs-5', signalType: 'completion-rate', value: 1, observedAt: Tn }],
@@ -306,7 +314,7 @@ const happy = {
       'DACS-1 Listing': 'current §6.3.4 spec shape (wire-form string claims); seller ListingSignature over "dacs-listing:v1:"||listing_hash verifies, and the seller IdentityBundle per-claim presentation signature verifies',
       'DACS-2 CompositeVerificationRecord': 'current §7.7 shape; overallDecision pass and the verifier ComponentSignature over "dacs-composite:v1:"||record_hash verifies',
       'DACS-3 AgreementDocument': 'fixed-price agreement; buyer+seller ed25519 signatures over "dacs-agreement:v1:"||agreement_hash verify (§8.5). bundleHash = real per-party anchored-identity digest (jobId,role,primaryClaim); this lifecycle does not separately materialise an IdentityBundle.',
-      'DACS-4 SettlementEvidence': 'current §9.7 spec shape, projected from a settlement our verifyHtlcSettlementEvidence accepts (real preimage→hashlock, reveal<timelock); orchestrator ComponentSignature over "dacs-evidence:v1:"||evidence_hash',
+      'DACS-4 SettlementEvidence': 'current §9.7 spec shape, projected from a settlement our verifyHtlcSettlementEvidence accepts (real preimage→hashlock, reveal<timelock); ComponentSignature signed by the settling/orchestrating party (buyer) over "dacs-evidence:v1:"||evidence_hash',
       'DACS-5 AttestationBundleV1': 'verifyBundleV1 → accept (both party signatures verify)',
     },
   },
@@ -342,9 +350,12 @@ const negative = {
   vectorId: 'dacs-v0.1-negative-paths',
   title: 'Negative paths (regenerated) — tampered DACS-4/5 artifacts the reference verifiers REJECT',
   dacsVersion: '0.1',
-  description: 'DACS-1/2/3 are the valid happy-path artifacts (accepted context); DACS-4 and DACS-5 are '
-    + 'each a valid artifact that was then tampered, and the pathos-dacs-ref verifiers reject them. '
-    + 'Conformance use: a compliant verifier MUST NOT accept the tampered stages.',
+  description: 'DACS-1/2/3 are the valid happy-path artifacts (accepted context). DACS-5 is the valid '
+    + 'bundle with one party signature byte flipped (verifyBundleV1 rejects it). DACS-4 is a spec §9.7 '
+    + 'failure-outcome SettlementEvidence (newly signed) PROJECTED from an internal HTLC settlement '
+    + 'whose reveal preimage was tampered so it no longer hashes to the lock hashlock — our '
+    + 'verifyHtlcSettlementEvidence rejects that underlying settlement. Conformance use: a compliant '
+    + 'verifier MUST NOT accept the tampered DACS-5 bundle nor treat the DACS-4 settlement as successful.',
   artifacts: negativeArtifacts,
   expectedResult: {
     verifies: false,
@@ -357,7 +368,7 @@ const negative = {
       'DACS-2 CompositeVerificationRecord': 'valid (context)',
       'DACS-3 AgreementDocument': 'valid (context); signatures verify',
       'DACS-4 SettlementEvidence': `REJECTED — ${negSettleV.decision}`,
-      'DACS-5 AttestationBundleV1': `REJECTED — ${negBundleV.decision}`,
+      'DACS-5 AttestationBundle': `REJECTED — ${negBundleV.decision}`,
     },
   },
 };
