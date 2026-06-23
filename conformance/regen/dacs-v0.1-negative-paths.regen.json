@@ -14,47 +14,96 @@
       ],
       "domainSeparator": "dacs-listing:v1:",
       "artifact": {
-        "v": "dacs-1-listing:0.1",
-        "id": "lst-regen-0001",
-        "version": 1,
+        "dacsVersion": "1",
+        "listingVersion": 1,
+        "listingId": "lst-regen-0001",
         "seller": {
           "identity": {
-            "primary": {
-              "scheme": "cci",
-              "identifier": "2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12"
+            "bundleVersion": "1",
+            "presentedBy": "cci:2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12",
+            "presentedAt": 1767225600000,
+            "claims": [
+              {
+                "ref": "cci:2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12"
+              }
+            ],
+            "presentation": {
+              "kind": "per-claim",
+              "signatures": [
+                {
+                  "ref": "cci:2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12",
+                  "signature": "CMkGfTWkCktKGwit894jSf3XCijtDkbB0cuMrOyxcSsd8bYv+2x4au6TsJFJmrHIGbX3d++g6ju6Br8r8z1iBQ=="
+                }
+              ]
             }
+          },
+          "displayName": "Regen CSV Analyst"
+        },
+        "offering": {
+          "title": "CSV row classification",
+          "description": "Classify rows of an uploaded CSV and return per-row labels as JSON.",
+          "category": "data.analysis.classification",
+          "tags": [
+            "csv",
+            "classification"
+          ],
+          "deliverable": {
+            "kind": "attested-payload",
+            "payloadFormat": "application/json"
           }
         },
-        "capability": {
-          "key": "analyze-csv",
-          "description": "CSV row classification",
-          "input": "text/csv",
-          "output": "application/json"
+        "buyerRequirement": {
+          "requirementVersion": "1",
+          "required": [
+            {
+              "scheme": "cci",
+              "verificationRequired": true
+            }
+          ]
         },
-        "price": {
-          "amount": "1.50",
-          "currency": "USDC",
-          "perUnit": "row"
-        },
-        "requiredCapabilities": [],
-        "buyerRequirements": {
-          "primaryAcceptable": [
-            "cci"
-          ],
-          "requiredClaims": [],
-          "verificationRecipes": {
-            "cci": "cci-self-signed@1"
+        "pipeline": [
+          {
+            "kind": "vet-credentials"
+          },
+          {
+            "kind": "negotiate-fixed-price"
+          },
+          {
+            "kind": "commit-agreement"
+          },
+          {
+            "kind": "pay-evm-erc20"
+          },
+          {
+            "kind": "deliver-attested-payload"
+          }
+        ],
+        "pricing": {
+          "kind": "fixed",
+          "price": {
+            "amount": "1.5",
+            "currency": "USDC",
+            "unit": "per-row"
           }
         },
         "acceptedRails": [
-          "pay-x402@1"
+          {
+            "railId": "evm-erc20:8453:USDC"
+          }
         ],
-        "acceptedNegotiation": [
-          "negotiate-fixed-price"
-        ],
-        "publishedAt": "2026-01-01T00:00:00.000Z"
+        "terms": {
+          "deadlineSecAfterCommit": 86400
+        },
+        "validity": {
+          "notBefore": 1767225600000
+        },
+        "signature": {
+          "algorithm": "ed25519",
+          "signer": "cci:2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12",
+          "value": "2mNIFUAb4i3rTY414a3iW7EHo2oeHBXqoFlNOOz8Pb7wmUSbvZw77NNgfuvfSQBqY9TBUd8t98/RphSJ9gbZAQ=="
+        }
       },
-      "contentHash": "sha256:fa8f61b621e5c45c8cf226f3c67bc7b3042f06afaf9998f11639b15ba52b5569"
+      "contentHash": "sha256:23e171f396217c0801186c40945bcdfd9530d6b5e3909ff19113ce32734971cf"
     },
     {
       "id": "neg-composite-verify-cci",
@@ -115,7 +164,7 @@
         "listingRef": {
           "listingId": "lst-regen-0001",
           "version": 1,
-          "contentHash": "fa8f61b621e5c45c8cf226f3c67bc7b3042f06afaf9998f11639b15ba52b5569"
+          "contentHash": "23e171f396217c0801186c40945bcdfd9530d6b5e3909ff19113ce32734971cf"
         },
         "parties": [
           {
@@ -164,16 +213,16 @@
           {
             "party": "cci:db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
             "algorithm": "ed25519",
-            "value": "EV+f75w5dXpxu5wk/nJD+7WHFP656t2ZNeMxYTvcrh1kjd2J5KIPj0trvivHyG1VwihOyD9WLVNkNBqOVJkjAQ=="
+            "value": "8XgxDuiLa9IlvBybrV/oEK6MkMhp8dla8ElgnffVz4yfUSjg+EZJgFinImZ9/CcwAptIGFOtuzK0EBHS8PhhBw=="
           },
           {
             "party": "cci:2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12",
             "algorithm": "ed25519",
-            "value": "z7ul6a/Kb3JtJSbEZRxdfpRgbhnQy1Cf5rH2DAjjI2MySlcL5Rj6ZM1Phz3U7xTLSd5hTEIR1N8rc/AI3TnpAQ=="
+            "value": "65zD+fHo2sxJGc1Wbm+ZYpNxx7pTH3Siz4lxVB3cWptJgnY5pgNkgUL53jMcN+dgJCfZ4ECetNi3QavCMp4pCg=="
           }
         ]
       },
-      "contentHash": "sha256:5e129d7c2691e0078fcb1875e00a8aa62a351136f20de001da11122359d0a658"
+      "contentHash": "sha256:4e419db39e7cdd5ec646728f0b7f67544fc01ca74c9a7d6491b61a22e75eecfb"
     },
     {
       "id": "neg-settlement-tampered-preimage",
@@ -243,7 +292,7 @@
         "listingRef": {
           "listingId": "lst-regen-0001",
           "version": 1,
-          "contentHash": "fa8f61b621e5c45c8cf226f3c67bc7b3042f06afaf9998f11639b15ba52b5569"
+          "contentHash": "23e171f396217c0801186c40945bcdfd9530d6b5e3909ff19113ce32734971cf"
         },
         "parties": [
           {
@@ -278,16 +327,16 @@
           {
             "party": "cci:db995fe25169d141cab9bbba92baa01f9f2e1ece7df4cb2ac05190f37fcc1f9d",
             "algorithm": "ed25519",
-            "value": "AlBFFazEYwO/YsRET5CGqAQss4dcCnuvahehv/BuJumD58+rBkvu1PgZXKtrZok3eCe+Yu4/yLdOAGNRS2A3BA=="
+            "value": "A7pTZRMvIcs5+aHj5UNRRpisg37wCmKADFSo5Xr16COYkZoEPOdqn1WihJb2ZNOpnshuqZn7FR89QAb3HpPwDw=="
           },
           {
             "party": "cci:2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12",
             "algorithm": "ed25519",
-            "value": "z54bNMUe+Kws9IV23W/aco4jabs7qYmvVMB+iw4+sCudjEQdEWO+9zcMDPuJsCszldUXCVSW43aY8qmuzX2zDQ=="
+            "value": "p9JhBTq1Yfdkvnvj66UiwsR/M5WoWgy+X592CXucilpW7AS7HbmRkgZYE90Inoxad7UmQuxhL70CNtXgirBCAg=="
           }
         ]
       },
-      "contentHash": "sha256:76431fec1c83c08b66c95def2cd51e487d7a0faf4b539d641d29e4e931910389"
+      "contentHash": "sha256:9e8a8469025796d6f5439c26ad311803fb7b97075140ed56abeba5e32408f5e0"
     }
   ],
   "expectedResult": {

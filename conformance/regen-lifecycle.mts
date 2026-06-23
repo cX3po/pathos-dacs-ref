@@ -37,7 +37,6 @@ import { buildHtlcSettlementEvidence, verifyHtlcSettlementEvidence } from '../sr
 import { sign, verify } from '../src/lib/sign.js';
 import { DOMAIN_SEPARATORS } from '../src/domain-sep.js';
 import { jcsHashHex } from '../src/jcs.js';
-import type { Listing } from '../src/types/listing.js';
 import type { CompositeVerificationRecord, VerifyResult } from '../src/types/verify-result.js';
 import type { SettlementEvidence, HtlcLockTxRef, HtlcRevealTxRef } from '../src/types/settle.js';
 import { RailAvailability } from '../src/types/settle.js';
@@ -73,22 +72,64 @@ const sortDeep = (val: unknown): unknown => {
 };
 const contentHashOf = (val: unknown) => 'sha256:' + hex(sha256(enc.encode(JSON.stringify(sortDeep(val)))));
 
-// ── DACS-1: Listing ──────────────────────────────────────────────────────────
-const listing: Listing = {
-  v: 'dacs-1-listing:0.1', id: 'lst-regen-0001', version: 1,
-  seller: { identity: { primary: { scheme: 'cci', identifier: seller.pubHex } } },
-  capability: { key: 'analyze-csv', description: 'CSV row classification', input: 'text/csv', output: 'application/json' },
-  price: { amount: '1.50', currency: 'USDC', perUnit: 'row' },
-  requiredCapabilities: [],
-  buyerRequirements: {
-    primaryAcceptable: ['cci'],
-    requiredClaims: [],
-    verificationRecipes: { cci: 'cci-self-signed@1' } as Record<string, string>,
-  },
-  acceptedRails: ['pay-x402@1'],
-  acceptedNegotiation: ['negotiate-fixed-price'],
-  publishedAt: T,
+// ── DACS-1: Listing (§6.3.4, current spec shape, wire-form claims, seller-signed) ──
+// The vector carries the SERIALISED §B.1 wire form: ClaimReference as the string "scheme:identifier".
+// (The impl's in-memory IdentityBundle is object-form for bundle hashing; the wire form is what a
+// spec verifier sees — serialiser at src/lib/identity-presentation.ts. Impl Listing-TYPE migration
+// is a separate deferred convergence; here we emit a faithful, signed spec Listing artifact.)
+// seller's presented IdentityBundle (wire form), with a real per-claim presentation signature.
+const sellerBundleUnsigned = {
+  bundleVersion: '1', presentedBy: sellerClaim, presentedAt: Tn, claims: [{ ref: sellerClaim }],
 };
+const sellerBundleHash = jcsHashHex(sellerBundleUnsigned); // §6.3.2: signs "dacs-bundle-presentation:v1:" || bundle_hash
+const sellerIdentity = {
+  ...sellerBundleUnsigned,
+  presentation: {
+    kind: 'per-claim',
+    signatures: [{ ref: sellerClaim, signature: Buffer.from(sign(DOMAIN_SEPARATORS.BUNDLE_PRESENTATION, enc.encode(sellerBundleHash), seller.priv)).toString('base64') }],
+  },
+};
+const listingUnsigned = {
+  dacsVersion: '1',
+  listingVersion: 1,
+  listingId: 'lst-regen-0001',
+  seller: { identity: sellerIdentity, displayName: 'Regen CSV Analyst' },
+  offering: {
+    title: 'CSV row classification',
+    description: 'Classify rows of an uploaded CSV and return per-row labels as JSON.',
+    category: 'data.analysis.classification',
+    tags: ['csv', 'classification'],
+    deliverable: { kind: 'attested-payload', payloadFormat: 'application/json' },
+  },
+  buyerRequirement: {
+    requirementVersion: '1',
+    required: [{ scheme: 'cci', verificationRequired: true }],
+  },
+  pipeline: [
+    { kind: 'vet-credentials' },
+    { kind: 'negotiate-fixed-price' },
+    { kind: 'commit-agreement' },
+    { kind: 'pay-evm-erc20' },
+    { kind: 'deliver-attested-payload' },
+  ],
+  pricing: { kind: 'fixed', price: { amount: '1.5', currency: 'USDC', unit: 'per-row' } },
+  // acceptedRails REQUIRED + non-empty because the pipeline has a pay-* phase (§6.3.4).
+  acceptedRails: [{ railId: 'evm-erc20:8453:USDC' }],
+  terms: { deadlineSecAfterCommit: 86400 },
+  validity: { notBefore: Tn },
+};
+// §6.3.4 listing signature: seller signs "dacs-listing:v1:" || listing_hash (listing minus signature).
+const listingHash = jcsHashHex(listingUnsigned);
+const listing = {
+  ...listingUnsigned,
+  signature: {
+    algorithm: 'ed25519' as const,
+    signer: sellerClaim,
+    value: Buffer.from(sign(DOMAIN_SEPARATORS.LISTING, enc.encode(listingHash), seller.priv)).toString('base64'),
+  },
+};
+// self-verify the listing signature (§6.3.4) so the gate covers DACS-1 too.
+const listingOk = verify(DOMAIN_SEPARATORS.LISTING, Buffer.from(listing.signature.value, 'base64'), enc.encode(listingHash), ed25519.getPublicKey(seller.priv));
 
 // ── DACS-2: CompositeVerificationRecord (§7.7, current spec shape, verifier-signed) ──
 const verifier = mk(0x43);
@@ -137,7 +178,7 @@ const vetRecordRef = { anchor: { kind: 'storage-program', locator: `demos:vet:${
 const agreementUnsigned = {
   agreementVersion: '1',
   jobId: JOB,
-  listingRef: { listingId: listing.id, version: listing.version, contentHash: jcsHashHex(listing) },
+  listingRef: { listingId: listing.listingId, version: listing.listingVersion, contentHash: jcsHashHex(listing) },
   parties: [
     { role: 'buyer', bundleHash: partyHash('buyer', buyerClaim), primaryClaim: buyerClaim, vetRecordRef },
     { role: 'seller', bundleHash: partyHash('seller', sellerClaim), primaryClaim: sellerClaim, vetRecordRef },
@@ -189,7 +230,7 @@ const settleOk = settleV.decision === 'pass';
 // ── DACS-5: AttestationBundleV1 (signed, two-sided) → must verify ACCEPT ──────
 const unsigned: Omit<AttestationBundleV1, 'signatures'> = {
   bundleVersion: '1', jobId: JOB, outcome: 'completed', anchoredByRole: 'buyer',
-  listingRef: { listingId: listing.id, version: listing.version, contentHash: jcsHashHex(listing) },
+  listingRef: { listingId: listing.listingId, version: listing.listingVersion, contentHash: jcsHashHex(listing) },
   parties: [
     { role: 'buyer', bundleHash: partyHash('buyer', buyerClaim), primaryClaim: buyerClaim },
     { role: 'seller', bundleHash: partyHash('seller', sellerClaim), primaryClaim: sellerClaim },
@@ -211,7 +252,7 @@ const bundleOk = v.decision === 'accept' && v.signatureChecks.every((c) => c.dec
 // DACS-2 §7.7 invariant: overallDecision pass AND the verifier signature verifies.
 const compositeOk = composite.overallDecision === 'pass' &&
   verify(DOMAIN_SEPARATORS.COMPOSITE_VERIFY, Buffer.from(composite.signature.value, 'base64'), enc.encode(compositeHash), ed25519.getPublicKey(verifier.priv));
-const allOk = bundleOk && settleOk && compositeOk && agreementOk;
+const allOk = bundleOk && settleOk && compositeOk && agreementOk && listingOk;
 
 // ── per-stage artifact wrappers (DACS-Standard REQUIRED_ARTIFACT schema) ──────
 // specRefs reuse RB's quarantined-vector references (known-good for the validator + spec-accurate).
@@ -240,7 +281,7 @@ const happy = {
   expectedResult: {
     verifies: true,
     perArtifact: {
-      'DACS-1 Listing': 'structurally valid (no listing signature verifier in this impl)',
+      'DACS-1 Listing': 'current §6.3.4 spec shape (wire-form string claims); seller ListingSignature over "dacs-listing:v1:"||listing_hash verifies, and the seller IdentityBundle per-claim presentation signature verifies',
       'DACS-2 CompositeVerificationRecord': 'current §7.7 shape; overallDecision pass and the verifier ComponentSignature over "dacs-composite:v1:"||record_hash verifies',
       'DACS-3 AgreementDocument': 'fixed-price agreement; buyer+seller ed25519 signatures over "dacs-agreement:v1:"||agreement_hash verify (§8.5). bundleHash = real per-party anchored-identity digest (jobId,role,primaryClaim); this lifecycle does not separately materialise an IdentityBundle.',
       'DACS-4 SettlementEvidence': 'verifyHtlcSettlementEvidence → pass (real preimage→hashlock, reveal<timelock, signature checks)',
@@ -301,7 +342,7 @@ const negative = {
 // if a dependency change makes the happy artifacts reject (incl. the agreement signatures) or the
 // negatives accept, neither emitting nor the tombstone check may succeed.
 if (!allOk || !negOk) {
-  console.error(`SELF-VERIFY FAIL — happy(bundle=${v.decision} settle=${settleV.decision} composite=${compositeOk} agreement=${agreementOk}) `
+  console.error(`SELF-VERIFY FAIL — happy(listing=${listingOk} bundle=${v.decision} settle=${settleV.decision} composite=${compositeOk} agreement=${agreementOk}) `
     + `neg(bundle=${negBundleV.decision} settle=${negSettleV.decision} bothRejected=${negOk})`);
   process.exit(1);
 }
