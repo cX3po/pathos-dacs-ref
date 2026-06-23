@@ -223,7 +223,10 @@ const happyArtifacts: Wrapped[] = [
   wrap({ id: 'composite-verify-cci', stage: 'DACS-2', kind: 'CompositeVerificationRecord', specRefs: ['§7.7', '§14.3'], domainSeparator: DOMAIN_SEPARATORS.COMPOSITE_VERIFY, artifact: composite }),
   wrap({ id: 'agreement-fixed-price', stage: 'DACS-3', kind: 'AgreementDocument', specRefs: ['§8.5', '§14.4'], domainSeparator: DOMAIN_SEPARATORS.AGREEMENT, artifact: agreement }),
   wrap({ id: 'settlement-htlc-release', stage: 'DACS-4', kind: 'SettlementEvidence', specRefs: ['§9.7', '§14.5'], domainSeparator: DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, artifact: settlement }),
-  wrap({ id: 'attestation-bundle-happy', stage: 'DACS-5', kind: 'AttestationBundleV1', specRefs: ['§10.4', '§14.6'], domainSeparator: DOMAIN_SEPARATORS.BUNDLE, artifact: bundle }),
+  // kind 'AttestationBundle' (spec §10.4 name): our AttestationBundleV1 emit's top-level fields
+  // match the spec AttestationBundle type exactly. Internal TS type is still named …V1 (cosmetic
+  // rename is a separate convergence follow-on; the artifact bytes are identical either way).
+  wrap({ id: 'attestation-bundle-happy', stage: 'DACS-5', kind: 'AttestationBundle', specRefs: ['§10.4', '§14.6'], domainSeparator: DOMAIN_SEPARATORS.BUNDLE, artifact: bundle }),
 ];
 
 const happy = {
@@ -267,7 +270,7 @@ const negativeArtifacts: Wrapped[] = [
   wrap({ id: 'neg-composite-verify-cci', stage: 'DACS-2', kind: 'CompositeVerificationRecord', specRefs: ['§7.7', '§14.3'], domainSeparator: DOMAIN_SEPARATORS.COMPOSITE_VERIFY, artifact: composite }),
   wrap({ id: 'neg-agreement-fixed-price', stage: 'DACS-3', kind: 'AgreementDocument', specRefs: ['§8.5', '§14.4'], domainSeparator: DOMAIN_SEPARATORS.AGREEMENT, artifact: agreement }),
   wrap({ id: 'neg-settlement-tampered-preimage', stage: 'DACS-4', kind: 'SettlementEvidence', specRefs: ['§9.7', '§14.5'], domainSeparator: DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, artifact: negSettlement }),
-  wrap({ id: 'neg-bundle-tampered-signature', stage: 'DACS-5', kind: 'AttestationBundleV1', specRefs: ['§10.4', '§14.6'], domainSeparator: DOMAIN_SEPARATORS.BUNDLE, artifact: negBundle }),
+  wrap({ id: 'neg-bundle-tampered-signature', stage: 'DACS-5', kind: 'AttestationBundle', specRefs: ['§10.4', '§14.6'], domainSeparator: DOMAIN_SEPARATORS.BUNDLE, artifact: negBundle }),
 ];
 
 const negative = {

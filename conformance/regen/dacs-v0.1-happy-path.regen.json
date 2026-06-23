@@ -229,7 +229,7 @@
     {
       "id": "attestation-bundle-happy",
       "stage": "DACS-5",
-      "kind": "AttestationBundleV1",
+      "kind": "AttestationBundle",
       "specRefs": [
         "§10.4",
         "§14.6"
