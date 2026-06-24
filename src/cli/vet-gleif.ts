@@ -10,9 +10,11 @@
  *      https://api.gleif.org/api/v1/lei-records/{LEI}
  *   3. Convert the response into a §7.5.1 VerifyResult with:
  *        decision = "pass"  iff entity exists AND registration is ISSUED (active)
- *        decision = "fail"  iff entity not found OR registration RETIRED/ANNULLED
- *        decision = "indeterminate" iff registration LAPSED (§7.5.1: lapsed is not a
- *                                   conclusive contradiction; locked with DNO in #146), OR
+ *        decision = "fail"  iff entity not found (404), OR registration is a GLEIF assignment-error
+ *                                   state — ANNULLED / DUPLICATE / CANCELLED (invalid/non-surviving)
+ *        decision = "indeterminate" iff registration is LAPSED or RETIRED (lifecycle-end: "was valid,
+ *                                   no longer current" — not a conclusive contradiction; RETIRED moved
+ *                                   fail→indeterminate to converge with DNO in #146, LEI-CDF 3.1), OR
  *                                   the record parses but its status is otherwise non-binary
  *                                   (authority answered; answer not conclusive — §7.5.1)
  *        decision = "error" iff verification could not complete: transport failure,
@@ -30,6 +32,8 @@
  */
 
 import { parseArgs } from 'node:util';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import type { VerifyResult, VerifyDecision } from '../types/index.js';
 import { classifyRegistrationStatus, classifyFetchStatus } from '../lib/gleif-classify.js';
 import { connectDemos, mnemonicFromEnv, dahrFetch } from '../demos/index.js';
@@ -45,6 +49,8 @@ Options:
   --jobId <uuid>         The job/session id (per §7.5.1 VerifyResult schema)
   --mnemonic-env <name>  Env var with Demos mnemonic for SR-2 anchoring (default: DEMOS_MNEMONIC)
   --dry-run              Skip SR-2 anchoring (still fetches GLEIF live)
+  --from-fixture <path>  Read a RECORDED raw GLEIF body from <path> instead of fetching live
+                         (deterministic verdict; #146 drift-test flake-proofing). Skips anchoring.
   --rpc <url>            Demos node RPC URL (default: https://demosnode.discus.sh/)
   --recipe-version <v>   Recipe version pin (default: "gleif-cbp:1")
   --help                 Show this message
@@ -62,6 +68,7 @@ interface CliArgs {
   mnemonicEnv: string;
   rpc: string;
   dryRun: boolean;
+  fromFixture?: string;
 }
 
 function parseCliArgs(): CliArgs {
@@ -73,6 +80,7 @@ function parseCliArgs(): CliArgs {
       'mnemonic-env': { type: 'string', default: 'DEMOS_MNEMONIC' },
       'rpc': { type: 'string', default: 'https://demosnode.discus.sh/' },
       'dry-run': { type: 'boolean', default: false },
+      'from-fixture': { type: 'string' },
       'help': { type: 'boolean', default: false },
     },
     strict: true,
@@ -95,6 +103,7 @@ function parseCliArgs(): CliArgs {
     mnemonicEnv: values['mnemonic-env'] as string,
     rpc: values['rpc'] as string,
     dryRun: values['dry-run'] as boolean,
+    fromFixture: values['from-fixture'] as string | undefined,
   };
 }
 
@@ -120,7 +129,7 @@ async function main(): Promise<void> {
   // refuse to produce a misleading "anchored"-looking AttestationRef on a
   // connection failure.
   let handle: Awaited<ReturnType<typeof connectDemos>> | undefined;
-  if (!args.dryRun) {
+  if (!args.dryRun && !args.fromFixture) {
     try {
       const mn = mnemonicFromEnv(args.mnemonicEnv);
       handle = await connectDemos(mn, args.rpc);
@@ -141,21 +150,46 @@ async function main(): Promise<void> {
   let attestation: VerifyResult['attestation'];
 
   try {
-    const dahr = await dahrFetch(handle, gleifUrl, {
-      headers: { Accept: 'application/vnd.api+json' },
-      recipe: args.recipeVersion,
-      skipAnchor: args.dryRun || !handle,
-      anchorProgramName: `dacs2:gleif:${args.lei}`,
-    });
-    attestation = dahr.attestation;
-    const body = dahr.responseBody as GleifLeiResponse;
+    let body: GleifLeiResponse;
+    let responseStatus: number;
+    if (args.fromFixture) {
+      // #146 read-from-fixture: deterministic verdict from a RECORDED raw GLEIF body — no live
+      // fetch, no anchoring. This is the flake-proofing for the LAPSED-renewal case: the recorded
+      // body's registration.status cannot change under us on a live renewal, so the PATH-OS↔DNO
+      // drift-diff is over byte-identical input. The provenance ref hashes the recorded bytes.
+      const raw = readFileSync(args.fromFixture, 'utf8');
+      body = JSON.parse(raw) as GleifLeiResponse; // malformed fixture → throws → caught → error (correct)
+      // Fixture mode is SUCCESS-RECORD-ONLY + LEI-BOUND. Live mode can't mis-bind (the URL carries the
+      // LEI); fixture mode must enforce the equivalent or a fixture for LEI-A could mint a verdict for a
+      // requested LEI-B (Codex HIGH). And status is hard-coded 200, so a recorded error/404 body would
+      // misclassify — so we require a successful record (data present) and refuse error bodies here.
+      if (!body.data) throw new Error('--from-fixture expects a successful recorded GLEIF record (data present); got an error/empty body — recorded error responses are out of scope for fixture replay');
+      if (body.data.id?.toUpperCase() !== args.lei) throw new Error(`--from-fixture record id "${body.data.id ?? '(absent)'}" ≠ requested --lei "${args.lei}" — fixture/request LEI mismatch`);
+      responseStatus = 200; // a recorded successful GLEIF capture (guarded above; manifest pins its bodyHash)
+      attestation = {
+        anchor: { substrate: 'ipfs', locator: `fixture:${args.fromFixture}` },
+        contentHash: createHash('sha256').update(raw).digest('hex'),
+        type: 'gleif-fixture-replay',
+        producedAt: runAt,
+      };
+    } else {
+      const dahr = await dahrFetch(handle, gleifUrl, {
+        headers: { Accept: 'application/vnd.api+json' },
+        recipe: args.recipeVersion,
+        skipAnchor: args.dryRun || !handle,
+        anchorProgramName: `dacs2:gleif:${args.lei}`,
+      });
+      attestation = dahr.attestation;
+      body = dahr.responseBody as GleifLeiResponse;
+      responseStatus = dahr.responseStatus;
+    }
 
     // Fetch-level §7.5.1 verdict (pure + tested): 404 → fail (true not-found, conclusive);
     // any other non-2xx / error response → error, NOT fail — a transient/service error
     // (429/500/auth/proxy) must never become a conclusive negative verdict (that would
     // corrupt the #146 drift-diff with DNO).
     const fetchVerdict = classifyFetchStatus(
-      dahr.responseStatus,
+      responseStatus,
       !!(body.errors && body.errors.length > 0),
       body.errors?.[0]?.detail,
     );
@@ -178,7 +212,7 @@ async function main(): Promise<void> {
     // could not complete, so the verifier never received an authority decision. This is
     // error, NOT indeterminate (and certainly never coerced to pass).
     decision = 'error';
-    reason = `DAHR fetch + anchor failed: ${(e as Error).message}`;
+    reason = `verification could not complete: ${(e as Error).message}`;
   }
 
   const result: VerifyResult = {
