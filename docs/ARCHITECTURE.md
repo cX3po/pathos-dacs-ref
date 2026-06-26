@@ -76,8 +76,8 @@ Initial scope is GLEIF only because it's the cleanest live public API the spec m
 ### `src/jcs.ts` — RFC 8785 JSON Canonicalization
 Thin wrapper over the `canonicalize` npm package. Returns a `Uint8Array` (UTF-8 bytes of the canonical form). Used by listing-pub for §6.3.4 canonicalisation, by verify for §10.4.1 recomputation, by vet-gleif for §7.5.2 attestation hashing.
 
-### `src/domain-sep.ts` — 17 domain separators per §7.7
-A single source of truth for every domain separator the spec defines. Imported by everything that signs or verifies. The list is closed; any caller passing an unknown separator MUST fail (per §7.7 closure rule).
+### `src/domain-sep.ts` — domain separators per the §B.7 closed registry
+A single source of truth for every domain separator the spec defines. The universal signature scheme lives in **CORE §B.7** (the closed registry has 20 separators); `domain-sep.ts` carries the §B.7 separators this impl signs/verifies plus the SIG-4 `dacs-x-` extensions. Imported by everything that signs or verifies. The registry is closed; any caller passing an unknown separator MUST fail (per the §B.7 / SIG-1..4 closure rule). *(Not §7.7 — that is the separate DACS-2 composite verification record; CORE.md disambiguates the two.)*
 
 ```typescript
 export const DOMAIN_SEPARATORS = {

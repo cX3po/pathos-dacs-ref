@@ -29,7 +29,7 @@ This document maps each in-scope DACS section to the file(s) that implement it.
 | §7.5.1 VerifyResult outcomes (pass/fail/indeterminate) — **NEVER coerce** | TS enum + verifier invariant | `src/types/verify-result.ts`, `src/lib/verify-bundle.ts` | ✅ enforced at type + runtime; 4 regression tests; distinct exit codes 0/1/2 |
 | §7.5.2 AttestationRef contentHash recomputation | function | `src/lib/verify-bundle.ts` (walkAttestationRefs) | ✅ fetch + sha256 + compare; mismatch → fail; stub locators verify prefix |
 | §7.7 CompositeVerificationRecord aggregation | function | `src/lib/verify-bundle.ts` (StepLog.rollupDecision) | ✅ §7.7.1 precedence — fail > indeterminate > pass; never collapses |
-| §7.7 Universal signature scheme — 17 domain separators | constants + sign/verify | `src/domain-sep.ts`, `src/lib/sign.ts` | ✅ closed registry asserted; cross-context replay protection tested |
+| §B.7 Universal signature scheme — domain separators (20-entry closed registry) | constants + sign/verify | `src/domain-sep.ts`, `src/lib/sign.ts` | ✅ closed registry asserted; cross-context replay protection tested |
 | §7.3.1–7.3.4, 7.3.6, 7.3.8 (5 other methods) | — | — | ❌ v0.3 (compose same way as evm-rpc + cbp-gleif) |
 | §7.4.4 Recipe-track governance | — | — | ❌ v0.3 |
 
@@ -58,7 +58,7 @@ This document maps each in-scope DACS section to the file(s) that implement it.
 | Spec section | Coverage | File | State |
 |---|---|---|---|
 | RFC 8785 JCS (JSON Canonicalization Scheme) | function | `src/jcs.ts` | ✅ via `canonicalize` npm pkg; 5 round-trip tests |
-| All 17 domain separators (§7.7 inventory) | constants | `src/domain-sep.ts` | ✅ closed registry + assertion + 5 closure tests |
+| All §B.7 domain separators (20-entry closed-registry inventory) | constants | `src/domain-sep.ts` | ✅ closed registry + assertion + 5 closure tests |
 | ed25519 signing with domain-separated prefix | function | `src/lib/sign.ts` | ✅ via `@noble/ed25519`; 4 sign/verify round-trip tests |
 | Test vectors per §14.6 | implemented | `test/vectors/*.test.ts` (7 files, 72 passing tests) | ✅ |
 
