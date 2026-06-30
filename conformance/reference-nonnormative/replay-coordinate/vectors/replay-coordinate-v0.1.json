@@ -1,0 +1,205 @@
+{
+  "set": "replay-coordinate-v0.1",
+  "normative": false,
+  "spec": "NON-NORMATIVE reference impl of the SR-4 abstract replay-coordinate hook proposed on DACS-Standard #195",
+  "contract": "Within one session, two admitted messages MUST NOT share a replay coordinate; a re-presented coordinate MUST be rejected. The coordinate is an opaque substrate-emitted equality token; DACS would define only this observable, never the crypto envelope fields.",
+  "decisionModel": "§7.5.1 4-value, never collapsed",
+  "count": 14,
+  "cases": [
+    {
+      "name": "fresh-first-coordinate",
+      "expected": "pass",
+      "note": "first message of the session, no coordinate admitted yet → admit",
+      "message": {
+        "replayCoordinate": "k7:e3:n0001",
+        "ref": "m1"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": []
+      }
+    },
+    {
+      "name": "fresh-subsequent-coordinate",
+      "expected": "pass",
+      "note": "distinct fresh coordinate after a prior admit → admit",
+      "message": {
+        "replayCoordinate": "k7:e3:n0002",
+        "ref": "m2"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": [
+          "k7:e3:n0001"
+        ]
+      }
+    },
+    {
+      "name": "same-token-different-session",
+      "expected": "pass",
+      "note": "session-scoped: a token admitted in session A is fresh in session B (no global ledger) → admit",
+      "message": {
+        "replayCoordinate": "k7:e3:n0001",
+        "ref": "m1-in-B"
+      },
+      "ctx": {
+        "sessionId": "sess-B",
+        "admittedCoordinates": []
+      }
+    },
+    {
+      "name": "near-duplicate-different-bytes",
+      "expected": "pass",
+      "note": "exact-equality contract: a different-byte token is a different coordinate → admit (canonical emission is the substrate’s responsibility, like the crypto envelope)",
+      "message": {
+        "replayCoordinate": "K7:E3:N0001",
+        "ref": "upper"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": [
+          "k7:e3:n0001"
+        ]
+      }
+    },
+    {
+      "name": "duplicate-coordinate",
+      "expected": "fail",
+      "note": "coordinate already admitted in this session → duplicate/replay, MUST reject",
+      "message": {
+        "replayCoordinate": "k7:e3:n0001",
+        "ref": "replay"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": [
+          "k7:e3:n0001"
+        ]
+      }
+    },
+    {
+      "name": "duplicate-after-many",
+      "expected": "fail",
+      "note": "replay of a non-most-recent admitted coordinate → MUST reject",
+      "message": {
+        "replayCoordinate": "k7:e3:n0002",
+        "ref": "replay-2"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": [
+          "k7:e3:n0001",
+          "k7:e3:n0002",
+          "k7:e3:n0003"
+        ]
+      }
+    },
+    {
+      "name": "nonce-reuse-same-key-epoch",
+      "expected": "fail",
+      "note": "the L2PS case made black-box: same (key,epoch,nonce) folded into one token, re-presented → MUST reject",
+      "message": {
+        "replayCoordinate": "key=ab12|epoch=5|nonce=00ff",
+        "ref": "l2ps-reuse"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": [
+          "key=ab12|epoch=5|nonce=00ff"
+        ]
+      }
+    },
+    {
+      "name": "no-coordinate-emitted",
+      "expected": "indeterminate",
+      "note": "substrate emits no replay coordinate → capability unobservable, cannot decide (NOT a fail)",
+      "message": {
+        "ref": "no-token"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": [
+          "k7:e3:n0001"
+        ]
+      }
+    },
+    {
+      "name": "null-coordinate",
+      "expected": "indeterminate",
+      "note": "explicit null coordinate → unobservable → indeterminate",
+      "message": {
+        "replayCoordinate": null,
+        "ref": "null-token"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": []
+      }
+    },
+    {
+      "name": "empty-string-coordinate",
+      "expected": "error",
+      "note": "coordinate present but empty → not a well-formed opaque token → error",
+      "message": {
+        "replayCoordinate": "",
+        "ref": "empty"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": []
+      }
+    },
+    {
+      "name": "non-string-coordinate",
+      "expected": "error",
+      "note": "coordinate present but not a string token → malformed → error",
+      "message": {
+        "replayCoordinate": 1234,
+        "ref": "numeric"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": []
+      }
+    },
+    {
+      "name": "malformed-ctx-admitted-not-array",
+      "expected": "error",
+      "note": "session ctx admittedCoordinates not an array → malformed ctx → error",
+      "message": {
+        "replayCoordinate": "k7:e3:n0001"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": "k7:e3:n0001"
+      }
+    },
+    {
+      "name": "malformed-ctx-bad-element",
+      "expected": "error",
+      "note": "admittedCoordinates contains non-token elements → malformed ctx → error",
+      "message": {
+        "replayCoordinate": "k7:e3:n0001"
+      },
+      "ctx": {
+        "sessionId": "sess-A",
+        "admittedCoordinates": [
+          "",
+          99
+        ]
+      }
+    },
+    {
+      "name": "malformed-ctx-empty-sessionId",
+      "expected": "error",
+      "note": "empty sessionId → malformed ctx → error",
+      "message": {
+        "replayCoordinate": "k7:e3:n0001"
+      },
+      "ctx": {
+        "sessionId": "",
+        "admittedCoordinates": []
+      }
+    }
+  ]
+}
