@@ -1,0 +1,74 @@
+{
+ "schema": "pathos-receipt:1",
+ "separator": "pathos-proof-convergence:v1:",
+ "pubkey_id": "cairn:1",
+ "subject": {
+  "schema": "pathos-cross-impl-decision-convergence:1",
+  "metric": "cross-impl-decision-convergence",
+  "impls": [
+   "pathos-dacs-ref",
+   "dacs-sdk@ca3bac7"
+  ],
+  "corpus": "6 \u00a77.5.1 ground-truth cases (valid/tampered/unresolvable/malformed/compound/mixed)",
+  "scope": "self-describing cci keys, NO live DID resolver \u2014 decision LOGIC convergence on these cases; NOT all bundles, NOT live-resolver behaviour",
+  "converged": 6,
+  "total": 6,
+  "as_expected": 6,
+  "rows": [
+   {
+    "name": "valid",
+    "expect": "pass",
+    "pathos": "pass",
+    "sdk": "pass",
+    "converge": true,
+    "matchesExpect": true
+   },
+   {
+    "name": "tampered-sig",
+    "expect": "fail",
+    "pathos": "fail",
+    "sdk": "fail",
+    "converge": true,
+    "matchesExpect": true
+   },
+   {
+    "name": "unresolvable-key",
+    "expect": "indeterminate",
+    "pathos": "indeterminate",
+    "sdk": "indeterminate",
+    "converge": true,
+    "matchesExpect": true
+   },
+   {
+    "name": "malformed",
+    "expect": "error",
+    "pathos": "error",
+    "sdk": "error",
+    "converge": true,
+    "matchesExpect": true
+   },
+   {
+    "name": "compound(tampered+unresolvable)",
+    "expect": "fail",
+    "pathos": "fail",
+    "sdk": "fail",
+    "converge": true,
+    "matchesExpect": true
+   },
+   {
+    "name": "mixed(valid+unresolvable)",
+    "expect": "indeterminate",
+    "pathos": "indeterminate",
+    "sdk": "indeterminate",
+    "converge": true,
+    "matchesExpect": true
+   }
+  ],
+  "normalization": "pass requires dacs-sdk fullyVerified (every sig valid), NOT ok \u2014 mixed valid+unverified is indeterminate not pass",
+  "finding": "shape divergence: dacs-sdk isAttestationBundle REQUIRES phaseSummary[].attestationRef; pathos OPTIONAL \u2014 normativity is a spec question",
+  "run_at": "2026-06-29T17:45:06.689846+00:00"
+ },
+ "subject_jcs_sha256": "47ba29d956a1c247c3cfc7209075d64d6b75c34fc3998c547cafea86afee87ac",
+ "sig": "f358916f61136919e81ffb47fab33ca8bd8a099013b0327757ce58c58fb3298570eeb980095f125ba3bf975687189e9febd63bc2e4569d578155c49b5f89fe01",
+ "signer_version": "tools/receipts/sign.py@v1"
+}
