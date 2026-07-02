@@ -94,7 +94,7 @@ export type BundleV1Verdict = {
  * A ClaimReference is either a non-empty bare-DID string or { scheme, identifier, params? }.
  * The key includes canonicalised params so two claims that differ only in params don't collide.
  */
-function claimKey(c: unknown): string | null {
+export function claimKey(c: unknown): string | null {
   // Keys are namespaced by representation ("str:" vs "obj:") so a bare-string claim can never
   // collide with a structured claim that stringifies to the same text (impersonation guard).
   if (typeof c === 'string') {
