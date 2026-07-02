@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { Bundle, ConvergenceAdapter } from './adapter.js';
 import { pathosAdapter } from './adapters/pathos.js';
+import { dacsVerifyAdapter } from './adapters/dacs-verify.js';
 // To add an external impl (e.g. dacs-verify), implement ConvergenceAdapter in ./adapters/<name>.ts and
 // register it here. The template is a non-functional stub, so it stays commented out by default:
 // import { externalTemplateAdapter } from './adapters/external-template.js';
@@ -30,6 +31,7 @@ import { pathosAdapter } from './adapters/pathos.js';
 // ── Registered adapters ────────────────────────────────────────────────────────────────────────────
 const ADAPTERS: ConvergenceAdapter[] = [
   pathosAdapter,
+  dacsVerifyAdapter,
   // externalTemplateAdapter,   // ← uncomment once wired to a real impl
 ];
 
