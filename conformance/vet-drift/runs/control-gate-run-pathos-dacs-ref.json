@@ -1,0 +1,42 @@
+{
+  "set": "control-gate-vectors",
+  "impl": "pathos-dacs-ref@0.1.0",
+  "results": [
+    {
+      "name": "vet-control-existence-only-lei-supporting-context",
+      "verdict": "pass"
+    },
+    {
+      "name": "vet-control-existence-only-lei-presentedby-reject",
+      "verdict": "fail"
+    },
+    {
+      "name": "vet-control-existence-only-lei-reputation-key-reject",
+      "verdict": "fail"
+    },
+    {
+      "name": "vet-control-existence-method-forged-holderbinding-reject",
+      "verdict": "fail"
+    },
+    {
+      "name": "vet-control-key-presentation-accept",
+      "verdict": "pass"
+    },
+    {
+      "name": "vet-control-key-malformed-scope-reject-no-throw",
+      "verdict": "fail"
+    },
+    {
+      "name": "vet-control-key-unresolvable-binding-indeterminate",
+      "verdict": "indeterminate"
+    },
+    {
+      "name": "vet-control-key-stale-reject",
+      "verdict": "fail"
+    },
+    {
+      "name": "vet-control-key-verified-selector-laundering-reject",
+      "verdict": "fail"
+    }
+  ]
+}
