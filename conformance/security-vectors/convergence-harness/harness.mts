@@ -24,6 +24,7 @@ import { dirname, join } from 'node:path';
 import type { Bundle, ConvergenceAdapter } from './adapter.js';
 import { pathosAdapter } from './adapters/pathos.js';
 import { dacsVerifyAdapter } from './adapters/dacs-verify.js';
+import { dacsSdkAdapter } from './adapters/dacs-sdk.js';
 // To add an external impl (e.g. dacs-verify), implement ConvergenceAdapter in ./adapters/<name>.ts and
 // register it here. The template is a non-functional stub, so it stays commented out by default:
 // import { externalTemplateAdapter } from './adapters/external-template.js';
@@ -32,6 +33,7 @@ import { dacsVerifyAdapter } from './adapters/dacs-verify.js';
 const ADAPTERS: ConvergenceAdapter[] = [
   pathosAdapter,
   dacsVerifyAdapter,
+  dacsSdkAdapter,
   // externalTemplateAdapter,   // ← uncomment once wired to a real impl
 ];
 
@@ -80,8 +82,14 @@ const rows = corpus.map((c) => {
   // SECONDARY: only for portable-resolvable bundles, compare verified-or-not across impls.
   let decisionAgree: boolean | null = null;
   if (c.portable) {
-    const verdicts = results.map((r) => isVerified(r.decision));
-    decisionAgree = new Set(verdicts).size === 1;
+    // Only impls that produced a real §7.5.1 verdict are compared; a hash-only/`n/a` (or `error`)
+    // adapter is EXCLUDED, so it can never be normalized to "not verified" and falsely "agree" with a
+    // failure. Need >=2 graded impls for a meaningful cross-check.
+    const NON_VERDICT = new Set(['n/a', 'error', '']);
+    const graded = results.filter((r) => !NON_VERDICT.has(r.decision));
+    if (graded.length >= 2) {
+      decisionAgree = new Set(graded.map((r) => isVerified(r.decision))).size === 1;
+    }
   }
   return { ...c, results, hashAgree, decisionAgree };
 });
