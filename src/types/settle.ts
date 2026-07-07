@@ -280,7 +280,8 @@ export interface SettlementSignatureV1 {
 
 /** §9.7 SettlementFinalityRecord — REQUIRED on success-outcome PAYMENT evidence (PC-6). */
 export interface SettlementFinalityRecordV1 {
-  model: 'block-depth' | 'commitment-level' | 'provider-receipt' | 'htlc-reveal' | 'liquidity-tank';
+  /** §9.7 finality models; 'bft-final' = native Demos pay-dem (§9.5.9): inclusion is final. */
+  model: 'block-depth' | 'commitment-level' | 'provider-receipt' | 'htlc-reveal' | 'liquidity-tank' | 'bft-final';
   /** model == "block-depth": number of blocks waited. */
   finalityBlocks?: number;
   /** model == "commitment-level": Solana commitment level accepted. */
