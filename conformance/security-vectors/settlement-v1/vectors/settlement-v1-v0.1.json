@@ -1,7 +1,7 @@
 {
   "set": "settlement-v1-v0.1",
   "spec": "DACS-4 §9.7 / §7.5.1",
-  "hash": "693fde849bba4d69373ef350bc8f448633693a31b068a1e3ad00fe28f24e8140",
+  "hash": "a4ab0190318f8341c0a4dfcc03326de2a1fe5fa55ea15f0c759c1a3722f9edda",
   "count": 13,
   "vectors": [
     {
@@ -51,7 +51,7 @@
     },
     {
       "name": "missing-phaseIndex",
-      "expected": "fail",
+      "expected": "pass",
       "evidence": {
         "evidenceVersion": "1",
         "jobId": "DACS-VERIFY-SETTLE-0001",

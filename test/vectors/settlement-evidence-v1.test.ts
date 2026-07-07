@@ -6,7 +6,7 @@
  *     reproduces the dacs-x fixture's evidenceHash (payment + delivery) — convergence
  *     by emitting the same bytes, NOT by re-hashing a shared fixture.
  *   - verifySettlementEvidenceV1 negatives (§7.5.1 do-not-collapse):
- *       · missing phaseIndex (PC-2)               → fail
+ *       · missing phaseIndex → PASS (SB-1: not an evidence field; in-body copy tolerated)
  *       · success payment without settlementFinality (PC-6) → fail
  *       · delivery carrying settlementFinality (PC-6)        → fail
  */
@@ -82,11 +82,11 @@ test('F1: nested extra subfields are IGNORED — emitted bytes/hash unchanged', 
   assert.equal(evidenceHashV1(dirty), targetHash(fx));
 });
 
-test('verifier: missing phaseIndex → fail (PC-2)', () => {
+test('verifier: missing phaseIndex → pass (SB-1: "not a new evidence field" — recovered from the PC-2 anchor address)', () => {
   const fx = load('settlement-evidence-payment.json') as Record<string, unknown>;
   delete fx.signature;
   delete fx.phaseIndex;
-  assert.equal(verifySettlementEvidenceV1(fx).decision, 'fail');
+  assert.equal(verifySettlementEvidenceV1(fx).decision, 'pass');
 });
 
 test('verifier: success payment without settlementFinality → fail (PC-6)', () => {
