@@ -6,7 +6,10 @@
  *   BLOCKER 1 — §10.4.2/§10.4.3 two-sided anchoring on the v0.1 path:
  *       - both anchors present + consistent + local bound to a side → pass
  *       - neither anchor present (unanchored) → indeterminate (NOT a default pass)
- *       - exactly one anchor present (unilateral) → fail (aborted-by-self)
+ *       - exactly one anchor present → §10.4.3(b) signature-set classification:
+ *           fully-signed → pass (anchoring omission); single-signed abort → pass
+ *           (§10.11 suppression); single-signed non-abort → indeterminate (rejected,
+ *           no valid bundle)
  *       - both present but divergent outcome (§10.4.3(d)) → fail (dispute)
  *       - local bundle not byte-equal to either anchored copy (ride-along) → fail
  *       - RPC error on an anchor fetch → indeterminate (not a false absence/dispute)
@@ -108,15 +111,102 @@ test('BLOCKER 1: v0.1 UNANCHORED (neither anchor present) → indeterminate, NOT
   assert.equal(v.rollup, 'indeterminate', 'unanchored v1 must NOT pass by default');
 });
 
-test('BLOCKER 1: v0.1 unilateral (only buyer anchor present) → fail (aborted-by-self for seller)', async () => {
+test('§10.4.3(b): lone FULLY-SIGNED buyer anchor → pass (anchoring omission, not an abort)', async () => {
   const jobId = 'v1-unilateral';
-  const bundle = makeV1({ jobId });
+  const bundle = makeV1({ jobId }); // makeV1 signs with BOTH parties → full §10.4.1 signature set
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(bundle)]]); // seller missing
   const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'pass');
+  assert.match(v.twoSided.detail, /anchoring omission/);
+  assert.equal(v.rollup, 'pass');
+});
+
+test('§10.4.3(b): lone SINGLE-SIGNED copy with ABORT outcome → pass (§10.11 bundle-suppression)', async () => {
+  const jobId = 'v1-lone-abort';
+  const buyer = mk(0x21);
+  // Single-signed abort copy anchored at the buyer address (the signer's own copy).
+  const { signatures: _drop, ...unsigned } = makeV1({ jobId, outcome: 'aborted-by-other' });
+  void _drop;
+  const lone = emitAttestationBundleV1(unsigned, [
+    { party: { scheme: 'cci', identifier: buyer.pubHex }, privKey: buyer.priv },
+  ]);
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(lone)]]);
+  const v = await verifyBundleV1Full(lone, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'pass');
+  assert.match(v.twoSided.detail, /bundle-suppression/);
+});
+
+test('§10.4.3(b) guard: lone copy with anchoredByRole ↔ address mismatch → fail (FIX 1 applies to the lone copy too)', async () => {
+  const jobId = 'v1-lone-rolemismatch';
+  const bundle = makeV1({ jobId, anchoredByRole: 'seller' }); // declares seller…
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(bundle)]]); // …but anchored at the BUYER address
+  const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'fail');
-  assert.match(v.twoSided.detail, /seller anchor absent/);
-  assert.equal(v.rollup, 'fail');
+  assert.match(v.twoSided.detail, /anchoredByRole mismatch/);
+});
+
+test('§10.4.3(b) guard: local bundle not byte-equal to the lone anchored copy → fail (ride-along)', async () => {
+  const jobId = 'v1-lone-ridealong';
+  const anchored = makeV1({ jobId });
+  const local = makeV1({ jobId, buyerFill: 0x41, sellerFill: 0x42 }); // same jobId, different signers/bytes
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(anchored)]]);
+  const v = await verifyBundleV1Full(local, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'fail');
+  assert.match(v.twoSided.detail, /not byte-equal to the lone/);
+});
+
+test('§10.4.3(b) guard: lone fully-"signed" copy with INVALID signature bytes → does NOT pass (enforcing verify)', async () => {
+  const jobId = 'v1-lone-badsigs';
+  const bundle = makeV1({ jobId });
+  // Corrupt both signature values — full signature COUNT, invalid signature BYTES.
+  const forged = { ...bundle, signatures: bundle.signatures.map((s) => ({ ...s, value: '00'.repeat(64) })) } as AttestationBundleV1;
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(forged)]]);
+  const v = await verifyBundleV1Full(forged, { fetchAnchoredImpl: mockFetch(map) });
+  assert.notEqual(v.twoSided.outcome, 'pass');
+  assert.notEqual(v.rollup, 'pass');
+});
+
+test('§10.4.3(d): errorClass-only contradiction (same phase outcome) IS a canonical divergence → fail', async () => {
+  const jobId = 'v1-errorclass-div';
+  // Same outcome + same phase outcome, differing ONLY in errorClass — re-signed after mutation.
+  const { signatures: _b, ...bu } = makeV1({ jobId, outcome: 'completed', anchoredByRole: 'buyer' });
+  void _b;
+  const { signatures: _s, ...su } = makeV1({ jobId, outcome: 'completed', anchoredByRole: 'seller' });
+  void _s;
+  bu.phaseSummary = [{ index: 0, kind: 'vet-credentials', outcome: 'fail', errorClass: 'transient' }];
+  su.phaseSummary = [{ index: 0, kind: 'vet-credentials', outcome: 'fail', errorClass: 'counterparty' }];
+  const buyer = mk(0x21), seller = mk(0x22);
+  const signers: Parameters<typeof emitAttestationBundleV1>[1] = [
+    { party: { scheme: 'cci' as const, identifier: buyer.pubHex }, privKey: buyer.priv },
+    { party: { scheme: 'cci' as const, identifier: seller.pubHex }, privKey: seller.priv },
+  ];
+  const buyerSigned = emitAttestationBundleV1(bu, signers);
+  const sellerSigned = emitAttestationBundleV1(su, signers);
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(buyerSigned)], [pair.seller, JSON.stringify(sellerSigned)]]);
+  const v = await verifyBundleV1Full(buyerSigned, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'fail');
+  assert.match(v.twoSided.detail, /errorClass/);
+});
+
+test('§10.4.3(b): lone SINGLE-SIGNED copy with NON-abort outcome → indeterminate (rejected per §10.4.1 — no valid bundle)', async () => {
+  const jobId = 'v1-lone-nonabort';
+  const buyer = mk(0x21);
+  const { signatures: _drop2, ...unsigned } = makeV1({ jobId, outcome: 'completed' });
+  void _drop2;
+  const lone = emitAttestationBundleV1(unsigned, [
+    { party: { scheme: 'cci', identifier: buyer.pubHex }, privKey: buyer.priv },
+  ]);
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(lone)]]);
+  const v = await verifyBundleV1Full(lone, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'indeterminate');
+  assert.match(v.twoSided.detail, /no valid bundle/);
 });
 
 test('BLOCKER 1: v0.1 buyer/seller divergence (outcome contradiction) → fail (dispute, §10.4.3(d))', async () => {

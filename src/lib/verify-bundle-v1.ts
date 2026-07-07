@@ -450,14 +450,23 @@ async function walkV1AttestationRefs(
   return { verified, failed, steps };
 }
 
-/** Detect §10.4.3(d) divergence between two same-jobId v0.1 bundles. */
+/**
+ * Detect §10.4.3(d) divergence between two same-jobId v0.1 bundles, per the normative
+ * "canonically diverge" definition: the copies differ in `outcome`, or in a SHARED
+ * `phaseSummary` entry's `outcome`/`errorClass`. (errorClass added to match the spec
+ * definition — a same-outcome phase blamed on different error classes is a
+ * contradiction about what happened, not an advisory skew.)
+ */
 function v1Divergence(a: AttestationBundleV1, b: AttestationBundleV1): string | null {
   if (a.outcome !== b.outcome) return `outcome contradiction: "${a.outcome}" vs "${b.outcome}"`;
-  // phaseSummary contradiction: same index → same phase-level outcome.
-  const bIdx = new Map(b.phaseSummary.map((p) => [p.index, p.outcome]));
+  const bIdx = new Map(b.phaseSummary.map((p) => [p.index, p]));
   for (const p of a.phaseSummary) {
     const other = bIdx.get(p.index);
-    if (other !== undefined && other !== p.outcome) return `phaseSummary contradiction at index ${p.index}: "${p.outcome}" vs "${other}"`;
+    if (other === undefined) continue; // a phase present in only one copy is not itself a contradiction
+    if (other.outcome !== p.outcome) return `phaseSummary contradiction at index ${p.index}: "${p.outcome}" vs "${other.outcome}"`;
+    if ((p.errorClass ?? null) !== (other.errorClass ?? null)) {
+      return `phaseSummary contradiction at index ${p.index}: errorClass "${String(p.errorClass ?? null)}" vs "${String(other.errorClass ?? null)}"`;
+    }
   }
   return null;
 }
@@ -476,7 +485,19 @@ async function fetchV1WithStatus(rpc: string, addr: string, fetchImpl: typeof fe
  * §10.4.2 + §10.4.3 — two-sided anchoring for a v0.1 bundle. Compute buyer + seller anchors from
  * jobId, fetch BOTH, and:
  *   - neither present              → indeterminate (unanchored — NOT a pass)
- *   - exactly one present          → fail (unilateral ⇒ aborted-by-self for the absent role, §10.4.3)
+ *   - exactly one present          → §10.4.3(b) signature-set classification: fully-signed copy
+ *       stands as the unified session bundle (anchoring omission → pass); single-signed ABORT
+ *       copy stands per §10.11 suppression (pass); single-signed non-abort copy is rejected per
+ *       §10.4.1 → no valid bundle → indeterminate (like unanchored). Local bundle must be
+ *       byte-equal to the lone copy and role-integrity holds (FIX 1), else fail.
+ *
+ *       TRUST ASSUMPTION (Codex review note, 2026-07-07): the one-sided pass depends on an
+ *       HONEST ABSENCE SIGNAL from the storage substrate. An attacker who can censor the
+ *       counterparty anchor at the fetch layer presents a divergent session as a clean lone
+ *       fully-signed pass — byte-equality/role/signature guards protect the PRESENT copy, they
+ *       cannot prove the missing copy was honestly absent. Callers on untrusted transports
+ *       should fetch through quorum/authenticated storage reads. (Raised upstream on dacs-sdk
+ *       #30 as a §10.4.3(b) spec-level observation.)
  *   - both present, RPC error      → indeterminate (transient, not an absence signal)
  *   - both present, jobId mismatch → fail
  *   - both present, anchoredByRole ↔ anchor-address mismatch → fail (FIX 1: integrity cross-check;
@@ -511,11 +532,53 @@ async function verifyV1TwoSided(
     return { outcome: 'indeterminate',
       detail: `neither party anchor present at ${rpc} (buyer=${pair.buyer}, seller=${pair.seller}); bundle may not have been anchored — unanchored local v1 bundle is indeterminate, not a pass` };
   }
-  if (buyerPresent && !sellerPresent) {
-    return { outcome: 'fail', detail: `seller anchor absent at ${pair.seller} — §10.4.3 unilateral ⇒ aborted-by-self for seller` };
-  }
-  if (!buyerPresent && sellerPresent) {
-    return { outcome: 'fail', detail: `buyer anchor absent at ${pair.buyer} — §10.4.3 unilateral ⇒ aborted-by-self for buyer` };
+  // §10.4.3(b) — exactly one copy present: classify by the present copy's signature set.
+  // (Replaces the earlier blanket "unilateral ⇒ aborted-by-self ⇒ fail" reading, which predates
+  // the lettered consumer rules: a copy carrying all §10.4.1 required signatures IS the unified
+  // session bundle — the missing copy is an anchoring omission, not an abort. A SINGLE-signed
+  // copy stands only with an abort outcome (§10.11 bundle-suppression); any other single-signed
+  // outcome is rejected per §10.4.1, leaving no valid bundle → indeterminate like unanchored.)
+  if (buyerPresent !== sellerPresent) {
+    const presentRole: 'buyer' | 'seller' = buyerPresent ? 'buyer' : 'seller';
+    const fetched = (buyerPresent ? buyer : seller) as { data: unknown };
+    let loneBundle: AttestationBundleV1;
+    try {
+      const raw = fetched.data;
+      loneBundle = JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw)) as AttestationBundleV1;
+    } catch (e) {
+      return { outcome: 'indeterminate', detail: `failed to parse the lone ${presentRole}-anchored v0.1 bundle: ${(e as Error).message}` };
+    }
+    if (loneBundle.jobId !== bundle.jobId) {
+      return { outcome: 'fail', detail: `jobId mismatch: ${presentRole}-anchor=${loneBundle.jobId}, local=${bundle.jobId}` };
+    }
+    // FIX 1 — anchor-address ↔ anchoredByRole integrity applies to the lone copy too.
+    if (loneBundle.anchoredByRole !== presentRole) {
+      return { outcome: 'fail',
+        detail: `anchor-address ↔ anchoredByRole mismatch: lone copy at ${presentRole} address declares anchoredByRole="${loneBundle.anchoredByRole}", expected "${presentRole}" (CORE.md:477)` };
+    }
+    // The LOCAL bundle must be byte-equal to the lone anchored copy (ride-along guard).
+    const localH = bytesToHexLocal(sha256(jcsCanonical(bundle)));
+    const loneH = bytesToHexLocal(sha256(jcsCanonical(loneBundle)));
+    if (localH !== loneH) {
+      return { outcome: 'fail', detail: `local bundle is not byte-equal to the lone ${presentRole}-anchored bundle (shared jobId, different content — likely a third bundle riding along)` };
+    }
+    // Single-bundle structural+signature verify, enforcing by default (FIX 3 discipline). Our
+    // single-bundle verifier already implements §10.4.1's abort exception, so a single-signed
+    // ABORT copy verifies while a single-signed non-abort copy rejects — exactly the (b) split.
+    const lv = verifyBundleV1(loneBundle, { requireSignatures });
+    if (lv.decision === 'reject') {
+      return { outcome: 'indeterminate',
+        detail: `lone ${presentRole}-anchored copy rejected by §10.4.1 signature rules (${lv.reasons.join('; ')}) — no valid bundle for the session (§10.4.3(b)); like unanchored, this is indeterminate, not a pass` };
+    }
+    if (lv.decision === 'indeterminate') {
+      return { outcome: 'indeterminate', detail: `lone ${presentRole}-anchored copy undecidable (unresolvable key / placeholder DID): ${lv.reasons.join('; ')}` };
+    }
+    const sigCount = Array.isArray(loneBundle.signatures) ? loneBundle.signatures.length : 0;
+    const standing = sigCount >= 2
+      ? 'carries all §10.4.1 required signatures — it IS the unified session bundle; the missing copy is an anchoring omission, not an abort'
+      : `single-signed with abort outcome "${loneBundle.outcome}" — stands per the §10.11 bundle-suppression rule`;
+    return { outcome: 'pass',
+      detail: `one-sided (§10.4.3(b)): lone ${presentRole} anchor ${standing} (present=${(buyerPresent ? pair.buyer : pair.seller).slice(0, 16)}…)` };
   }
 
   // Both present — parse + cross-check.
