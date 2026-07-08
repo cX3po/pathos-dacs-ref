@@ -1,7 +1,7 @@
 {
   "name": "pathos-dacs-ref",
   "version": "0.1.0",
-  "description": "PATH-OS reference implementation of DACS — Demos Agent Commerce Standards (paper v0.7, DACS-1..5 v0.1). Scope: DACS-1 listing publisher, DACS-5 envelope-receipt verifier CLI, DACS-2 evm-rpc + GLEIF consensus-backed-proxy recipe.",
+  "description": "PATH-OS reference implementation of DACS \u2014 Demos Agent Commerce Standards (paper v0.7, DACS-1..5 v0.1). Scope: DACS-1 listing publisher, DACS-5 envelope-receipt verifier CLI, DACS-2 evm-rpc + GLEIF consensus-backed-proxy recipe.",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -9,7 +9,8 @@
     "listing-pub": "tsx src/cli/listing-pub.ts",
     "verify": "tsx src/cli/verify.ts",
     "vet-gleif": "tsx src/cli/vet-gleif.ts",
-    "test": "tsx --test test/vectors/*.test.ts test/integration/*.test.ts"
+    "test": "tsx --test test/vectors/*.test.ts test/integration/*.test.ts",
+    "convergence": "tsx conformance/convergence-suite.mts"
   },
   "dependencies": {
     "@kynesyslabs/demosdk": "^4.0.10",
