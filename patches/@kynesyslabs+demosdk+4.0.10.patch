@@ -1,0 +1,13 @@
+diff --git a/node_modules/@kynesyslabs/demosdk/build/encryption/Hashing.js b/node_modules/@kynesyslabs/demosdk/build/encryption/Hashing.js
+index 4d50449..b219024 100644
+--- a/node_modules/@kynesyslabs/demosdk/build/encryption/Hashing.js
++++ b/node_modules/@kynesyslabs/demosdk/build/encryption/Hashing.js
+@@ -14,7 +14,7 @@ import { bytesToHex } from "@noble/hashes/utils";
+ export class Hashing {
+     static sha256(message) {
+         const md = forge.sha256.create();
+-        md.update(message);
++        md.update(message, "utf8");
+         return md.digest().toHex();
+     }
+     static sha3_256(message) {
