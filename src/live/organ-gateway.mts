@@ -42,8 +42,10 @@ import { anchorNames } from './anchor-naming.js';
 const LIVE = process.env.LIVE === '1';
 const RPC = process.env.DEMOS_RPC ?? 'https://demosnode.discus.sh/';
 const QUERY = process.env.ORGAN_QUERY ?? '35.2271,-80.8431'; // buyer's committed point (lat,lon)
+const ORGAN = 'nws_alerts';
 const PRICE_DEM = '1'; // CD-1 canonical
 const PRICE_OS = 1_000_000_000n;
+const SPEND_CAP_DEM = Number(process.env.GATEWAY_SPEND_CAP_DEM ?? '50');
 const AXIOM_PY = process.env.AXIOM_PY ?? '/home/eric/axiom/venv/bin/python';
 const ORGAN_CLI = process.env.ORGAN_CLI ?? '/home/eric/axiom/tools/organ_answer.py';
 
@@ -86,6 +88,49 @@ async function connectLive(): Promise<LiveHandles> {
 // ── the session ────────────────────────────────────────────────────────────────────────────
 const jobId = process.env.JOB_ID ?? `organ-gw-${LIVE ? '' : 'dry-'}${now()}`;
 const handles = LIVE ? await connectLive() : null;
+
+// paramHash — a DETERMINISTIC digest of the STABLE session parameters (what's sold, the price,
+// the spend cap). Identical between a dry-run and a live run of the same config (excludes per-run
+// keys / jobId / timestamps), so it works as a real match-gate: a live run recomputes it and
+// REQUIRES the operator-supplied GATEWAY_DRYRUN_HASH to equal it — you can only authorize a live
+// run whose parameters match a dry-run you actually passed (Codex note, 2026-07-09).
+const paramHash = jcsHashHex({ v: 'organ-gateway-params:1', organ: ORGAN, query: QUERY, priceDem: PRICE_DEM, capDem: SPEND_CAP_DEM });
+
+// PREFLIGHT (LIVE only) — a live session anchors ~7 SR-2 writes + 1 pay-dem transfer, all DEM.
+// The fail-closed gate refuses to spend unless: the estimate is under the cap, the buyer wallet
+// is funded, an explicit operator go is set, and the run is bound to a verified dry-run hash.
+// Dry-run mode spends nothing, so it skips the gate entirely.
+if (LIVE && handles) {
+  const { preflight } = await import('./spend-preflight.js');
+  const suppliedHash = process.env.GATEWAY_DRYRUN_HASH ?? null;
+  // Match-gate: the operator's dry-run hash MUST equal this run's recomputed paramHash. A mismatch
+  // (price/query/cap/organ changed since the dry-run) fails closed BEFORE the balance query.
+  if (suppliedHash !== paramHash) {
+    console.error(`\n❌ LIVE spend BLOCKED: GATEWAY_DRYRUN_HASH does not match this run's parameters.`);
+    console.error(`  supplied: ${suppliedHash ?? '(unset)'}`);
+    console.error(`  expected: ${paramHash}  (run a passing dry-run of the SAME organ/query/price/cap to get it)`);
+    process.exit(2);
+  }
+  const info = await handles.buyer.demos.getAddressInfo(handles.buyer.address);
+  const balanceDem = Number((info as { balance?: bigint })?.balance ?? 0n) / 1e9;
+  const gate = preflight({
+    purpose: `organ-gateway live session ${jobId}`,
+    estWrites: 7 + 1,                           // 7 anchors + 1 create-headroom per fresh program
+    estCostPerWriteDem: 1,                      // 1 SR-2 chunk = 1 DEM
+    createCostDem: Number(PRICE_DEM),           // the pay-dem transfer itself
+    maxSpendDem: SPEND_CAP_DEM,
+    balanceDem,
+    balanceMarginDem: 2,                        // leave fee/rounding headroom
+    operatorApproved: process.env.GATEWAY_LIVE_APPROVED === '1',
+    dryRunHash: suppliedHash,                   // already equals paramHash here (match-gated above)
+  });
+  log('preflight', `${gate.verdict} — est ${gate.estCostDem} DEM, cap ${SPEND_CAP_DEM}, balance ${balanceDem} DEM, headroom ${gate.headroomDem ?? '?'}`);
+  if (gate.verdict !== 'PROCEED') {
+    console.error(`\n❌ LIVE spend BLOCKED by preflight:\n  - ${gate.reasons.join('\n  - ')}\n`);
+    console.error('To authorize: set GATEWAY_LIVE_APPROVED=1 + GATEWAY_DRYRUN_HASH=<paramHash from a passing dry-run>, fund the buyer wallet, then LIVE=1.');
+    process.exit(2);
+  }
+}
 
 // Per-run cci primary claims (ed25519) — recorded in every anchored artifact.
 const sellerKeys = generateKeypair();
@@ -179,7 +224,7 @@ const payEvidenceLocator = await anchorString(
 
 // DACS-4b — deliver-storage-program (§9.6.1): the REAL organ answer, anchored.
 const DELIVER_PHASE_INDEX = 4;
-const organRaw = execFileSync(AXIOM_PY, [ORGAN_CLI, 'nws_alerts', QUERY], { encoding: 'utf8', timeout: 60_000 });
+const organRaw = execFileSync(AXIOM_PY, [ORGAN_CLI, ORGAN, QUERY], { encoding: 'utf8', timeout: 60_000 });
 const organ = JSON.parse(organRaw) as {
   organ?: string; answer?: Record<string, unknown>; error?: string;
   input_commitment?: string; commitment_scheme?: string; commitment_nonce?: string; fetched_at?: string;
@@ -276,14 +321,20 @@ log('DACS-5', `twoSided=${verdict.twoSided.outcome} — ${verdict.twoSided.detai
 log('DACS-5', `attestation refs: ${verdict.attestationsVerified} verified, ${verdict.attestationsFailed} failed`);
 log('DACS-5', `ROLLUP: ${verdict.rollup.toUpperCase()}`);
 
+const passed = verdict.rollup === 'pass';
+
 console.log(JSON.stringify({
   jobId, mode: LIVE ? 'live' : 'dry-run', rollup: verdict.rollup,
   twoSided: verdict.twoSided.outcome,
   attestationsVerified: verdict.attestationsVerified,
   organAnswer: organ.answer,
+  paramHash,
+  // Advertise the authorize line ONLY on a PASSING dry-run — so possessing the hash means the
+  // dry-run of these exact parameters actually passed (the match-gate then binds live to it).
+  ...(LIVE || !passed ? {} : { authorizeLiveWith: `GATEWAY_LIVE_APPROVED=1 GATEWAY_DRYRUN_HASH=${paramHash} LIVE=1` }),
   anchors: { listing: listingLocator, agreement: agreementLocator, payEvidence: payEvidenceLocator, deliverable: deliverableLocator, deliveryEvidence: deliveryEvidenceLocator },
   // LOCAL-ONLY (never anchored): opens the deliverable's input commitment when disclosed with the raw record.
   commitmentNonce,
 }, null, 2));
 
-process.exit(verdict.rollup === 'pass' ? 0 : 1);
+process.exit(passed ? 0 : 1);
