@@ -21,10 +21,10 @@
  *        reputation deriver excludes the jobId entirely).
  *
  * "Canonically diverge" (§10.4.3, normative, defined once): the copies differ in
- * `outcome`, or in a shared `phaseSummary` entry's `outcome`/`errorClass` — a
- * contradiction about what happened. Advisory-field differences (`anchoredByRole`,
- * `finalisedAt` skew, one-sided `ratingRefs`, amendment ordering) are NOT divergence,
- * and a phase entry present in only one copy is not itself a contradiction.
+ * `outcome`, in the `phaseSummary` INDEX SET (a phase present in only one copy —
+ * §10.4.3 ruling #224, carve-out-free), or in a shared entry's `outcome`/`errorClass`
+ * — a contradiction about what happened. Advisory-field differences (`anchoredByRole`,
+ * `finalisedAt` skew, one-sided `ratingRefs`, amendment ordering) are NOT divergence.
  *
  * Pure: no crypto. The default signature-set classification is STRUCTURAL (count the
  * `signatures[]` entries — 2+ = full, 1 = single, else invalid); a caller that has
@@ -89,15 +89,27 @@ export function canonicalDivergenceV1(
   if (a['outcome'] !== b['outcome']) {
     return `outcome contradiction: ${JSON.stringify(a['outcome'])} vs ${JSON.stringify(b['outcome'])}`;
   }
-  const bp = phasesByIndex(b);
-  for (const [idx, pa] of phasesByIndex(a)) {
-    const pb = bp.get(idx);
-    if (!pb) continue; // a phase present in only one copy is not itself a contradiction
-    if (pa['outcome'] !== pb['outcome']) {
-      return `phaseSummary contradiction at index ${idx}: outcome ${JSON.stringify(pa['outcome'])} vs ${JSON.stringify(pb['outcome'])}`;
+  const pa = phasesByIndex(a);
+  const pb = phasesByIndex(b);
+  // §10.4.3 ruling #224 (2026-07-08, carve-out-free): the copies diverge if their phaseSummary
+  // INDEX SETS differ — a phase present in only one copy IS a contradiction about what happened
+  // (the entry set is a normative input the ST-10 teeth + §10.5.1 fault attribution consume, not
+  // advisory metadata; the earlier "not itself a contradiction" carve-out had a live gaming
+  // vector — a phantom commit-completed appended to one copy). Then any SHARED index must agree
+  // on outcome/errorClass.
+  for (const idx of pa.keys()) {
+    if (!pb.has(idx)) return `phaseSummary index-set divergence: index ${idx} present only in copy A`;
+  }
+  for (const idx of pb.keys()) {
+    if (!pa.has(idx)) return `phaseSummary index-set divergence: index ${idx} present only in copy B`;
+  }
+  for (const [idx, ea] of pa) {
+    const eb = pb.get(idx)!;
+    if (ea['outcome'] !== eb['outcome']) {
+      return `phaseSummary contradiction at index ${idx}: outcome ${JSON.stringify(ea['outcome'])} vs ${JSON.stringify(eb['outcome'])}`;
     }
-    if ((pa['errorClass'] ?? null) !== (pb['errorClass'] ?? null)) {
-      return `phaseSummary contradiction at index ${idx}: errorClass ${JSON.stringify(pa['errorClass'] ?? null)} vs ${JSON.stringify(pb['errorClass'] ?? null)}`;
+    if ((ea['errorClass'] ?? null) !== (eb['errorClass'] ?? null)) {
+      return `phaseSummary contradiction at index ${idx}: errorClass ${JSON.stringify(ea['errorClass'] ?? null)} vs ${JSON.stringify(eb['errorClass'] ?? null)}`;
     }
   }
   return null;

@@ -62,9 +62,13 @@ const CASES: Case[] = [
     seller: { outcome: 'completed', phaseSummary: [{ index: 1, outcome: 'fail', errorClass: 'counterparty' }], signatures: sig2 },
   },
   {
-    name: 'phase-in-one-copy-only-not-contradiction', sdk30: 'unified',
+    // §10.4.3 ruling #224 (carve-out-free): a phase present in only one copy IS divergence now.
+    // dacs-sdk#30's predicate is mid-flip to the same rule (RB: "one predicate, presence-mismatch
+    // diverges, both call sites") — so this re-converges once #30 lands its flip.
+    name: 'phase-in-one-copy-is-divergence-224', sdk30: 'divergent',
     buyer: { outcome: 'completed', phaseSummary: [{ index: 0, outcome: 'ok' }], signatures: sig2 },
     seller: { outcome: 'completed', phaseSummary: [{ index: 0, outcome: 'ok' }, { index: 1, outcome: 'ok' }], signatures: sig2 },
+    note: 'Presence-mismatch → divergent per ruling #224. dacs-sdk#30 still returns unified pre-flip; convergence resumes when #30 adopts the shared predicate RB assigned to @HaykK-Solicy.',
   },
   {
     // §14 fixture shape: attestation-bundle-0004 buyer vs seller (both 2-signed).
