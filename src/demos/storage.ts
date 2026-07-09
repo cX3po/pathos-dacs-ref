@@ -12,7 +12,6 @@
  */
 
 import { StorageProgram } from '@kynesyslabs/demosdk/storage';
-import { DemosTransactions } from '@kynesyslabs/demosdk/websdk';
 import type { DemosHandle } from './connection.js';
 
 export interface AnchorResult {
@@ -97,18 +96,30 @@ export async function anchor(
     { nonce, salt: options.salt }
   );
 
-  // Sign + broadcast via DemosTransactions pipeline.
-  // Canonical SDK flow: prepare(payload) → demos.sign(tx) → confirm(tx) → broadcastAndWait(validity)
-  const tx = await DemosTransactions.prepare(payload);
-  // Instance method demos.sign(tx) is the non-deprecated path (per DemosTransactions.sign jsdoc)
-  const signedTx = await demos.sign(tx);
-  const validity = await DemosTransactions.confirm(signedTx, demos);
-  const result = await DemosTransactions.broadcastAndWait(validity, demos);
+  // Sign + broadcast via the DEDICATED storage-program flow (not DemosTransactions.prepare +
+  // demos.sign — that validates a `to` address the storage-program payload doesn't carry, and
+  // fails live with "Invalid To address: 0x"). This is the exact path the receipt-anchor proved
+  // live: storagePrograms.sign(payload) → demos.confirm(tx) → demos.broadcastAndWait(validity).
+  const demosAny = demos as unknown as {
+    storagePrograms: { sign: (p: unknown) => Promise<unknown> };
+    confirm: (tx: unknown) => Promise<unknown>;
+    broadcastAndWait: (v: unknown, o?: { timeoutMs?: number }) => Promise<unknown>;
+  };
+  const tx = await demosAny.storagePrograms.sign(payload);
+  const validity = await demosAny.confirm(tx);
+  const result = await demosAny.broadcastAndWait(validity, { timeoutMs: 90_000 }) as {
+    broadcast?: { response?: { hash?: string }; data?: { tx_hash?: string; hash?: string } };
+    status?: { state?: string };
+  };
 
-  // broadcastAndWait returns { broadcast: RPCResponse, status: {state, blockNumber?} }
-  // Tx hash typically lives on the broadcast response payload
-  const broadcastBody = (result.broadcast as { data?: { tx_hash?: string; hash?: string } })?.data ?? {};
-  const txHash = broadcastBody.tx_hash ?? broadcastBody.hash ?? '';
+  // Tx hash from the broadcast response (storage-program flow puts it under broadcast.response.hash).
+  const txHash = result.broadcast?.response?.hash
+    ?? result.broadcast?.data?.tx_hash ?? result.broadcast?.data?.hash ?? '';
+  // Require an explicit terminal `included` — a missing/other state is NOT success (matches the
+  // receipt-anchor's positive check; never treat an unobserved anchor as confirmed).
+  if (result.status?.state !== 'included') {
+    throw new Error(`SR-2 anchor of "${programName}" not included (state=${result.status?.state ?? 'missing'})`);
+  }
 
   const sizeBytes = StorageProgram.getDataSize(data, encoding);
 
