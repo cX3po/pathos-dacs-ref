@@ -459,10 +459,15 @@ async function walkV1AttestationRefs(
  */
 function v1Divergence(a: AttestationBundleV1, b: AttestationBundleV1): string | null {
   if (a.outcome !== b.outcome) return `outcome contradiction: "${a.outcome}" vs "${b.outcome}"`;
+  // §10.4.3 ruling #224 (carve-out-free): phaseSummary INDEX-SET mismatch is a divergence — a phase
+  // present in only one copy is a contradiction (the entry set feeds ST-10 / §10.5.1), closing the
+  // phantom-entry gaming vector. Then shared indices must agree on outcome/errorClass.
+  const aIdx = new Map(a.phaseSummary.map((p) => [p.index, p]));
   const bIdx = new Map(b.phaseSummary.map((p) => [p.index, p]));
+  for (const idx of aIdx.keys()) if (!bIdx.has(idx)) return `phaseSummary index-set divergence: index ${idx} present only in one copy`;
+  for (const idx of bIdx.keys()) if (!aIdx.has(idx)) return `phaseSummary index-set divergence: index ${idx} present only in one copy`;
   for (const p of a.phaseSummary) {
-    const other = bIdx.get(p.index);
-    if (other === undefined) continue; // a phase present in only one copy is not itself a contradiction
+    const other = bIdx.get(p.index)!;
     if (other.outcome !== p.outcome) return `phaseSummary contradiction at index ${p.index}: "${p.outcome}" vs "${other.outcome}"`;
     if ((p.errorClass ?? null) !== (other.errorClass ?? null)) {
       return `phaseSummary contradiction at index ${p.index}: errorClass "${String(p.errorClass ?? null)}" vs "${String(other.errorClass ?? null)}"`;

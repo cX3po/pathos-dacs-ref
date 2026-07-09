@@ -194,6 +194,30 @@ test('§10.4.3(d): errorClass-only contradiction (same phase outcome) IS a canon
   assert.match(v.twoSided.detail, /errorClass/);
 });
 
+test('§10.4.3 ruling #224: phaseSummary INDEX-SET mismatch (phase in one copy only) IS a divergence → fail', async () => {
+  const jobId = 'v1-indexset-div';
+  // Same outcome, buyer has one phase, seller appends a phantom index-1 entry (the ST-10 gaming
+  // vector the carve-out-free ruling closes). Copies must now diverge, not classify unified.
+  const { signatures: _b, ...bu } = makeV1({ jobId, outcome: 'completed', anchoredByRole: 'buyer' });
+  void _b;
+  const { signatures: _s, ...su } = makeV1({ jobId, outcome: 'completed', anchoredByRole: 'seller' });
+  void _s;
+  bu.phaseSummary = [{ index: 0, kind: 'vet-credentials', outcome: 'ok' }];
+  su.phaseSummary = [{ index: 0, kind: 'vet-credentials', outcome: 'ok' }, { index: 1, kind: 'commit-agreement', outcome: 'ok' }];
+  const buyer = mk(0x21), seller = mk(0x22);
+  const signers: Parameters<typeof emitAttestationBundleV1>[1] = [
+    { party: { scheme: 'cci' as const, identifier: buyer.pubHex }, privKey: buyer.priv },
+    { party: { scheme: 'cci' as const, identifier: seller.pubHex }, privKey: seller.priv },
+  ];
+  const buyerSigned = emitAttestationBundleV1(bu, signers);
+  const sellerSigned = emitAttestationBundleV1(su, signers);
+  const pair = computeAnchorPairV1(jobId);
+  const map = new Map([[pair.buyer, JSON.stringify(buyerSigned)], [pair.seller, JSON.stringify(sellerSigned)]]);
+  const v = await verifyBundleV1Full(buyerSigned, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.twoSided.outcome, 'fail');
+  assert.match(v.twoSided.detail, /index-set divergence/);
+});
+
 test('§10.4.3(b): lone SINGLE-SIGNED copy with NON-abort outcome → indeterminate (rejected per §10.4.1 — no valid bundle)', async () => {
   const jobId = 'v1-lone-nonabort';
   const buyer = mk(0x21);
