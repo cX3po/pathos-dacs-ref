@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc --noEmit",
+    "repro:dacs-v01-golden-pay-binding": "tsx conformance/reproducers/dacs-v01-golden-pay-binding/reproduce.mts",
     "listing-pub": "tsx src/cli/listing-pub.ts",
     "verify": "tsx src/cli/verify.ts",
     "vet-gleif": "tsx src/cli/vet-gleif.ts",
