@@ -15,7 +15,7 @@
  *     never as the expected OWNER.
  *
  * Canonical program names (mirroring the spec's address schemes):
- *   listing            dacs1:listing:{listingId}
+ *   listing            dacs1listing-{sha256(logical_address)}           (§6.3.4 opaque/colon-free)
  *   agreement          dacs3:agreement:{jobId}                        (signed both-party terms)
  *   payment evidence   dacs4:payment:{jobId}:{railId}:{phaseIndex}   (PC-2; railId %-encoded)
  *   deliverable        dacs4:deliverable:{jobId}                      (§9.6.1)
@@ -24,6 +24,7 @@
  */
 
 import type { FetchResult } from '../demos/storage.js';
+import { opaqueListingProgramName } from '../dacs1/addressing.js';
 
 /** PC-2: railId is a CF-4 variable segment — percent-encode internal colons. */
 export function encodeRailSegment(railId: string): string {
@@ -31,7 +32,7 @@ export function encodeRailSegment(railId: string): string {
 }
 
 export const anchorNames = {
-  listing: (listingId: string) => `dacs1:listing:${listingId}`,
+  listing: (logicalAddress: string) => opaqueListingProgramName(logicalAddress),
   agreement: (jobId: string) => `dacs3:agreement:${jobId}`,
   paymentEvidence: (jobId: string, railId: string, phaseIndex: number) =>
     `dacs4:payment:${jobId}:${encodeRailSegment(railId)}:${phaseIndex}`,

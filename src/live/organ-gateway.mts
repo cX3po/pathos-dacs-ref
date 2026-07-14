@@ -38,6 +38,8 @@ import type { AttestationBundleV1, BundlePhaseEntry } from '../types/bundle.js';
 import type { AttestationRef } from '../types/verify-result.js';
 import type { FetchResult } from '../demos/storage.js';
 import { anchorNames } from './anchor-naming.js';
+import { listingLogicalAddress } from '../dacs1/addressing.js';
+import { buildDiscoveryArtifacts, resolveListingFromPublishedBinding } from '../dacs1/discovery.js';
 
 const LIVE = process.env.LIVE === '1';
 const RPC = process.env.DEMOS_RPC ?? 'https://demosnode.discus.sh/';
@@ -144,10 +146,14 @@ log('session', `jobId=${jobId} mode=${LIVE ? 'LIVE devnet' : 'dry-run'} rpc=${RP
 
 // DACS-1 — seller publishes a signed listing, anchored via SR-2.
 const listingId = `${jobId}-listing`;
+const sellerPrimaryClaim = `key:${sellerCci}`;
+const listingLogical = listingLogicalAddress(sellerPrimaryClaim, listingId, 1);
 const listingBody = {
   v: 'dacs-listing:0.1',
   listingId,
-  seller: { scheme: 'cci', identifier: sellerCci },
+  listingVersion: 1,
+  logical_address: listingLogical,
+  seller: { scheme: 'key', identifier: sellerCci },
   sellerPaymentAddress: sellerOwner,
   item: 'proof-organ:nws_alerts — severe-weather severity band near a committed point (raw feed + location committed, never disclosed)',
   deliverable: { deliverableType: 'storage-program', accessModel: 'public' },
@@ -157,15 +163,52 @@ const listingBody = {
 const listingCanonical = jcsCanonical(listingBody); // bytes — the signing scope
 const listingHash = jcsHashHex(listingBody);
 const listingSig = sign(DOMAIN_SEPARATORS.LISTING, listingCanonical, sellerKeys.privKey);
-const listingAnchored = jcsString({ ...listingBody, signature: Buffer.from(listingSig).toString('base64') });
-const listingLocator = await anchorString(handles?.seller ?? null, sellerOwner, anchorNames.listing(listingId), listingAnchored);
+const listingSigned = { ...listingBody, signature: Buffer.from(listingSig).toString('base64') };
+const listingAnchored = jcsString(listingSigned);
+const listingLocator = await anchorString(handles?.seller ?? null, sellerOwner, anchorNames.listing(listingLogical), listingAnchored);
 log('DACS-1', `listing ${listingHash.slice(0, 16)}… anchored @ ${listingLocator}`);
+
+// §6.3.4(c) / LR: produce the well-known index + catalog view, then resolve strictly through
+// its native locator. The resolver API has no programName input and performs no name search.
+const discoveryOrigin = 'https://organ.path-os.invalid';
+const discovery = buildDiscoveryArtifacts({
+  listing: listingSigned,
+  sellerPrimaryClaim,
+  nativeAddress: listingLocator.replace(/^dry-/, 'stor-'),
+  publisherOrigin: discoveryOrigin,
+  generatedAt: now(),
+});
+const agentCardUrl = `${discoveryOrigin}/.well-known/agent.json`;
+const publishedResources = new Map<string, Uint8Array>([
+  [agentCardUrl, discovery.agentCardBytes],
+  [`${discoveryOrigin}/.well-known/dacs/listings.json`, discovery.indexBytes],
+]);
+const resolvedListing = await resolveListingFromPublishedBinding(
+  agentCardUrl,
+  listingLogical,
+  async (url) => {
+    const hit = publishedResources.get(url);
+    if (!hit) throw new Error(`published discovery resource absent: ${url}`);
+    return hit;
+  },
+  async (nativeAddress) => {
+    const actualAddress = LIVE ? nativeAddress : nativeAddress.replace(/^stor-/, 'dry-');
+    if (!LIVE) {
+      const hit = memoryAnchors.get(actualAddress);
+      return hit ? { storageAddress: nativeAddress, data: hit.data } : null;
+    }
+    const { fetchAnchored } = await import('../demos/storage.js');
+    return fetchAnchored(RPC, nativeAddress);
+  },
+);
+if (resolvedListing.contentHash !== listingHash) throw new Error('LR discovery resolved a different listing hash');
+log('DACS-1', `published-binding LR resolved ${listingLogical} → ${resolvedListing.nativeAddress} ✓`);
 
 // DACS-2 — buyer verifies the seller's primary claim over the listing signature.
 const { verify } = await import('../lib/sign.js');
 const vetOk = verify(DOMAIN_SEPARATORS.LISTING, listingSig, listingCanonical, sellerKeys.pubKey);
-if (!vetOk) throw new Error('DACS-2 vet FAILED: listing signature does not verify under the seller cci key');
-log('DACS-2', `seller cci:${sellerCci.slice(0, 12)}… verified over the listing ✓`);
+if (!vetOk) throw new Error('DACS-2 vet FAILED: listing signature does not verify under the seller key: claim');
+log('DACS-2', `seller key:${sellerCci.slice(0, 12)}… verified over the listing ✓`);
 
 // DACS-3 — fixed-price agreement signed by BOTH parties.
 const agreementBody = {
@@ -332,6 +375,7 @@ console.log(JSON.stringify({
   // Advertise the authorize line ONLY on a PASSING dry-run — so possessing the hash means the
   // dry-run of these exact parameters actually passed (the match-gate then binds live to it).
   ...(LIVE || !passed ? {} : { authorizeLiveWith: `GATEWAY_LIVE_APPROVED=1 GATEWAY_DRYRUN_HASH=${paramHash} LIVE=1` }),
+  discovery: { logical_address: listingLogical, native_address: resolvedListing.nativeAddress, indexHash: discovery.indexHash },
   anchors: { listing: listingLocator, agreement: agreementLocator, payEvidence: payEvidenceLocator, deliverable: deliverableLocator, deliveryEvidence: deliveryEvidenceLocator },
   // LOCAL-ONLY (never anchored): opens the deliverable's input commitment when disclosed with the raw record.
   commitmentNonce,

@@ -49,10 +49,13 @@
                   (NEVER coerced — §7.5.1)
 ```
 
-## Three CLIs, one shared lib
+## Four CLIs, one shared lib
 
 ### `src/cli/listing-pub.ts` (DACS-1)
-Reads a listing JSON from disk, validates against §6.3.4 schema, JCS-canonicalises, signs with the seller's primary-claim key (`"dacs-listing:v1:"` domain separator), checks the result is ≤ 16 KB, anchors via SR-2 (Demos Storage Program), prints the resulting `stor-` address + tx hash.
+Reads a listing JSON from disk, validates the in-scope §6.3.4 structure, derives and carries the CF-4 `logical_address`, checks the signature-omitted canonical form is ≤ 16 KB, and anchors the complete record via an opaque colon-free Demos Storage Program name. After the native `stor-` locator exists it emits the hash-protected §6.3.5 index and §6.3.6 catalog artifacts. Signing remains the caller's responsibility; an existing signature field is preserved on the anchored record and omitted only from `contentHash` computation.
+
+### `src/cli/discovery-gen.ts` (DACS-1 discovery)
+Emits host-ready `.well-known/agent.json`, `.well-known/dacs/listings.json`, and catalog collection/detail artifacts for a known listing/native locator. `--legacy-record-without-logical-metadata` publishes an explicit `legacy-absent` binding for immutable older anchors without rewriting them. The seller/reputation catalog endpoint remains outside this addressing-only slice.
 
 ### `src/cli/verify.ts` (DACS-5) — **the moat for v0.1**
 Given either a `stor-` anchor or a local bundle JSON file:
