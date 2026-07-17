@@ -151,7 +151,7 @@ function keyBytes(c: unknown): Uint8Array | null {
  * A 64-byte payload is exactly 86 significant chars: canonical base64 ends "==", base64url has
  * no padding. Anything else (mixed alphabet, wrong padding, wrong length) → null.
  */
-function decodeEd25519Sig(v: unknown): Uint8Array | null {
+export function decodeEd25519Sig(v: unknown): Uint8Array | null {
   if (typeof v !== 'string') return null;
   if (!/^[A-Za-z0-9+/]{86}==$/.test(v) && !/^[A-Za-z0-9_-]{86}$/.test(v)) return null;
   let out: Uint8Array;
