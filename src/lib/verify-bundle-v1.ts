@@ -378,6 +378,100 @@ function collectV1Refs(b: AttestationBundleV1): AttestationRef[] {
   return out;
 }
 
+type ArtifactSignature = { algorithm?: unknown; signer?: unknown; party?: unknown; value?: unknown };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function authorizedArtifactSigners(
+  artifact: Record<string, unknown>, ref: AttestationRef, bundle: AttestationBundleV1,
+  kind: 'listing' | 'agreement' | 'evidence' | 'vet',
+): Set<string> | null {
+  const refSigner = claimKey(ref.signer);
+  if (refSigner) return new Set([refSigner]);
+  if (kind === 'listing') {
+    const seller = asRecord(artifact.seller);
+    const identity = asRecord(seller?.identity);
+    const primary = identity?.primary ?? identity?.presentedBy ?? seller?.primaryClaim ?? artifact.sellerClaim;
+    const key = claimKey(primary);
+    return key ? new Set([key]) : null;
+  }
+  if (kind === 'agreement') {
+    const parties = Array.isArray(artifact.parties)
+      ? artifact.parties.map((p) => claimKey(asRecord(p)?.primaryClaim)).filter((k): k is string => k !== null)
+      : [claimKey(artifact.buyer), claimKey(artifact.seller)].filter((k): k is string => k !== null);
+    return parties.length > 0 ? new Set(parties) : null;
+  }
+  if (kind === 'evidence') {
+    // A fresh attacker key must not become authorized merely by self-signing the evidence.
+    return new Set(bundle.parties.map((p) => claimKey(p.primaryClaim)!));
+  }
+  // Vet-record issuers are not necessarily deal parties, so the AttestationRef must pin one.
+  return null;
+}
+
+function classifyArtifact(artifact: Record<string, unknown>): 'listing' | 'agreement' | 'evidence' | 'vet' | null {
+  if (artifact.listingVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('listing'))) return 'listing';
+  if (artifact.agreementVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('agreement'))) return 'agreement';
+  if (artifact.evidenceVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('settlement-evidence'))) return 'evidence';
+  if (artifact.recordVersion !== undefined || (typeof artifact.v === 'string' && (artifact.v.includes('verify') || artifact.v.includes('attestation')))) return 'vet';
+  return null;
+}
+
+/** Hash binding is necessary but insufficient: authenticate the fetched artifact's author. */
+function verifyReferencedArtifact(
+  data: string, ref: AttestationRef, bundle: AttestationBundleV1,
+): { outcome: ChainOutcome; detail: string } {
+  let artifact: Record<string, unknown>;
+  try {
+    const obj = asRecord(JSON.parse(data));
+    if (!obj) return { outcome: 'fail', detail: 'referenced artifact is not a signed JSON object' };
+    artifact = obj;
+  } catch {
+    return { outcome: 'fail', detail: 'referenced artifact is not parseable signed JSON (unsigned/unverifiable)' };
+  }
+  const kind = classifyArtifact(artifact);
+  if (!kind) return { outcome: 'indeterminate', detail: 'referenced artifact kind is unknown; signer authorization cannot be established' };
+  const separator = kind === 'listing' ? DOMAIN_SEPARATORS.LISTING
+    : kind === 'agreement' ? DOMAIN_SEPARATORS.AGREEMENT
+      : kind === 'evidence' ? DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE : DOMAIN_SEPARATORS.COMPOSITE_VERIFY;
+  const rawSignatures: ArtifactSignature[] = Array.isArray(artifact.signatures)
+    ? artifact.signatures.map((s) => (asRecord(s) ?? {}) as ArtifactSignature)
+    : artifact.signature !== undefined ? [(asRecord(artifact.signature) ?? {}) as ArtifactSignature] : [];
+  if (rawSignatures.length === 0) {
+    return { outcome: 'fail', detail: `${kind} artifact is unsigned — contentHash proves integrity, not authorship` };
+  }
+  const authorized = authorizedArtifactSigners(artifact, ref, bundle, kind);
+  if (!authorized || authorized.size === 0) {
+    return { outcome: 'indeterminate', detail: `${kind} artifact signer authority is not resolvable/pinned` };
+  }
+  const { signature: _signature, signatures: _signatures, ...unsigned } = artifact;
+  void _signature; void _signatures;
+  let artifactHash: string;
+  try { artifactHash = bytesToHexLocal(sha256(jcsCanonical(unsigned))); }
+  catch (e) { return { outcome: 'fail', detail: `${kind} artifact signed scope is not canonicalizable: ${(e as Error).message}` }; }
+  const verified = new Set<string>();
+  for (const sigRecord of rawSignatures) {
+    const signer = sigRecord.signer ?? sigRecord.party;
+    const signerKey = claimKey(signer);
+    if (!signerKey) return { outcome: 'fail', detail: `${kind} artifact signature has no valid signer claim` };
+    if (!authorized.has(signerKey)) return { outcome: 'fail', detail: `${kind} artifact signer ${signerKey} is not authorized` };
+    if (sigRecord.algorithm !== 'ed25519') return { outcome: 'indeterminate', detail: `${kind} artifact uses unsupported signature algorithm "${String(sigRecord.algorithm)}"` };
+    const sig = decodeEd25519Sig(sigRecord.value);
+    if (!sig) return { outcome: 'fail', detail: `${kind} artifact has a malformed ed25519 signature` };
+    const pub = keyBytes(signer);
+    if (!pub) return { outcome: 'indeterminate', detail: `${kind} artifact signer key is unresolvable` };
+    if (!verify(separator, sig, enc.encode(artifactHash), pub)) return { outcome: 'fail', detail: `${kind} artifact signature does not verify over its canonical artifact hash` };
+    verified.add(signerKey);
+  }
+  if (kind === 'agreement') {
+    const missing = [...authorized].filter((claim) => !verified.has(claim));
+    if (missing.length > 0) return { outcome: 'fail', detail: `agreement artifact is missing authorized party signature(s): ${missing.join(', ')}` };
+  }
+  return { outcome: 'pass', detail: `${kind} artifact signature(s) verified from authorized signer(s)` };
+}
+
 /**
  * §7.5.2 — walk every AttestationRef: fetch the anchored bytes, recompute sha256, compare to
  * `contentHash`. Mismatch ⇒ fail. Missing ⇒ fail (the bundle cites evidence that does not exist
@@ -443,8 +537,15 @@ async function walkV1AttestationRefs(
       failed++;
       continue;
     }
-    steps.push({ ref: label, outcome: 'pass', detail: `content-hash matches (${actualHash.slice(0, 16)}…); anchor=${anchor.locator}` });
-    verified++;
+    const authorship = verifyReferencedArtifact(fetched.data, ref, bundle);
+    if (authorship.outcome === 'pass') {
+      steps.push({ ref: label, outcome: 'pass', detail: `content-hash matches (${actualHash.slice(0, 16)}…); ${authorship.detail}; anchor=${anchor.locator}` });
+      verified++;
+    } else {
+      steps.push({ ref: label, outcome: authorship.outcome,
+        detail: `content-hash matches (${actualHash.slice(0, 16)}…) but ${authorship.detail} — fail-closed (§7.5.2/§10.4)` });
+      if (authorship.outcome === 'fail') failed++;
+    }
   }
 
   return { verified, failed, steps };

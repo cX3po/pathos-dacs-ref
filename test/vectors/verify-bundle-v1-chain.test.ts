@@ -29,6 +29,9 @@ import { ed25519 } from '@noble/curves/ed25519';
 import type { AttestationBundleV1 } from '../../src/types/bundle.js';
 import { verifyBundleV1Full, computeAnchorPairV1 } from '../../src/lib/verify-bundle-v1.js';
 import { emitAttestationBundleV1 } from '../../src/lib/emit-bundle-v1.js';
+import { sign } from '../../src/lib/sign.js';
+import { DOMAIN_SEPARATORS } from '../../src/domain-sep.js';
+import { jcsCanonical } from '../../src/jcs.js';
 import type { fetchAnchored as FetchAnchored } from '../../src/demos/storage.js';
 
 const enc = new TextEncoder();
@@ -278,17 +281,35 @@ test('BLOCKER 1: v0.1 --offline (skipTwoSidedLookup) → two-sided skipped, stru
 
 // ── BLOCKER 2: §7.5.2 AttestationRef walk ───────────────────────────────────
 
-test('BLOCKER 2: v0.1 real AttestationRef (content-hash matches) → attestationsVerified counted', async () => {
+test('dacs-sdk#38: unsigned hash-matching referenced artifact fails closed', async () => {
   const jobId = 'v1-ref-ok';
-  const evidence = JSON.stringify({ kind: 'settlement', amount: '42' });
+  const evidence = JSON.stringify({ evidenceVersion: '1', jobId, phase: 'pay-dem', outcome: 'success', observedAt: 1735689600000 });
   const locator = 'stor-' + sha256Hex('evidence-anchor');
+  const ref = { anchor: { substrate: 'demos' as const, locator }, contentHash: sha256Hex(evidence), type: 'dahr:settlement', producedAt: '2026-06-07T00:00:00Z' };
+  const { buyerCopy, map } = twoSidedMap({ jobId, settlementEvidence: [ref] });
+  map.set(locator, evidence);
+  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.attestationsVerified, 0, JSON.stringify(v.attestationSteps));
+  assert.equal(v.attestationsFailed, 1);
+  assert.match(v.attestationSteps[0]!.detail, /unsigned.*integrity, not authorship/);
+  assert.equal(v.rollup, 'fail');
+});
+
+test('dacs-sdk#38: properly signed referenced artifact still passes', async () => {
+  const jobId = 'v1-ref-signed-ok';
+  const buyer = mk(0x21);
+  const unsigned = { evidenceVersion: '1', jobId, phase: 'pay-dem', outcome: 'success', observedAt: 1735689600000 };
+  const artifactHash = hexOf(sha256(jcsCanonical(unsigned)));
+  const value = Buffer.from(sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, enc.encode(artifactHash), buyer.priv)).toString('base64');
+  const evidence = JSON.stringify({ ...unsigned, signature: { algorithm: 'ed25519', signer: `cci:${buyer.pubHex}`, value } });
+  const locator = 'stor-' + sha256Hex('signed-evidence-anchor');
   const ref = { anchor: { substrate: 'demos' as const, locator }, contentHash: sha256Hex(evidence), type: 'dahr:settlement', producedAt: '2026-06-07T00:00:00Z' };
   const { buyerCopy, map } = twoSidedMap({ jobId, settlementEvidence: [ref] });
   map.set(locator, evidence);
   const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.attestationsVerified, 1, JSON.stringify(v.attestationSteps));
   assert.equal(v.attestationsFailed, 0);
-  assert.equal(v.rollup, 'pass');
+  assert.equal(v.rollup, 'pass', JSON.stringify(v.attestationSteps));
 });
 
 test('BLOCKER 2: v0.1 AttestationRef whose anchor is MISSING → fail (cited evidence does not exist)', async () => {
