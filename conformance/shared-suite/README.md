@@ -14,6 +14,50 @@ node cross-run.mjs --json
 node cross-run.mjs --spec-questions
 ```
 
+### Registering multiple adapters
+
+The runner can launch multiple external adapter commands over the same subprocess protocol.
+Provenance from each adapter's handshake is preserved in the report.
+
+```sh
+# repeatable --adapter; --adapter-provenance attaches a recorded provenance assertion to the
+# preceding --adapter (used when independence cannot be inferred from the repository URL alone):
+node cross-run.mjs \
+  --adapter "node reference-adapter-process.mjs" \
+  --adapter "path/to/other-impl-adapter" --adapter-provenance "https://example.org/other-impl"
+
+# or a config file listing adapter commands + declared provenance:
+node cross-run.mjs --config adapters.json
+# adapters.json: { "adapters": [ { "command": ["node","reference-adapter-process.mjs"] },
+#                                 { "command": ["./other"], "provenanceCodebase": "https://…",
+#                                   "timeoutMs": 10000, "maxOutputBytes": 8388608 } ] }
+```
+
+**Runner-tracked identity (Blocker 1 fix).** Every adapter run is assigned a unique runner-side
+`runId` (`run-0`, `run-1`, …) independent of the self-reported `metadata.name`. Results are keyed
+by that `runId`, so two adapters that self-report the same name can never overwrite each other and
+produce a false `INTEROP-AGREE`. Duplicate self-reported names are surfaced as a warning.
+
+**Provenance canonicalization (Blocker 2 fix).** Independence is counted over a *canonicalized*
+codebase identity, not the raw repository string: `.git` suffixes, trailing slashes, `git+`
+transport prefixes, scheme/host case, default ports, and `scp`-style `git@host:owner/repo` are all
+normalized, so `https://x/impl` and `https://x/impl.git` are ONE codebase (a self-check, not
+interop), and two wrappers around one implementation are not independent. When independence cannot
+be inferred structurally, an explicit `provenanceCodebase` assertion (recorded in the report) is
+honored instead of inferring it.
+
+**Subprocess safety (Blocker 3 fix).** Each adapter request has a per-adapter wall-clock timeout
+and a bounded stdout+stderr budget (defaults 10s / 8 MiB, overridable per adapter). A hung,
+crashing, or flooding adapter is SIGKILLed and recorded as an `UNAVAILABLE` adapter that abstains
+on every vector — fail-closed, never a silent pass and never a hang or OOM of the whole cross-run.
+
+> **Out of scope (Blocker 4, still open):** the multi-adapter path above provides the *invocation*
+> mechanism and preserves provenance, but this seed still ships only ONE genuine implementation
+> adapter (the PATH-OS reference) and no signed/pinned adapter manifest. Real `INTEROP-AGREE`
+> evidence requires a *second genuinely independent* implementation adapter plus a reviewed
+> manifest pin. Until then the default run is a self-check. Fixtures under `test-fixtures/` exist
+> only to exercise the runner and are not cross-implementation evidence.
+
 ## Result categories
 
 | Condition | Row status / category |
@@ -66,9 +110,12 @@ at least two genuine implementation adapters exist.
   pinned Standard manifest or release and must fail on hash drift; it never silently forks the
   authoritative corpus. This proposal seed lock records its pre-adoption source provenance and
   must be replaced only by a reviewed Standard pin.
-- Each implementation owns its adapter. Every report records adapter name/version, repository,
-  immutable revision, supported families, and operations from the handshake.
-- Candidate vectors become cross-implementation evidence only after at least two independent,
-  real adapters execute them. Until then, a matching result is `SELF-CHECK`.
+- Each implementation owns its adapter. Every report records the runner-assigned `runId` plus the
+  adapter's self-reported name/version, repository, immutable revision, supported families, and
+  operations from the handshake. The `runId` — not the self-reported name — is the identity the
+  runner tracks results by.
+- Candidate vectors become cross-implementation evidence only after at least two adapters with
+  *distinct canonicalized codebase identities* execute them. Until then, a matching result is
+  `SELF-CHECK`. Same-codebase duplicates and wrapper-over-one-impl pairs remain `SELF-CHECK`.
 - The runner, adapter protocol, and report format remain non-normative. Passing is
   interoperability evidence, not certification.

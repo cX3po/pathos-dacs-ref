@@ -9,6 +9,21 @@ Each implementation owns and versions its adapter. The metadata handshake must g
 version, repository, immutable revision, supported families, and operations; the runner copies
 that provenance into the report.
 
+The runner assigns every adapter run a unique runner-side `runId` and keys results by it, not by
+the self-reported `metadata.name`. Two adapters may not collide in the results map even if they
+self-report the same name (DACS-Standard#270 Blocker 1). Independence for `INTEROP-AGREE` is
+counted over a *canonicalized* codebase identity (strip `.git`, trailing slash, `git+` prefix,
+scheme/host case, default port; normalize `scp`-style remotes), so `…/impl` and `…/impl.git` are
+one codebase and two wrappers over one implementation are not independent (Blocker 2). When
+structural inference is insufficient, an adapter may carry an explicit `provenanceCodebase`
+assertion that the runner records and uses instead of inferring independence from the URL.
+
+The runner launches multiple external adapters over the subprocess protocol (`--adapter`
+repeatable, or a `--config` file) and enforces a per-adapter wall-clock timeout and bounded output.
+A hung/crashing/flooding adapter is recorded as `UNAVAILABLE` and abstains on every vector —
+fail-closed (Blocker 3). Shipping a *second genuinely independent* implementation adapter plus a
+pinned adapter manifest (Blocker 4) remains open and out of scope for this seed.
+
 ## Operations
 
 - F1 `canonicalize`: RFC 8785 canonical bytes, hex encoded.

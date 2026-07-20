@@ -1,9 +1,24 @@
 import { spawn } from 'node:child_process';
-import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 
 export const PROTOCOL = 'dacs-adapter/1';
+
+// Blocker 3 — subprocess safety defaults. A broken/hung/flooding adapter must never hang or
+// OOM the cross-run; it must be recorded as failed/unavailable (fail-closed), never a silent
+// pass. These bound each request's wall-clock and total captured stdout+stderr.
+export const DEFAULT_ADAPTER_TIMEOUT_MS = 10_000;
+export const DEFAULT_ADAPTER_MAX_OUTPUT_BYTES = 8 * 1024 * 1024; // 8 MiB per request
+
+/** Raised when an adapter subprocess exceeds its wall-clock budget. */
+export class AdapterTimeoutError extends Error {
+  constructor(message) { super(message); this.name = 'AdapterTimeoutError'; }
+}
+/** Raised when an adapter subprocess exceeds its output budget. */
+export class AdapterOutputLimitError extends Error {
+  constructor(message) { super(message); this.name = 'AdapterOutputLimitError'; }
+}
 
 export function encodeProtocolValue(value) {
   if (typeof value === 'bigint') return { $dacsType: 'bigint', decimal: String(value) };
@@ -20,7 +35,16 @@ export function encodeProtocolValue(value) {
  * metadata handshake. Each request uses a fresh process so crashes and state cannot leak
  * between vectors; the wire contract is identical for adapters that choose to stay alive.
  */
-export async function startAdapterProcess(command, args = [], { cwd, env } = {}) {
+export async function startAdapterProcess(
+  command,
+  args = [],
+  {
+    cwd,
+    env,
+    timeoutMs = DEFAULT_ADAPTER_TIMEOUT_MS,
+    maxOutputBytes = DEFAULT_ADAPTER_MAX_OUTPUT_BYTES,
+  } = {},
+) {
   let sequence = 0;
   async function request(type, body = {}) {
     const id = String(++sequence);
@@ -43,14 +67,54 @@ export async function startAdapterProcess(command, args = [], { cwd, env } = {})
     closeSync(inputFd);
     closeSync(outputFd);
     closeSync(errorFd);
-    const status = await new Promise((resolve, reject) => {
-      child.once('error', reject);
-      child.once('exit', (code) => resolve(code));
-    });
-    const stdout = readFileSync(responsePath, 'utf8');
-    const stderr = readFileSync(errorPath, 'utf8');
+
+    // Blocker 3 — bounded output. Poll the on-disk stdout/stderr sizes; if a flooding adapter
+    // exceeds the budget, kill it and fail-closed rather than filling the disk.
+    let outputLimitExceeded = false;
+    const outputWatch = setInterval(() => {
+      let total = 0;
+      try { total += statSync(responsePath).size; } catch { /* not created yet */ }
+      try { total += statSync(errorPath).size; } catch { /* not created yet */ }
+      if (total > maxOutputBytes) {
+        outputLimitExceeded = true;
+        child.kill('SIGKILL');
+      }
+    }, 25);
+
+    // Blocker 3 — per-adapter wall-clock timeout. A hung adapter is SIGKILLed and recorded as
+    // a timeout failure; it can never hang the whole cross-run.
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+    if (typeof timer.unref === 'function') timer.unref();
+
+    let status;
+    let signal;
+    try {
+      ({ status, signal } = await new Promise((resolve, reject) => {
+        child.once('error', reject);
+        child.once('exit', (code, sig) => resolve({ status: code, signal: sig }));
+      }));
+    } finally {
+      clearTimeout(timer);
+      clearInterval(outputWatch);
+    }
+
+    let stdout = '';
+    let stderr = '';
+    try { stdout = readFileSync(responsePath, 'utf8'); } catch { /* nothing captured */ }
+    try { stderr = readFileSync(errorPath, 'utf8'); } catch { /* nothing captured */ }
     rmSync(requestDirectory, { recursive: true, force: true });
-    if (status !== 0) throw new Error(`adapter exited ${status}: ${stderr.trim()}`);
+
+    if (timedOut) {
+      throw new AdapterTimeoutError(`adapter timed out after ${timeoutMs}ms (signal ${signal ?? 'SIGKILL'})`);
+    }
+    if (outputLimitExceeded) {
+      throw new AdapterOutputLimitError(`adapter exceeded output budget of ${maxOutputBytes} bytes`);
+    }
+    if (status !== 0) throw new Error(`adapter exited ${status ?? `signal ${signal}`}: ${stderr.trim()}`);
     const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
     if (lines.length !== 1) throw new Error(`adapter emitted ${lines.length} response lines; expected 1`);
     let response;

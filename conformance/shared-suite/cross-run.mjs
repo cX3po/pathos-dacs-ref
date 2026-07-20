@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /** DACS shared-suite runner. The adapter boundary is JSONL subprocess protocol v1. */
+import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crossRun } from './adapter-contract.mjs';
 import { startAdapterProcess } from './adapter-process-client.mjs';
+import { launchAdapters, parseAdapterArgs } from './adapter-registry.mjs';
 import { loadSeedCorpus } from './seed-corpus.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -14,10 +16,16 @@ const F4_NOTE =
 
 export async function run(adapters, corpus = loadSeedCorpus(), options = {}) {
   const { vectors, outOfScope, sourceFiles, sourceCounts } = corpus;
-  const { matrix, specQuestions } = await crossRun(adapters, vectors, options);
+  const { matrix, specQuestions, runs, duplicateReportedNames } = await crossRun(adapters, vectors, options);
   return {
     protocol: 'dacs-adapter/1',
-    adapters: adapters.map((adapter) => adapter.metadata ?? { name: adapter.name }),
+    // Pair each adapter's self-reported metadata with its runner-assigned runId (Blocker 1) so
+    // the report distinguishes runner-tracked identity from self-reported name.
+    adapters: adapters.map((adapter, index) => ({
+      runId: runs?.[index]?.runId ?? `run-${index}`,
+      ...(adapter.metadata ?? { name: adapter.name }),
+    })),
+    duplicateReportedNames: duplicateReportedNames ?? [],
     sourceFiles,
     sourceCounts,
     matrix,
@@ -53,7 +61,11 @@ export function printHuman(report, { specQuestionsOnly = false, title = 'DACS Sh
   write(`# ${title}\n`);
   write(`# protocol: ${report.protocol}\n`);
   for (const adapter of report.adapters) {
-    write(`# adapter: ${adapter.name} ${adapter.version ?? '?'} · ${adapter.repository ?? '?'} @ ${adapter.revision ?? '?'}\n`);
+    write(`# adapter: [${adapter.runId ?? '?'}] ${adapter.name} ${adapter.version ?? '?'} · ${adapter.repository ?? '?'} @ ${adapter.revision ?? '?'}\n`);
+  }
+  if (report.duplicateReportedNames?.length) {
+    write(`# WARNING: duplicate self-reported adapter name(s): ${report.duplicateReportedNames.join(', ')} — ` +
+      `results are tracked by runner-assigned runId, so no false INTEROP-AGREE can result, but check adapter registration.\n`);
   }
   write(`# pinned sources: ${report.sourceFiles.partnerKit}, ${report.sourceFiles.sig6}\n`);
   write('# NON-NORMATIVE tooling. SELF-CHECK is not cross-implementation evidence; passing is not certification.\n\n');
@@ -64,8 +76,10 @@ export function printHuman(report, { specQuestionsOnly = false, title = 'DACS Sh
     }
     for (const row of report.specQuestions) {
       write(`SPEC-QUESTION  ${row.id}  [${row.status}]\n`);
-      for (const [name, result] of Object.entries(row.perAdapter)) {
-        write(`  ${name}: ${result.status === 'ABSTAIN' ? 'ABSTAIN' : `${result.outcome} (${result.status})`}\n`);
+      // perAdapter is keyed by runner-assigned runId (Blocker 1); the self-reported name is a
+      // display label carried on each entry.
+      for (const [runId, result] of Object.entries(row.perAdapter)) {
+        write(`  ${runId} (${result.name}): ${result.status === 'ABSTAIN' ? 'ABSTAIN' : `${result.outcome} (${result.status})`}\n`);
       }
     }
     return;
@@ -97,28 +111,52 @@ export function printJson(report) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const wantJson = args.includes('--json');
-  const specQuestionsOnly = args.includes('--spec-questions');
+
+  // Blocker 3: pull adapter-registration flags (--adapter / --adapter-provenance / --config /
+  // --adapter-timeout-ms / --adapter-max-output-bytes) out first; `rest` is everything else.
+  const { specs, rest } = parseAdapterArgs(args, { readFileSync });
+
+  const wantJson = rest.includes('--json');
+  const specQuestionsOnly = rest.includes('--spec-questions');
   const triaged = new Set();
-  for (let index = 0; index < args.length; index++) {
-    if (args[index] === '--triage-spec-question') {
-      if (!args[index + 1]) throw new Error('--triage-spec-question requires a vector id');
-      triaged.add(args[++index]);
-    } else if (!['--json', '--spec-questions'].includes(args[index])) {
-      throw new Error(`unknown argument: ${args[index]}`);
+  for (let index = 0; index < rest.length; index++) {
+    if (rest[index] === '--triage-spec-question') {
+      if (!rest[index + 1]) throw new Error('--triage-spec-question requires a vector id');
+      triaged.add(rest[++index]);
+    } else if (!['--json', '--spec-questions'].includes(rest[index])) {
+      throw new Error(`unknown argument: ${rest[index]}`);
     }
   }
 
-  const adapter = await startAdapterProcess(process.execPath, [path.join(HERE, 'reference-adapter-process.mjs')], { cwd: HERE });
+  // Default (no --adapter/--config): run the single PATH-OS reference adapter exactly as before
+  // — the WG-visible invariant is "43 SELF-CHECK, 0 INTEROP-AGREE" for that run.
+  let adapters;
+  let unavailable = [];
+  if (specs.length === 0) {
+    adapters = [await startAdapterProcess(process.execPath, [path.join(HERE, 'reference-adapter-process.mjs')], { cwd: HERE })];
+  } else {
+    const launched = await launchAdapters(specs, { defaultCwd: HERE });
+    adapters = launched.adapters;
+    unavailable = launched.unavailable;
+  }
+
   try {
-    const report = await run([adapter], loadSeedCorpus(), { triagedSpecQuestions: triaged });
+    const report = await run(adapters, loadSeedCorpus(), { triagedSpecQuestions: triaged });
+    if (unavailable.length) {
+      report.unavailableAdapters = unavailable;
+      if (!wantJson) {
+        for (const { spec, reason } of unavailable) {
+          process.stderr.write(`# UNAVAILABLE adapter (fail-closed): ${spec.command.join(' ')} — ${reason}\n`);
+        }
+      }
+    }
     if (wantJson) printJson(report);
     else printHuman(report, { specQuestionsOnly });
     const unresolved = report.matrix.filter((row) =>
       row.status === 'VECTOR-MISMATCH' || row.status === 'IMPLEMENTATION-DIVERGENCE');
     return unresolved.length ? 1 : 0;
   } finally {
-    await adapter.close();
+    await Promise.all(adapters.map((adapter) => adapter.close?.()));
   }
 }
 
