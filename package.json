@@ -13,6 +13,7 @@
     "vet-gleif": "tsx src/cli/vet-gleif.ts",
     "test": "tsx --test test/vectors/*.test.ts test/integration/*.test.ts",
     "convergence": "tsx conformance/convergence-suite.mts",
+    "fuzz:bb-binding": "tsx conformance/cross-run-corpus/bb-differential-fuzzer.mts",
     "postinstall": "patch-package"
   },
   "dependencies": {
