@@ -8,6 +8,14 @@ The protocol identifier is `dacs-adapter/1`.
 The runner may keep a process alive or start a clean process per request. An adapter must not
 depend on process state between requests.
 
+The runner assigns each adapter run a unique runner-side identity (`runId`) and tracks all
+results by it, independent of the self-reported `metadata.name`. It also enforces per-adapter
+safety limits: a wall-clock timeout per request and a bounded total stdout+stderr size (defaults
+10s / 8 MiB, overridable per adapter). An adapter that hangs, crashes, or floods output is killed
+and recorded as `UNAVAILABLE` (it abstains on every vector); it never hangs, OOMs, or silently
+passes the cross-run. Adapters therefore MUST reply promptly and MUST NOT stream unbounded output
+to stdout.
+
 ## Envelope and metadata handshake
 
 Every request contains `protocol`, a runner-chosen string `id`, and `type`. Every response
@@ -28,6 +36,7 @@ A metadata result has this shape:
   "version": "1.2.0",
   "repository": "https://example.test/example-dacs",
   "revision": "sha256:... or immutable commit id",
+  "provenanceCodebase": "optional recorded codebase-identity assertion",
   "supportedFamilies": ["canonical-accept", "sig-value-encoding"],
   "operations": ["canonicalize", "signatureValueVerdict"]
 }
@@ -35,9 +44,17 @@ A metadata result has this shape:
 
 `repository` identifies the implementation-owned adapter repository and `revision` pins the
 exact adapter used. A branch name such as `main` or a mutable tag such as `latest` is not an
-immutable revision. Reports retain the complete handshake. `INTEROP-AGREE` requires at least
-two participating, non-demo adapters with distinct repository provenance; two wrappers around
-one implementation remain a self-check.
+immutable revision. Reports retain the complete handshake.
+
+`INTEROP-AGREE` requires at least two participating, non-demo adapters with distinct
+*canonicalized* codebase identities. The runner canonicalizes `repository` before comparing
+(strip `.git`, trailing slash, `git+` prefix, scheme/host case, default port; normalize
+`scp`-style `git@host:owner/repo`), so `…/impl` and `…/impl.git` are the same codebase and two
+wrappers around one implementation remain a self-check. The optional `provenanceCodebase` field
+is a recorded assertion of codebase identity; when present it is used instead of inferring
+independence from the repository URL (for cases where structural inference is insufficient).
+Adapter identity in the results map is the runner-assigned `runId`, never the self-reported
+`name`, so two adapters reporting the same name cannot collide.
 
 ## Execute request
 
