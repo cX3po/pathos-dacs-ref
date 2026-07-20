@@ -2,7 +2,7 @@
 /**
  * conformance/shared-suite/demo-divergent-adapter.mjs — DEMO ONLY.
  *
- * Proves the disagreement (SPEC-QUESTION) path actually fires. Registers the reference
+ * Proves the implementation-divergence classification. Registers the reference
  * adapter PLUS a deliberately-WRONG stub adapter, then runs the same seed corpus that
  * `cross-run.mjs` runs. The stub is NOT part of the reference adapter and is NEVER
  * registered by `cross-run.mjs`'s default (real) invocation — it exists only here.
@@ -16,7 +16,7 @@
  * reference adapter correctly REJECTs — that mismatch is the proof.
  *
  * Usage: node demo-divergent-adapter.mjs [--json]
- * Exit: 0 = the demo worked (>=1 SPEC-QUESTION produced) · 1 = the demo is broken (none did).
+ * Exit: 0 = the demo worked (>=1 divergence produced) · 1 = the demo is broken.
  */
 import { crossRun } from './adapter-contract.mjs';
 import { loadSeedCorpus } from './seed-corpus.mjs';
@@ -47,32 +47,32 @@ async function main() {
 
   const adapters = [referenceAdapter(), divergentStubAdapter()];
   const corpus = loadSeedCorpus();
-  const report = run(adapters, corpus);
+  const report = await run(adapters, corpus);
 
-  // Sanity: crossRun() itself must directly confirm >=1 SPEC-QUESTION exists (not just the
-  // printer's view of it), so this demo can never silently "pass" by printing nothing.
-  const { specQuestions } = crossRun(adapters, corpus.vectors);
+  // Sanity: crossRun() itself must directly confirm a divergence exists, so this demo can
+  // never silently succeed merely by printing nothing.
+  const { matrix } = await crossRun(adapters, corpus.vectors);
+  const divergences = matrix.filter((row) => row.status === 'IMPLEMENTATION-DIVERGENCE');
 
   if (wantJson) {
     // Keep stdout pure JSON when --json is passed; the proof line goes to stderr instead.
     printJson(report);
   } else {
     printHuman(report, {
-      specQuestionsOnly: true,
-      title: 'DACS Shared Conformance Suite — DEMO (proves the disagreement path)',
+      title: 'DACS Shared Conformance Suite — DEMO (proves divergence classification)',
     });
     process.stdout.write(
       'NOTE: "divergent-stub-demo" above is a deliberately-wrong adapter that exists ONLY in ' +
-      'this demo file, to prove the SPEC-QUESTION path fires on real disagreement. It is never ' +
-      'registered by cross-run.mjs\'s default invocation.\n\n'
+      'this demo file, to prove divergence is classified without creating an automatic ' +
+      'SPEC-QUESTION. It is never registered by cross-run.mjs\'s default invocation.\n\n'
     );
   }
 
-  const proofLine = specQuestions.length > 0
-    ? `DEMO PROOF: ${specQuestions.length} SPEC-QUESTION row(s) produced — the disagreement path works.\n`
-    : 'DEMO FAILURE: 0 SPEC-QUESTION rows — the divergent stub did not diverge; the demo is broken.\n';
+  const proofLine = divergences.length > 0
+    ? `DEMO PROOF: ${divergences.length} IMPLEMENTATION-DIVERGENCE row(s) produced; 0 automatic SPEC-QUESTION rows.\n`
+    : 'DEMO FAILURE: 0 IMPLEMENTATION-DIVERGENCE rows — the demo is broken.\n';
   (wantJson ? process.stderr : process.stdout).write(proofLine);
-  return specQuestions.length > 0 ? 0 : 1;
+  return divergences.length > 0 ? 0 : 1;
 }
 
 process.exitCode = await main();

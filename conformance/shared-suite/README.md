@@ -1,70 +1,74 @@
-# DACS Shared Conformance Suite (v0, draft — proposed for working-group adoption)
+# DACS Shared Conformance Suite (WG-adoption seed)
 
-A **neutral, cross-implementation** conformance suite for DACS (Demos Agent Commerce
-Standards). Its job is to answer one question, mechanically and reproducibly:
+This is a non-normative, language-neutral runner seed for finding byte and verdict differences
+between DACS implementations. It is interoperability tooling, not a specification change or a
+certification program.
 
-> **Do independent DACS implementations agree, byte-for-byte and verdict-for-verdict, on
-> what the specification says — and where they don't, exactly which spec corner is ambiguous?**
+Adapters are executables speaking [`dacs-adapter/1`](./ADAPTER-PROTOCOL.md), a JSONL
+request/response protocol over stdin/stdout with a mandatory provenance handshake. The default
+run starts the PATH-OS reference adapter as a subprocess:
 
-## Why this exists
-
-The specification is the source of truth, but two conformant-looking implementations can
-still diverge on undefined corners (the ComponentSignature value encoding — CORE SIG-6,
-DACS-Standard#263/#265 — is a worked example). A single implementation's test harness can
-only prove "you match *me*." What the ecosystem needs is an **independent oracle**: a shared
-corpus of vectors, run through *every* implementation via a thin adapter, where **agreement
-is interop evidence and disagreement is a spec question** — never a verdict on anyone's code.
-
-## How it works
-
-1. Each implementation provides a small **adapter** (see [`ADAPTER.md`](./ADAPTER.md)) —
-   a few pure functions (canonicalize, signed-scope-hash, signature-value verdict, bundle
-   verdict). No implementation adopts another's code.
-2. The suite runs every vector through every registered adapter.
-3. It emits an **agreement matrix** + a list of **spec-questions** (disagreements), ready to
-   file upstream. It never labels an implementation "non-conformant."
-
-```
-node cross-run.mjs                 # agreement matrix across all registered adapters
-node cross-run.mjs --spec-questions   # only the disagreements, formatted for upstream
+```sh
+node cross-run.mjs
+node cross-run.mjs --json
+node cross-run.mjs --spec-questions
 ```
 
-Self-contained on the run path (Node ≥ 18, zero dependencies, no network) — inherited from
-the [`../partner-kit`](../partner-kit) design, and tamper-evident by the same per-file
-manifest hashing.
+## Result categories
 
-## Governance & neutrality (the load-bearing part)
+| Condition | Row status / category |
+|---|---|
+| one implementation matches the pinned expected value | `SELF-CHECK` |
+| at least two independent real adapters agree with the expected value | `INTEROP-AGREE` |
+| any result differs from the pinned expected value | `VECTOR-MISMATCH` / `vector-mismatch` |
+| participating implementations produce different results | `IMPLEMENTATION-DIVERGENCE` / `implementation-divergence` |
+| no adapter supports the operation | `ABSTAIN` |
+| triage finds genuinely ambiguous or wrong normative text/vector | separately flagged `SPEC-QUESTION` |
 
-- **This is seeded by an independent implementer, not owned by one.** The intended home is a
-  neutral `DACS-Agent-commerce` repository; the vectors are governed by the working group.
-- **Non-normative.** Passing is interop evidence, not certification — no DACS certification
-  exists; the normative source is the specification.
-- **Every impl is one adapter among several.** The `pathos-dacs-ref` adapter is the first
-  reference adapter because it's the seed, not because it defines conformance.
-- Disagreements are published as spec-questions with the reproducing vector attached, so the
-  fix lands in the spec once and every implementation inherits it.
+A divergence can also contain a vector mismatch; both categories are retained. Neither is
+automatically a spec question. The CLI creates `SPEC-QUESTION` only when an operator explicitly
+supplies `--triage-spec-question <vector-id>` after triage. Reports never call an implementation
+non-conformant.
 
-## v0 coverage (honest scope)
+## Exact seed coverage
 
-Running today, self-contained (`node cross-run.mjs`): **43 seed vectors PASS** across five
-families — `canonical-accept` (21), `canonical-reject` (6), `domain-sep-sign` (11),
-`drift-signed-scope` (2), `sig-value-encoding` / SIG-6 (3) — through the wired
-`pathos-dacs-ref` reference adapter, with a divergent-stub demo proving the spec-question path.
+The runner reads the existing sources through [`PINNED-SOURCES.json`](./PINNED-SOURCES.json)
+and verifies their SHA-256 hashes before execution. It does not copy or rewrite their vectors.
 
-Explicitly **not yet covered** by the v0 adapter interface (documented in the run output, not
-dropped):
-- **`verifyBundle` / DACS-5 §10.4 (F4)** — the full ~700-line acceptance verifier (incl. the
-  referenced-artifact-authorization class, dacs-sdk#38) isn't zero-dependency-reproducible on
-  this run path; it's a **repo-side adapter variant**, and the suite records ABSTAIN, not a pass.
-- **8 fuller `drift-signed-scope` vectors** — they exercise the whole drift-classification /
-  manifest / fail-closed pipeline, beyond F2's narrow "sha256 over the signed scope"; a future
-  family adds them without breaking existing adapters.
-- **1 raw signed-bytes-layout vector** — needs a byte-layout function F5 doesn't declare.
+| Measure | Exact count |
+|---|---:|
+| partner-kit source vectors declared | 49 |
+| standalone SIG-6 source cases declared | 3 |
+| partner-kit vectors mapped to this adapter interface | 40 |
+| SIG-6 cases mapped to operations | 3 |
+| executed assertions in the default run | 43 |
+| declared partner-kit vectors not executed by this interface | 9 |
+| per-vector adapter abstentions in the default run | 0 |
+| F4 vectors declared / executed | 0 / 0 |
 
-The adapter interface is versioned and additive, so these land as new optional families. The
-point of v0 is a *working, honest, extensible* cross-run — not full spec coverage on day one.
+The 40 partner-kit assertions are canonicalization (27), domain separators (11), and signed
+scope (2). Nine declared partner-kit cases are reported but not executed: one raw signed-bytes
+layout case and eight full drift/manifest-pipeline cases. The three SIG-6 cases comprise two
+strict conforming-path checks and one explicitly selected standard-Base64 legacy import. The
+test suite additionally pins the required strict behavior directly: canonical unpadded
+Base64URL is accepted and standard Base64 is rejected by the conforming F3 operation.
 
-## Status
+F4 bundle verification, including referenced-artifact authorization, is aspirational. There
+are no shipped F4 vectors and no executed F4 rows, so the runner claims neither an F4 pass nor
+a vector-level abstention. It becomes a candidate family only when authoritative vectors and
+at least two genuine implementation adapters exist.
 
-Runner built + independently verified (43/43 PASS, demo spec-question fires). See
-[`PROPOSAL-DRAFT.md`](./PROPOSAL-DRAFT.md) for the working-group proposal.
+## Governance and repository shape
+
+- `DACS-Standard` owns vector inputs, expected results, profile/rule references, vector tiers,
+  and manifest hashes. Existing Standard review and tiering rules remain in force.
+- A neutral runner may live in a dedicated `DACS-Agent-commerce` repository. It consumes a
+  pinned Standard manifest or release and must fail on hash drift; it never silently forks the
+  authoritative corpus. This proposal seed lock records its pre-adoption source provenance and
+  must be replaced only by a reviewed Standard pin.
+- Each implementation owns its adapter. Every report records adapter name/version, repository,
+  immutable revision, supported families, and operations from the handshake.
+- Candidate vectors become cross-implementation evidence only after at least two independent,
+  real adapters execute them. Until then, a matching result is `SELF-CHECK`.
+- The runner, adapter protocol, and report format remain non-normative. Passing is
+  interoperability evidence, not certification.

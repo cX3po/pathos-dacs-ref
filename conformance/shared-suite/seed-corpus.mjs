@@ -31,6 +31,7 @@
  *    (see the F4 note in reference-adapter.mjs) is the right home for that fuller surface.
  */
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -65,8 +66,18 @@ const REJECT_CONSTRUCTORS = {
   'nfc-key-collision': () => { const o = {}; o[NFC_CAFE] = 1; o[NFD_CAFE] = 2; return o; },
 };
 
-function loadJson(...segs) {
-  return JSON.parse(readFileSync(path.join(HERE, ...segs), 'utf8'));
+function loadPinnedSource(source) {
+  const bytes = readFileSync(path.join(HERE, source.path));
+  const actual = createHash('sha256').update(bytes).digest('hex');
+  if (actual !== source.sha256) {
+    throw new Error(`pinned source hash mismatch for ${source.path}: expected ${source.sha256}, got ${actual}`);
+  }
+  const parsed = JSON.parse(bytes.toString('utf8'));
+  const declared = parsed.declaredTotal ?? Object.keys(parsed.encodings ?? {}).length;
+  if (declared !== source.declared) {
+    throw new Error(`pinned source count mismatch for ${source.path}: expected ${source.declared}, got ${declared}`);
+  }
+  return parsed;
 }
 
 function loadDomainSepVectors(v, vectors, outOfScope) {
@@ -79,8 +90,8 @@ function loadDomainSepVectors(v, vectors, outOfScope) {
     vectors.push({
       id: v.id, family: 'domain-sep-sign', fnName: 'domainSepSign', description: v.description,
       expected: v.expectedSigHex.toLowerCase(),
-      invoke: (adapter) => {
-        try { return String(adapter.domainSepSign(body, sep, priv, inter).hex).toLowerCase(); }
+      invoke: async (adapter) => {
+        try { return String((await adapter.domainSepSign(body, sep, priv, inter)).hex).toLowerCase(); }
         catch { return 'THROWN'; }
       },
     });
@@ -92,8 +103,8 @@ function loadDomainSepVectors(v, vectors, outOfScope) {
     vectors.push({
       id: v.id, family: 'domain-sep-sign', fnName: 'domainSepVerify', description: v.description,
       expected: v.op === 'verify-true' ? 'true' : 'false',
-      invoke: (adapter) => {
-        try { return String(adapter.domainSepVerify(body, sep, sig, pub, inter)); }
+      invoke: async (adapter) => {
+        try { return String(await adapter.domainSepVerify(body, sep, sig, pub, inter)); }
         catch { return 'THROWN'; }
       },
     });
@@ -104,8 +115,8 @@ function loadDomainSepVectors(v, vectors, outOfScope) {
     vectors.push({
       id: v.id, family: 'domain-sep-sign', fnName: 'domainSepSign', description: v.description,
       expected: 'THROWN',
-      invoke: (adapter) => {
-        try { adapter.domainSepSign(body, sep, priv, inter); return 'DID-NOT-THROW'; }
+      invoke: async (adapter) => {
+        try { await adapter.domainSepSign(body, sep, priv, inter); return 'DID-NOT-THROW'; }
         catch { return 'THROWN'; }
       },
     });
@@ -128,8 +139,8 @@ function loadDriftVector(v, vectors, outOfScope) {
     vectors.push({
       id: v.id, family: 'drift-signed-scope', fnName: 'signedScopeHash', description: v.description,
       expected: v.expectRow.ourHash.toLowerCase(),
-      invoke: (adapter) => {
-        try { return String(adapter.signedScopeHash(v.artifact).hex).toLowerCase(); }
+      invoke: async (adapter) => {
+        try { return String((await adapter.signedScopeHash(v.artifact)).hex).toLowerCase(); }
         catch { return 'THROWN'; }
       },
     });
@@ -145,8 +156,9 @@ function loadDriftVector(v, vectors, outOfScope) {
  * @returns {{ vectors: Array<{id:string,family:string,fnName:string,description:string,expected:string,invoke:(adapter:object)=>string}>, outOfScope: Array<{id:string,section:string,reason:string}>, sourceFiles: {partnerKit:string,sig6:string} }}
  */
 export function loadSeedCorpus() {
-  const partnerKit = loadJson('..', 'partner-kit', 'vectors.json');
-  const sig6 = loadJson('..', 'vectors', 'dacs-263-sig-value-encoding-v1.json');
+  const sourceLock = JSON.parse(readFileSync(path.join(HERE, 'PINNED-SOURCES.json'), 'utf8'));
+  const partnerKit = loadPinnedSource(sourceLock.sources.partnerKit);
+  const sig6 = loadPinnedSource(sourceLock.sources.sig6);
 
   const vectors = [];
   const outOfScope = [];
@@ -157,8 +169,8 @@ export function loadSeedCorpus() {
         vectors.push({
           id: v.id, family: 'canonical-accept', fnName: 'canonicalize', description: v.description,
           expected: v.canonicalUtf8Hex.toLowerCase(),
-          invoke: (adapter) => {
-            try { return String(adapter.canonicalize(v.input).hex).toLowerCase(); }
+          invoke: async (adapter) => {
+            try { return String((await adapter.canonicalize(v.input)).hex).toLowerCase(); }
             catch { return 'THROWN'; }
           },
         });
@@ -172,8 +184,8 @@ export function loadSeedCorpus() {
         vectors.push({
           id: v.id, family: 'canonical-reject', fnName: 'canonicalize', description: v.description,
           expected: 'THROWN',
-          invoke: (adapter) => {
-            try { adapter.canonicalize(build()); return 'ACCEPTED'; }
+          invoke: async (adapter) => {
+            try { await adapter.canonicalize(build()); return 'ACCEPTED'; }
             catch { return 'THROWN'; }
           },
         });
@@ -190,14 +202,28 @@ export function loadSeedCorpus() {
     }
   }
 
-  // SIG-6 (dacs-263): one vector file, 3 encodings -> 3 sub-vectors, family sig-value-encoding.
+  // SIG-6 (dacs-263): one source file, 3 declared cases -> 3 executed operations. The
+  // source's standard-Base64 migration case is routed only to the explicit legacy-import
+  // operation, with its source encoding supplied out of band. It never reaches F3.
   for (const [name, e] of Object.entries(sig6.encodings)) {
+    if (name === 'canonical_base64') {
+      vectors.push({
+        id: `${sig6.id}::${name}`, family: 'sig-value-legacy-import', fnName: 'legacySignatureValueImport',
+        description: `${sig6.purpose} (explicit migration import; source encoding: base64)`,
+        expected: e.expect,
+        invoke: async (adapter) => {
+          try { return (await adapter.legacySignatureValueImport(e.value, 'base64')).verdict; }
+          catch { return 'THROWN'; }
+        },
+      });
+      continue;
+    }
     vectors.push({
       id: `${sig6.id}::${name}`, family: 'sig-value-encoding', fnName: 'signatureValueVerdict',
       description: `${sig6.purpose} (encoding: ${name})`,
       expected: e.expect,
-      invoke: (adapter) => {
-        try { return adapter.signatureValueVerdict(e.value); }
+      invoke: async (adapter) => {
+        try { return await adapter.signatureValueVerdict(e.value); }
         catch { return 'THROWN'; }
       },
     });
@@ -205,6 +231,18 @@ export function loadSeedCorpus() {
 
   return {
     vectors, outOfScope,
-    sourceFiles: { partnerKit: '../partner-kit/vectors.json', sig6: '../vectors/dacs-263-sig-value-encoding-v1.json' },
+    sourceFiles: {
+      lock: './PINNED-SOURCES.json',
+      partnerKit: sourceLock.sources.partnerKit.path,
+      sig6: sourceLock.sources.sig6.path,
+    },
+    sourceCounts: {
+      partnerKitDeclared: partnerKit.declaredTotal,
+      sig6DeclaredCases: Object.keys(sig6.encodings).length,
+      executedAssertions: vectors.length,
+      partnerKitNotExecuted: outOfScope.length,
+      f4Declared: 0,
+      f4Executed: 0,
+    },
   };
 }

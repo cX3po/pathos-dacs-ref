@@ -1,100 +1,88 @@
 /**
- * DACS Shared Conformance Suite — adapter contract (v0).
+ * DACS Shared Conformance Suite comparison engine (adapter protocol v1).
  *
- * An IMPLEMENTATION participates by exporting an object of this shape. Every function is
- * PURE: deterministic, no network, no keys held. Omit a function to ABSTAIN from its family
- * (the suite records abstain, never "disagree"). See ADAPTER.md for the normative-ish spec
- * of each function and the result semantics.
- *
- * @typedef {Object} DacsAdapter
- * @property {string}  name                                  // e.g. "pathos-dacs-ref"
- * @property {(value:object)=>{hex:string}}         [canonicalize]         // F1 — RFC 8785 JCS bytes (hex)
- * @property {(artifact:object)=>{hex:string}}      [signedScopeHash]      // F2 — sha256 over signed scope
- * @property {(value:string)=>("ACCEPT"|"REJECT")}  [signatureValueVerdict]// F3 — CORE SIG-6
- * @property {(bundle:object)=>{decision:("accept"|"reject"|"indeterminate")}} [verifyBundle] // F4 — DACS-5 §10.4
- * @property {(msg:Uint8Array,sep:string,priv:Uint8Array,intermediateHash?:Uint8Array)=>{hex:string}} [domainSepSign]   // F5 (optional)
- * @property {(msg:Uint8Array,sep:string,sig:Uint8Array,pub:Uint8Array,intermediateHash?:Uint8Array)=>boolean}          [domainSepVerify] // F5 (optional)
+ * The WG boundary is the subprocess protocol in ADAPTER-PROTOCOL.md. The objects consumed
+ * here are runner-side clients for those subprocesses. In-process objects remain useful in
+ * unit tests, but are not the cross-implementation contract.
  */
 
-/**
- * The WIRED reference adapter ("pathos-dacs-ref") lives in `./reference-adapter.mjs`, not
- * here — this file stays the reviewable CONTRACT (the shape + the comparison engine), the
- * reference adapter is one IMPLEMENTATION of that contract, same as any other adapter that
- * registers with `crossRun()`.
- */
-export { referenceAdapter } from './reference-adapter.mjs';
+function adapterName(adapter) {
+  return adapter.metadata?.name ?? adapter.name ?? 'unnamed-adapter';
+}
+
+function independentImplementationCount(adapters, names) {
+  const repositories = new Set();
+  for (const adapter of adapters) {
+    if (!names.includes(adapterName(adapter))) continue;
+    const repository = adapter.metadata?.repository;
+    if (repository && adapter.metadata?.revision && adapter.metadata?.kind !== 'demo') {
+      repositories.add(repository);
+    }
+  }
+  return repositories.size;
+}
 
 /**
- * A normalised seed-corpus vector, as produced by `./seed-corpus.mjs::loadSeedCorpus()`.
- * `invoke` never throws: it calls `adapter[fnName]` and normalises the result (or a thrown
- * error) to a comparable string. That keeps `crossRun` itself family-agnostic — it never
- * needs to know what a vector's raw shape looks like, only whether the adapter's normalised
- * outcome equals `expected`.
- *
- * @typedef {Object} SeedVector
- * @property {string} id
- * @property {string} family        // e.g. "canonical-accept", "sig-value-encoding"
- * @property {string} fnName        // the DacsAdapter method this vector exercises
- * @property {string} description
- * @property {string} expected      // the vector's declared-correct normalised outcome
- * @property {(adapter:DacsAdapter)=>string} invoke
+ * Execute every vector and classify evidence without performing specification triage.
+ * `triagedSpecQuestions` is an explicit set of vector ids whose mismatch/divergence has
+ * already been reviewed and assigned SPEC-QUESTION. No mismatch is promoted automatically.
  */
-
-/**
- * Run every vector through every registered adapter and apply the ADAPTER.md result
- * semantics:
- *
- *   | adapters vs expected      | adapters vs each other | outcome       |
- *   |----------------------------|-------------------------|---------------|
- *   | all match expected         | agree                   | PASS          |
- *   | all differ from expected   | agree with each other   | SPEC-QUESTION |
- *   | —                           | disagree                | SPEC-QUESTION |
- *   | adapter has no function    | —                        | ABSTAIN (per-adapter, never a disagreement) |
- *
- * NEVER emits "implementation X is non-conformant" — only PASS / SPEC-QUESTION / ABSTAIN,
- * with the full per-adapter outcome attached so a SPEC-QUESTION row is ready to file
- * upstream as evidence, not a verdict.
- *
- * @param {DacsAdapter[]} adapters
- * @param {SeedVector[]} vectors
- * @returns {{matrix: object[], specQuestions: object[]}}
- */
-export function crossRun(adapters, vectors) {
+export async function crossRun(adapters, vectors, { triagedSpecQuestions = new Set() } = {}) {
   const matrix = [];
   const specQuestions = [];
 
-  for (const v of vectors) {
+  for (const vector of vectors) {
     const perAdapter = {};
     const participating = [];
 
-    for (const a of adapters) {
-      if (typeof a[v.fnName] !== 'function') {
-        perAdapter[a.name] = { status: 'ABSTAIN', outcome: null };
+    for (const adapter of adapters) {
+      const name = adapterName(adapter);
+      if (typeof adapter[vector.fnName] !== 'function') {
+        perAdapter[name] = { status: 'ABSTAIN', outcome: null };
         continue;
       }
-      const outcome = v.invoke(a);
-      perAdapter[a.name] = { status: null, outcome };
-      participating.push(a.name);
+      const outcome = await vector.invoke(adapter);
+      perAdapter[name] = {
+        status: outcome === vector.expected ? 'matches-expected' : 'vector-mismatch',
+        outcome,
+      };
+      participating.push(name);
     }
 
-    let verdict;
-    if (participating.length === 0) {
-      verdict = 'ABSTAIN';
-    } else {
-      const outcomes = new Set(participating.map((n) => perAdapter[n].outcome));
-      const allMatchExpected = outcomes.size === 1 && outcomes.has(v.expected);
-      verdict = allMatchExpected ? 'PASS' : 'SPEC-QUESTION';
-      for (const n of participating) {
-        perAdapter[n].status = perAdapter[n].outcome === v.expected ? 'matches-expected' : 'diverges';
-      }
-    }
+    const outcomes = new Set(participating.map((name) => perAdapter[name].outcome));
+    const vectorMismatch = participating.some((name) => perAdapter[name].outcome !== vector.expected);
+    const implementationDivergence = outcomes.size > 1;
+    const independentImplementations = independentImplementationCount(adapters, participating);
+
+    let status;
+    if (participating.length === 0) status = 'ABSTAIN';
+    else if (implementationDivergence) status = 'IMPLEMENTATION-DIVERGENCE';
+    else if (vectorMismatch) status = 'VECTOR-MISMATCH';
+    else if (independentImplementations >= 2) status = 'INTEROP-AGREE';
+    else status = 'SELF-CHECK';
+
+    const resultCategories = [];
+    if (vectorMismatch) resultCategories.push('vector-mismatch');
+    if (implementationDivergence) resultCategories.push('implementation-divergence');
+    const triagedSpecQuestion = triagedSpecQuestions.has(vector.id)
+      && (vectorMismatch || implementationDivergence);
+    if (triagedSpecQuestion) resultCategories.push('spec-question');
 
     const row = {
-      id: v.id, family: v.family, fnName: v.fnName, description: v.description,
-      expected: v.expected, verdict, perAdapter,
+      id: vector.id,
+      family: vector.family,
+      fnName: vector.fnName,
+      description: vector.description,
+      expected: vector.expected,
+      status,
+      resultCategories,
+      triage: triagedSpecQuestion ? 'SPEC-QUESTION' : 'UNTRIAGED',
+      participatingAdapters: participating.length,
+      independentImplementations,
+      perAdapter,
     };
     matrix.push(row);
-    if (verdict === 'SPEC-QUESTION') specQuestions.push(row);
+    if (triagedSpecQuestion) specQuestions.push(row);
   }
 
   return { matrix, specQuestions };

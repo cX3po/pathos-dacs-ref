@@ -4,9 +4,9 @@
  * Implements the DacsAdapter shape declared in `adapter-contract.mjs` / `ADAPTER.md` by
  * calling straight through to the self-contained `../partner-kit/{jcs,drift,sign,domain-sep}.mjs`
  * primitives. This file adds NO new cryptography or canonicalization logic of its own except
- * the ~15-line SIG-6 signature-value canonical-form guard (F3), which has no partner-kit
- * counterpart yet and is ported verbatim (same regex/decode/re-encode rule) from
- * `src/lib/verify-bundle-v1.ts::decodeEd25519Sig`.
+ * the small, algorithm-independent SIG-6 canonical-encoding guard (F3). Legacy standard
+ * Base64 import is a separate operation and can never be selected accidentally by the
+ * conforming verification path.
  *
  * Self-contained on the run path: Node ≥ 18, zero npm dependencies, no network, no imports
  * outside `conformance/` (partner-kit + shared-suite) — same discipline as partner-kit.
@@ -29,31 +29,34 @@ import { jcsCanonical } from '../partner-kit/jcs.mjs';
 import { evaluateArtifact } from '../partner-kit/drift.mjs';
 import { sign, verify } from '../partner-kit/sign.mjs';
 
-const ED25519_SIG_BYTES = 64;
-
 /**
- * CORE SIG-6 canonical-form decode. Port of `src/lib/verify-bundle-v1.ts::decodeEd25519Sig`
- * (same rule, same ~15 lines): accept only unpadded Base64URL or canonical standard Base64
- * (migration window), with a decode/re-encode canonical-form check — the final base64 char
- * of a 64-byte payload carries 4 unused bits; a permissive decoder folds a non-zero setting
- * of those bits to the same 64 bytes, but a canonical verifier MUST reject the non-canonical
- * spelling (re-encode != input). Returns the decoded 64 bytes, or null if the value is not a
- * canonical ed25519 signature-value spelling.
+ * CORE SIG-6 conforming-path decode. This function checks only the wire encoding, not an
+ * algorithm contract: decoded length and cryptographic validity belong to the declared
+ * algorithm's verifier. Only canonical, unpadded Base64URL is accepted.
  */
 function decodeSigValueCanonical(v) {
   if (typeof v !== 'string') return null;
-  if (!/^[A-Za-z0-9+/]{86}==$/.test(v) && !/^[A-Za-z0-9_-]{86}$/.test(v)) return null;
+  if (!/^[A-Za-z0-9_-]+$/.test(v) || v.length % 4 === 1) return null;
   let out;
   try {
     const b64 = v.replace(/-/g, '+').replace(/_/g, '/');
-    out = new Uint8Array(Buffer.from(b64.endsWith('==') ? b64 : b64 + '==', 'base64'));
+    out = new Uint8Array(Buffer.from(b64 + '='.repeat((4 - (b64.length % 4)) % 4), 'base64'));
   } catch {
     return null;
   }
-  if (out.length !== ED25519_SIG_BYTES) return null;
-  const canonB64 = Buffer.from(out).toString('base64'); // 88 chars, "==" padded
-  const canonB64url = canonB64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); // 86, no pad
-  return v === canonB64 || v === canonB64url ? out : null;
+  const canonical = Buffer.from(out).toString('base64url');
+  return v === canonical ? out : null;
+}
+
+/** Explicit migration operation. `sourceEncoding` is supplied out of band. */
+function importLegacySigValue(v, sourceEncoding) {
+  if (sourceEncoding !== 'base64' || typeof v !== 'string') return null;
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(v)) return null;
+  let out;
+  try { out = new Uint8Array(Buffer.from(v, 'base64')); }
+  catch { return null; }
+  if (Buffer.from(out).toString('base64') !== v) return null;
+  return Buffer.from(out).toString('base64url');
 }
 
 /**
@@ -90,6 +93,13 @@ export function referenceAdapter() {
     // F3 — CORE SIG-6 signature-value verdict.
     signatureValueVerdict(value) {
       return decodeSigValueCanonical(value) === null ? 'REJECT' : 'ACCEPT';
+    },
+
+    // Migration-only operation. It is deliberately distinct from F3 and requires the
+    // caller to name the legacy source encoding out of band.
+    legacySignatureValueImport(value, sourceEncoding) {
+      const canonicalValue = importLegacySigValue(value, sourceEncoding);
+      return canonicalValue === null ? { verdict: 'REJECT' } : { verdict: 'ACCEPT', canonicalValue };
     },
 
     // F5 — domain-separated sign/verify round-trip. Argument order (msg, sep, key, ...)
