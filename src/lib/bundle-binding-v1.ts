@@ -128,9 +128,16 @@ function bindingSignatureValid(request: BundleBindingRequest, binding: BundleBin
   const publicKey = publicKeyFor(request, binding.signer);
   if (signature === null || publicKey === null) return null;
   const { signature: _signature, ...signedTuple } = binding;
-  return verifyHashedDomain(BINDING_DOMAIN, signature, hashCanonical(signedTuple), publicKey)
-    ? signerKey
-    : null;
+  // JCS canonicalisation of an untrusted tuple can throw (e.g. a non-finite number, §7.2). A tuple
+  // we cannot canonicalise cannot have been signed under our scheme — fail-closed as invalid, never
+  // let the exception escape (property-fuzzer no-throw class, 2026-07).
+  let tupleHash: Uint8Array;
+  try {
+    tupleHash = hashCanonical(signedTuple);
+  } catch {
+    return null;
+  }
+  return verifyHashedDomain(BINDING_DOMAIN, signature, tupleHash, publicKey) ? signerKey : null;
 }
 
 function bundleScope(bundle: JsonObject): { canonical: string; hash: Uint8Array } {
@@ -205,6 +212,12 @@ export function resolveBundleBinding(
   if (!request || typeof request.jobId !== 'string' || !request.jobId || !ROLES.has(request.role)) {
     return invalid('BB-1: malformed resolution request');
   }
+  // Fail-closed on a malformed binding set (non-array ingress) — symmetric to the request guard
+  // above.  Wire input can deliver a non-array here; without this guard the first `.filter` throws
+  // instead of returning a deterministic disposition (property-fuzzer no-throw class, 2026-07).
+  if (!Array.isArray(bindings)) {
+    return invalid('BB-1: malformed binding set');
+  }
   const logicalAddress = deriveBundleLogicalAddress(request.jobId, request.role);
   const publishedHere = bindings.filter((binding) => binding?.logicalAddress === logicalAddress);
   if (publishedHere.length === 0) {
@@ -264,7 +277,15 @@ export function resolveBundleBinding(
     for (const candidate of buckets.get(signer)!) {
       const fetched = fetchBundle(candidate.binding.nativeAddress, candidate.binding);
       if (!isObject(fetched)) continue;
-      const scope = bundleScope(fetched);
+      // A fetched bundle we cannot canonicalise (e.g. non-finite number, §7.2) is malformed — treat
+      // it as a present-but-invalid copy (fail-closed), never let the JCS exception escape.
+      let scope: { canonical: string; hash: Uint8Array };
+      try {
+        scope = bundleScope(fetched);
+      } catch {
+        presentInvalid = true;
+        continue;
+      }
       const roles = roleClaims(fetched);
       const mappedRole = mapped?.[typeof candidate.binding.signer === 'string' ? candidate.binding.signer : candidate.signerKey];
       const bundleRole = roles?.get(candidate.signerKey);
