@@ -355,6 +355,32 @@ export function resolveBundleBinding(
  * ---------------------------------------------------------------------------
  */
 
+/**
+ * §10.4.2/§248 anchor-address ↔ anchoredByRole integrity for the role-keyed FAB/legacy copy
+ * maps consumed by resolveFaultBundlePair / resolveMixedVersionPair.
+ *
+ * `anchoredByRole` is EXCLUDED from a copy's signed scope (bundleScope strips it — R5-1), so a
+ * relaying adversary can flip it WITHOUT invalidating the copy signature. Because impliedFaultSet
+ * (legacy path) and faultedPartyPermitted (FAB path) derive fault AUTHORITY from anchoredByRole,
+ * an unchecked flip can launder a `fail` (implied-fault contradiction) into a `present` (agreement).
+ *
+ * The trusted signal that re-anchors this unsigned field is the anchor address the copy was
+ * published under — carried here as the role KEY of the copies map (the copy at role X's storage
+ * address). This mirrors the anchor-address ↔ anchoredByRole cross-check already enforced on the
+ * two-sided verify path (verify-bundle-v1.ts FIX 1). The copy at key X MUST declare
+ * anchoredByRole === X; anything else is forged/mislabeled → reject (fail-closed).
+ *
+ * Returns true (mismatch → reject) when: the key is not a known role, the copy is not an object,
+ * its anchoredByRole is missing / not a known role, or it disagrees with the key.
+ */
+function anchorRoleMismatch(anchorKey: string, copy: unknown): boolean {
+  if (!ROLES.has(anchorKey)) return true;
+  if (!isObject(copy)) return true;
+  const declared = copy.anchoredByRole;
+  if (typeof declared !== 'string' || !ROLES.has(declared)) return true;
+  return declared !== anchorKey;
+}
+
 /** §10.4.1 outcome classes used for cross-copy contradiction checks. */
 type OutcomeClass = 'success' | 'abort' | 'failure' | 'substrate';
 function outcomeClass(outcome: unknown): OutcomeClass | null {
@@ -554,7 +580,16 @@ export function resolveFaultBundlePair(request: FaultBundlePairRequest): BundleB
   if (!request || !isObject(request.copies)) return invalid('§10.4.3: malformed FAB-pair input');
   const asRequest: BundleBindingRequest = { jobId: '', role: 'buyer', publicKeys: request.publicKeys };
   const parsed: Array<{ bundle: JsonObject; faultSet: Set<string>; klass: OutcomeClass }> = [];
-  for (const copy of Object.values(request.copies)) {
+  for (const [anchorKey, copy] of Object.entries(request.copies)) {
+    // §10.4.2/§248 anchor-address ↔ anchoredByRole integrity (verify-bundle-v1.ts FIX 1):
+    // anchoredByRole is EXCLUDED from the signed scope (bundleScope), so it is tamperable
+    // without invalidating the signature. It is re-anchored to the TRUSTED signal — the
+    // role-keyed anchor address the copy was published under. A copy fetched from role X's
+    // address MUST declare anchoredByRole === X; a mismatch is forged/mislabeled content
+    // (an unsigned-field flip trying to launder fault authority) → fail-closed.
+    if (anchorRoleMismatch(anchorKey, copy)) {
+      return invalid('§10.4.2/§248: anchor-address ↔ anchoredByRole mismatch on a FAB copy (unsigned-field tamper rejected)');
+    }
     const validated = validateFaultCopy(asRequest, copy);
     if (validated === null) {
       return invalid('§10.4.1: a FAB copy is malformed or its faultedParty is outside the permissible set (rejected)');
@@ -612,7 +647,16 @@ export function resolveMixedVersionPair(request: FaultBundlePairRequest): Bundle
   if (!request || !isObject(request.copies)) return invalid('§10.4.3: malformed mixed-version input');
   const asRequest: BundleBindingRequest = { jobId: '', role: 'buyer', publicKeys: request.publicKeys };
   const parsed: Array<{ bundle: JsonObject; faultSet: Set<string>; klass: OutcomeClass; isFab: boolean }> = [];
-  for (const copy of Object.values(request.copies)) {
+  for (const [anchorKey, copy] of Object.entries(request.copies)) {
+    // §10.4.2/§248 anchor-address ↔ anchoredByRole integrity (verify-bundle-v1.ts FIX 1).
+    // anchoredByRole is unsigned (excluded from bundleScope) yet drives the legacy implied
+    // absolute-fault SET (impliedFaultSet). Re-anchor it to the role-keyed anchor address the
+    // copy was published under: the copy at role X's address MUST declare anchoredByRole === X.
+    // Without this, flipping the unsigned anchoredByRole launders a contradiction (fail) into an
+    // agreement (present) — the #248 authority-laundering class (Codex adversarial review 2026-07).
+    if (anchorRoleMismatch(anchorKey, copy)) {
+      return invalid('§10.4.2/§248: anchor-address ↔ anchoredByRole mismatch on a mixed-version copy (unsigned-field tamper rejected)');
+    }
     const validated = validateFaultCopy(asRequest, copy);
     if (validated === null) {
       return invalid('§10.4.1: a mixed-version copy is malformed or outside the permissible set (rejected)');
