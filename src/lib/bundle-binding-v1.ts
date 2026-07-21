@@ -524,6 +524,28 @@ export function resolveFaultBundlePointer(request: FaultBundlePointerRequest): B
   const deref = validateFaultCopy(asRequest, dereferenced);
   if (deref === null) return invalid('§10.4.2: dereferenced bundle is not a valid §10.4.1 FAB');
 
+  // (1b) §10.4.2/§248 anchor-address ↔ anchoredByRole integrity — the extended-pointer family.
+  //
+  // `anchoredByRole` is EXCLUDED from the signed scope (bundleScope strips it, R5-1), so it is
+  // tamperable WITHOUT invalidating the FAB signature. Yet validateFaultCopy → impliedFaultSet →
+  // faultedPartyPermitted derive fault AUTHORITY from anchoredByRole (e.g. aborted-by-other /
+  // failed-counterparty require faulted !== anchoredRole). Flipping the unsigned anchoredByRole
+  // therefore launders a permissibility-rejected FAB (fail) into a permitted one (present) — the
+  // exact #248 authority-laundering class the pair/mixed families already close via the copies-map
+  // anchor key (anchorRoleMismatch). The pointer family has no copies-map key, but it DOES have a
+  // trusted anchor signal: the BINDING that anchors the pointer. binding.role is cryptographically
+  // bound to binding.logicalAddress = derive(jobId, role); a forged binding.role breaks that
+  // derivation. So we re-anchor the unsigned anchoredByRole to binding.role: the FAB dereferenced
+  // through the role-X binding MUST declare anchoredByRole === X. A mismatch is forged/mislabeled
+  // content (an unsigned-field flip trying to launder fault authority) → fail-closed.
+  if (typeof binding.jobId !== 'string' || typeof binding.role !== 'string' || !ROLES.has(binding.role) ||
+      binding.logicalAddress !== deriveBundleLogicalAddress(binding.jobId, binding.role as BundleBindingRole)) {
+    return invalid('§10.4.2/§248: binding anchor role is not integrity-bound to its logical address (unsigned-field tamper cannot be re-anchored)');
+  }
+  if (anchorRoleMismatch(binding.role, dereferenced)) {
+    return invalid('§10.4.2/§248: anchor-address ↔ anchoredByRole mismatch on the dereferenced FAB (unsigned-field tamper rejected)');
+  }
+
   // (2) Recompute the §10.4.1 hash of the dereferenced bundle and require triple-identity.
   let recomputed: string;
   try {
