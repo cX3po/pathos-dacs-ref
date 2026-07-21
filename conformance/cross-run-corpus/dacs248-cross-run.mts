@@ -8,6 +8,9 @@ import { jcsCanonical } from '../../src/jcs.js';
 import {
   deriveBundleLogicalAddress,
   resolveBundleBinding,
+  resolveFaultBundlePointer,
+  resolveFaultBundlePair,
+  resolveMixedVersionPair,
   type BundleBindingRequest,
   type BundleBindingResolution,
   type BundleBindingV1,
@@ -22,7 +25,31 @@ const files = [
   'bundle-binding-v0.1.json',
   'outsider-binding-flooding-v0.3.json',
   'receipt-rederivation-v0.3.json',
+  // #248 round-13 FaultAttestationBundle families.
+  'fab-bundle-extended-pointer-v0.3.json',
+  'fault-bundle-perspective-pair-v0.3.json',
+  'mixed-version-reconciliation-v0.3.json',
 ] as const;
+
+/** #248 round-13 §10.4.2 extended-pointer path — the vector carries pointer/dereferenced/binding. */
+function pointerVector(corpus: Corpus, vector: JsonObject): BundleBindingResolution {
+  return resolveFaultBundlePointer({
+    publicKeys: corpus.publicKeys,
+    pointer: vector.pointer,
+    dereferenced: vector.dereferenced,
+    binding: vector.binding,
+  });
+}
+
+/** #248 round-13 §10.4.3 FAB perspective-pair — the vector carries a role->copy map. */
+function pairVector(corpus: Corpus, vector: JsonObject): BundleBindingResolution {
+  return resolveFaultBundlePair({ publicKeys: corpus.publicKeys, copies: vector.copies });
+}
+
+/** #248 round-13 §10.4.3 mixed-version reconciliation — the vector carries a role->copy map. */
+function mixedVector(corpus: Corpus, vector: JsonObject): BundleBindingResolution {
+  return resolveMixedVersionPair({ publicKeys: corpus.publicKeys, copies: vector.copies });
+}
 function directVector(corpus: Corpus, vector: JsonObject): BundleBindingResolution {
   const anchored = vector.anchored ?? {};
   const request: BundleBindingRequest = {
@@ -169,7 +196,15 @@ for (const filename of files) {
   for (const vector of corpus.vectors) {
     let resolution: BundleBindingResolution;
     try {
-      resolution = vector.request ? directVector(corpus, vector) : receiptVector(corpus, vector);
+      if (corpus.set === 'fab-bundle-extended-pointer-v0.3') {
+        resolution = pointerVector(corpus, vector);
+      } else if (corpus.set === 'fault-bundle-perspective-pair-v0.3') {
+        resolution = pairVector(corpus, vector);
+      } else if (corpus.set === 'mixed-version-reconciliation-v0.3') {
+        resolution = mixedVector(corpus, vector);
+      } else {
+        resolution = vector.request ? directVector(corpus, vector) : receiptVector(corpus, vector);
+      }
     } catch (error) {
       resolution = { disposition: 'fail', detail: `cross-run exception: ${error instanceof Error ? error.message : String(error)}` };
     }
