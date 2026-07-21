@@ -330,7 +330,16 @@ export function resolveBundleBinding(
   if (standing.length !== 1) {
     return { disposition: 'indeterminate', detail: 'BB-6/BB-7: equal-standing authorized copies diverge' };
   }
+  // BB-6 winner selection is full-signature-aware and native-address-ordering-independent.
+  // Within the surviving canonical form, copies are byte-equal (same bundleContentHash), so a
+  // pure (bundleContentHash, nativeAddress) sort degenerates to "lowest native address" and could
+  // name a LESSER-signed copy as the resolved address even though a canonically-equal full-signed
+  // copy is present. That is the residual of the DACS-Standard#248 BB-6 defect (Marius/@mj-deving):
+  // standing must be computed across EVERY validated copy, and the resolved copy must never be a
+  // lesser-standing one when a full-standing byte-equal copy exists. Prefer fullySigned first, then
+  // fall back to the deterministic (bundleContentHash, nativeAddress) order for ties.
   const winner = standing[0]!.slice().sort((left, right) =>
+    Number(right.fullySigned) - Number(left.fullySigned) ||
     left.binding.bundleContentHash.localeCompare(right.binding.bundleContentHash) ||
     left.binding.nativeAddress.localeCompare(right.binding.nativeAddress))[0]!;
   return {
