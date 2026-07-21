@@ -1,7 +1,7 @@
 /**
- * BB-6 cross-implementation repro of Marius (@mj-deving)'s DACS-Standard#248 finding.
+ * BB-6 cross-implementation repro of @mj-deving's DACS-Standard#248 finding.
  *
- * Marius reported that the DACS-Standard *reference* resolver's `resolve_bb6()` decides
+ * @mj-deving reported that the DACS-Standard *reference* resolver's `resolve_bb6()` decides
  * whether a canonical form has FULL SIGNATURE STANDING from only its first address-sorted
  * copy (`cps[0]`). If a canonical form has a lesser-signed copy at a native address that
  * sorts BEFORE a byte-equal full-signed copy, the reference masks the full copy and returns
@@ -21,7 +21,7 @@
  *   - Every binding must pass verify_binding; every fetched copy must pass _post_fetch_valid.
  *
  * EXPECTED per BB-6: `present`, selecting the full-standing copy of form A.
- * Marius's reference finding: `indeterminate` / null (defect).
+ * @mj-deving's reference finding: `indeterminate` / null (defect).
  *
  * We ALSO run the order-independence check: place the full copy's native address so it sorts
  * BEFORE vs AFTER the lesser form-A copy — the disposition must not change.
@@ -147,8 +147,8 @@ const FULL_ADDR_AFTER = 'stor-ffffffffffffffffffffffffffffffffffffffff'; // sort
 assert.ok(FULL_ADDR_BEFORE.localeCompare(FORM_A_ADDR) < 0);
 assert.ok(FULL_ADDR_AFTER.localeCompare(FORM_A_ADDR) > 0);
 
-test('BB-6 repro (Marius): full-standing copy of form A is selected => present (NOT indeterminate/null)', () => {
-  // The primary defect Marius found in the DACS-Standard reference: it returns indeterminate/null.
+test('BB-6 cross-run repro: full-standing copy of form A is selected => present (NOT indeterminate/null)', () => {
+  // The primary defect @mj-deving found in the DACS-Standard reference: it returns indeterminate/null.
   // Our resolver computes standing across EVERY validated copy (`group.some(fullySigned)`), so the
   // form-A group has full standing and is selected => present with form-A content.
   const result = runRepro(FULL_ADDR_AFTER);
@@ -163,10 +163,10 @@ test('BB-6 repro (Marius): full-standing copy of form A is selected => present (
     'resolved copy must be the full-standing copy, not the canonically-equal lesser copy');
 });
 
-test('BB-6 repro (Marius): order-independence — full copy sorting BEFORE vs AFTER the lesser form-A copy yields identical disposition AND resolves to the full copy either way', () => {
+test('BB-6 cross-run repro: order-independence — full copy sorting BEFORE vs AFTER the lesser form-A copy yields identical disposition AND resolves to the full copy either way', () => {
   const before = runRepro(FULL_ADDR_BEFORE);
   const after = runRepro(FULL_ADDR_AFTER);
-  // Disposition must be stable across native-address ordering (the ordering-dependence Marius flagged).
+  // Disposition must be stable across native-address ordering (the ordering-dependence @mj-deving flagged).
   assert.equal(before.disposition, after.disposition, 'disposition must not depend on native-address ordering');
   assert.equal(before.disposition, 'present');
   // In BOTH orderings the resolved copy is the full-standing copy (its own address), never the
