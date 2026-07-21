@@ -16,6 +16,10 @@ ed25519.etc.sha512Sync = (...messages: Uint8Array[]): Uint8Array =>
 const encoder = new TextEncoder();
 const BINDING_DOMAIN = 'dacs-bundle-binding:v1:';
 const FAULT_BUNDLE_DOMAIN = 'dacs-fault-bundle:v1:';
+// §10.4.2 extended-pointer path: the FaultBundleExtendedPointer is signed under its own domain;
+// legacy AttestationBundle copies (mixed-version reconciliation) sign under dacs-bundle:v1:.
+const FAULT_BUNDLE_POINTER_DOMAIN = 'dacs-fault-bundle-pointer:v1:';
+const LEGACY_BUNDLE_DOMAIN = 'dacs-bundle:v1:';
 const DEFAULT_FETCH_BUDGET = 8;
 const ROLES = new Set(['buyer', 'seller', 'orchestrator']);
 const OUTCOMES = new Set([
@@ -335,5 +339,308 @@ export function resolveBundleBinding(
     resolvedRole: request.role,
     resolvedNativeAddress: winner.binding.nativeAddress,
     bundle: winner.bundle,
+  };
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * DACS-5 §10.4.1 / §10.4.2 / §10.4.3 FaultAttestationBundle reconciliation.
+ *
+ * These entry points extend the BB-1..BB-8 resolver above to the round-13 #248
+ * FaultAttestationBundle (FAB) decision models.  They share the same fail-closed
+ * posture: any malformed / unverifiable input yields `fail` (rejected content),
+ * never a silent `present`.  They reuse the §10.4.1 permissible-set relation
+ * (faultedPartyPermitted) and the §B.7 domain-separated hashed-signature verifier
+ * (verifyHashedDomain) rather than reimplementing them.
+ * ---------------------------------------------------------------------------
+ */
+
+/** §10.4.1 outcome classes used for cross-copy contradiction checks. */
+type OutcomeClass = 'success' | 'abort' | 'failure' | 'substrate';
+function outcomeClass(outcome: unknown): OutcomeClass | null {
+  switch (outcome) {
+    case 'completed': return 'success';
+    case 'failed-substrate': return 'substrate';
+    case 'aborted-by-self':
+    case 'aborted-by-other': return 'abort';
+    case 'failed-perm':
+    case 'failed-counterparty': return 'failure';
+    default: return null;
+  }
+}
+
+/**
+ * §10.4.1 implied absolute-fault SET for one copy.
+ *
+ * A FAB carries an explicit `faultedParty`, so its set is the singleton {faultedParty}
+ * (or {'none'} for a no-fault outcome).  A legacy AttestationBundle has no faultedParty;
+ * its implied set is derived from (outcome, anchoredByRole) over the party roster:
+ *   - none-class (completed / failed-substrate)     -> {'none'}
+ *   - self-class (aborted-by-self / failed-perm)    -> {anchoredByRole}
+ *   - other-class (aborted-by-other / failed-cp)    -> partyRoles \ {anchoredByRole}
+ * Returns null when the copy is malformed or its declared faultedParty is outside the
+ * §10.4.1 permissible set (rejected content).
+ */
+function impliedFaultSet(bundle: JsonObject, roles: Map<string, string>): Set<string> | null {
+  const outcome = bundle.outcome;
+  const anchoredRole = bundle.anchoredByRole;
+  if (typeof outcome !== 'string' || !OUTCOMES.has(outcome) ||
+      typeof anchoredRole !== 'string' || !ROLES.has(anchoredRole)) return null;
+  const partyRoles = new Set(roles.values());
+  if (!partyRoles.has(anchoredRole)) return null;
+  const isFab = 'faultBundleVersion' in bundle;
+  if (isFab) {
+    // A FAB must satisfy §10.4.1 for its explicit faultedParty; reuse the permissible-set relation.
+    if (!faultedPartyPermitted(bundle, roles)) return null;
+    return new Set([bundle.faultedParty as string]);
+  }
+  // Legacy AttestationBundle: no explicit faultedParty, derive the implied set.
+  if (outcome === 'completed' || outcome === 'failed-substrate') return new Set(['none']);
+  if (outcome === 'aborted-by-self' || outcome === 'failed-perm') return new Set([anchoredRole]);
+  // other-class: every non-anchoring party role is a candidate absolute fault.
+  const others = [...partyRoles].filter((role) => role !== anchoredRole);
+  return others.length > 0 ? new Set(others) : null;
+}
+
+/** Verify every carried signature on a FAB (dacs-fault-bundle:v1:) or legacy AttestationBundle
+ *  (dacs-bundle:v1:) copy over its §10.4.1 scope hash.  All signers must be roster members. */
+function copySignaturesValid(
+  request: BundleBindingRequest,
+  bundle: JsonObject,
+  hash: Uint8Array,
+  roles: Map<string, string>,
+): boolean {
+  if (!Array.isArray(bundle.signatures) || bundle.signatures.length === 0) return false;
+  const domain = 'faultBundleVersion' in bundle ? FAULT_BUNDLE_DOMAIN : LEGACY_BUNDLE_DOMAIN;
+  for (const entry of bundle.signatures) {
+    if (!isObject(entry) || entry.algorithm !== 'ed25519') return false;
+    const key = claimKey(entry.party);
+    const signature = decodeEd25519Sig(entry.value);
+    const publicKey = publicKeyFor(request, entry.party);
+    if (key === null || !roles.has(key) || signature === null || publicKey === null ||
+        !verifyHashedDomain(domain, signature, hash, publicKey)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Same-index phaseSummary limb (#254): every shared index must agree on kind+outcome. */
+function phaseSummaryDiverges(a: JsonObject, b: JsonObject): boolean {
+  const pa = Array.isArray(a.phaseSummary) ? a.phaseSummary : [];
+  const pb = Array.isArray(b.phaseSummary) ? b.phaseSummary : [];
+  const byIndex = new Map<unknown, JsonObject>();
+  for (const p of pa) if (isObject(p)) byIndex.set(p.index, p);
+  for (const p of pb) {
+    if (!isObject(p)) continue;
+    const other = byIndex.get(p.index);
+    if (other && (other.kind !== p.kind || other.outcome !== p.outcome)) return true;
+  }
+  return false;
+}
+
+/** Validate a single FAB / legacy copy: canonicalisable, roster-consistent, permissible,
+ *  and fully signature-verified.  Returns its parsed facts or null (rejected content). */
+function validateFaultCopy(
+  request: BundleBindingRequest,
+  copy: unknown,
+): { bundle: JsonObject; roles: Map<string, string>; faultSet: Set<string>; klass: OutcomeClass } | null {
+  if (!isObject(copy)) return null;
+  const roles = roleClaims(copy);
+  if (roles === null) return null;
+  const klass = outcomeClass(copy.outcome);
+  if (klass === null) return null;
+  const faultSet = impliedFaultSet(copy, roles);
+  if (faultSet === null) return null;
+  let hash: Uint8Array;
+  try {
+    hash = bundleScope(copy).hash;
+  } catch {
+    return null;
+  }
+  if (!copySignaturesValid(request, copy, hash, roles)) return null;
+  return { bundle: copy, roles, faultSet, klass };
+}
+
+export interface FaultBundlePointerRequest {
+  publicKeys?: Readonly<Record<string, string | Uint8Array>>;
+  /** The FaultBundleExtendedPointer record at the resolved nativeAddress. */
+  pointer: JsonObject;
+  /** The full FaultAttestationBundle the pointer dereferences to. */
+  dereferenced: JsonObject;
+  /** The BundleBinding anchoring the pointer. */
+  binding: JsonObject;
+}
+
+/**
+ * §10.4.2 extended-pointer + §10.4.1 triple-identity (E7).
+ *
+ * `present` iff triple-identity holds: binding.bundleContentHash ==
+ * pointer.fullBundleContentHash == the recomputed §10.4.1 hash of the DEREFERENCED bundle,
+ * AND the pointer signature (dacs-fault-bundle-pointer:v1:) and every dereferenced-bundle
+ * signature (dacs-fault-bundle:v1:) verify.  A pointer/binding that agree with each other
+ * but not with the recomputed dereferenced hash is rejected content (BB-7), not absence —
+ * this is the case a compare-the-pointer's-own-hash shortcut would wrongly accept.
+ */
+export function resolveFaultBundlePointer(request: FaultBundlePointerRequest): BundleBindingResolution {
+  const { pointer, dereferenced, binding } = request ?? {};
+  if (!isObject(pointer) || !isObject(dereferenced) || !isObject(binding)) {
+    return invalid('§10.4.2: malformed extended-pointer input');
+  }
+  if (pointer.faultBundleVersion !== '1' || pointer.pointerKind !== 'extended' ||
+      typeof pointer.fullBundleContentHash !== 'string' ||
+      typeof binding.bundleContentHash !== 'string') {
+    return invalid('§10.4.2: pointer/binding discriminator or hash field malformed');
+  }
+  const asRequest: BundleBindingRequest = { jobId: '', role: 'buyer', publicKeys: request.publicKeys };
+
+  // (1) The dereferenced bundle must itself be a valid, fully-signed §10.4.1 FAB.
+  const deref = validateFaultCopy(asRequest, dereferenced);
+  if (deref === null) return invalid('§10.4.2: dereferenced bundle is not a valid §10.4.1 FAB');
+
+  // (2) Recompute the §10.4.1 hash of the dereferenced bundle and require triple-identity.
+  let recomputed: string;
+  try {
+    recomputed = hex(bundleScope(dereferenced).hash);
+  } catch {
+    return invalid('§10.4.2: dereferenced bundle is not canonicalisable');
+  }
+  if (recomputed !== pointer.fullBundleContentHash || recomputed !== binding.bundleContentHash) {
+    // Rejected content (BB-7): pointer/binding may agree with each other but neither equals
+    // the recomputed dereferenced hash.  Fail, never present.
+    return invalid('§10.4.2: triple-identity broken — pointer/binding hash != recomputed dereferenced hash (BB-7 rejected content)');
+  }
+
+  // (3) The pointer signs the JCS-canonical hash of its own tuple under the pointer domain.
+  const signature = isObject(pointer.signature) ? decodeEd25519Sig(pointer.signature.value) : null;
+  const pointerKey = isObject(pointer.signature) ? publicKeyFor(asRequest, pointer.signature.signer) : null;
+  if (signature === null || pointerKey === null || (isObject(pointer.signature) && pointer.signature.algorithm !== 'ed25519')) {
+    return invalid('§10.4.2: pointer signature or signer key malformed');
+  }
+  let pointerHash: Uint8Array;
+  try {
+    const { signature: _sig, ...pointerScope } = pointer;
+    pointerHash = hashCanonical(pointerScope);
+  } catch {
+    return invalid('§10.4.2: pointer tuple is not canonicalisable');
+  }
+  if (!verifyHashedDomain(FAULT_BUNDLE_POINTER_DOMAIN, signature, pointerHash, pointerKey)) {
+    return invalid('§10.4.2: pointer signature does not verify under the pointer domain');
+  }
+
+  return {
+    disposition: 'present',
+    detail: '§10.4.2: extended-pointer triple-identity holds (binding == pointer == recomputed dereferenced hash)',
+    bundle: dereferenced,
+  };
+}
+
+export interface FaultBundlePairRequest {
+  publicKeys?: Readonly<Record<string, string | Uint8Array>>;
+  /** role -> FAB copy.  A single-copy map exercises the §10.4.1 permissible-set rule. */
+  copies: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * §10.4.3 FaultAttestationBundle-pair rule + §10.4.1 permissible set.
+ *
+ * A single invalid/out-of-set copy is rejected content -> `fail`.  A pair `present`
+ * iff both copies are valid AND name the same absolute faultedParty and the same outcome
+ * class (perspective spellings such as aborted-by-self vs aborted-by-other reconcile).
+ * A pair that names different absolute faultedParty or different outcome class diverges
+ * -> `fail`.
+ */
+export function resolveFaultBundlePair(request: FaultBundlePairRequest): BundleBindingResolution {
+  if (!request || !isObject(request.copies)) return invalid('§10.4.3: malformed FAB-pair input');
+  const asRequest: BundleBindingRequest = { jobId: '', role: 'buyer', publicKeys: request.publicKeys };
+  const parsed: Array<{ bundle: JsonObject; faultSet: Set<string>; klass: OutcomeClass }> = [];
+  for (const copy of Object.values(request.copies)) {
+    const validated = validateFaultCopy(asRequest, copy);
+    if (validated === null) {
+      return invalid('§10.4.1: a FAB copy is malformed or its faultedParty is outside the permissible set (rejected)');
+    }
+    parsed.push(validated);
+  }
+  if (parsed.length === 0) return invalid('§10.4.3: no FAB copy present');
+  if (parsed.length === 1) {
+    // A single valid, in-set copy stands on its own (the permissible-set rule is what this exercises).
+    return {
+      disposition: 'present',
+      detail: '§10.4.1: single FAB copy is valid and within the permissible set',
+      bundle: parsed[0]!.bundle,
+    };
+  }
+  // §10.4.3: every copy in the pair must name the SAME absolute faultedParty and outcome class.
+  const [first, ...rest] = parsed;
+  for (const other of rest) {
+    if (other.klass !== first!.klass) {
+      return invalid('§10.4.3: FAB-pair outcome classes contradict (divergent)');
+    }
+    // FAB copies carry singleton fault sets; identity means the singletons match.
+    const same = first!.faultSet.size === other.faultSet.size &&
+      [...first!.faultSet].every((party) => other.faultSet.has(party));
+    if (!same) {
+      return invalid('§10.4.3: FAB-pair names non-identical absolute faultedParty (divergent)');
+    }
+    if (phaseSummaryDiverges(first!.bundle, other.bundle)) {
+      return invalid('§10.4.3: FAB-pair shared-index phaseSummary limb diverges');
+    }
+  }
+  return {
+    disposition: 'present',
+    detail: '§10.4.3: FAB-pair converges (same absolute faultedParty and outcome class)',
+    bundle: first!.bundle,
+  };
+}
+
+/**
+ * §10.4.3 mixed-version rule + §10.5.1 authoritative selection.
+ *
+ * Reconcile a pair of copies where at least one is a FAB and at least one is a legacy
+ * AttestationBundle (or two legacy copies, the perspective-flip control).  Each copy's
+ * §10.4.1 implied absolute-fault SET is computed (FAB -> singleton, legacy -> derived from
+ * outcome+anchoredByRole).  The pair is non-divergent iff:
+ *   - all copies share the same outcome class,
+ *   - every pairwise implied-fault-set intersection is non-empty (no contradiction — a FAB
+ *     faultedParty outside the legacy implied set, or two legacy copies whose flips disagree,
+ *     is a contradiction), and
+ *   - shared-index phaseSummary limbs agree.
+ * A non-divergent pair is `present` (unified); the FAB is authoritative for derivation when
+ * present, else the legacy copy (§10.5.1).  Contradiction -> `fail` (excluded from all metrics).
+ */
+export function resolveMixedVersionPair(request: FaultBundlePairRequest): BundleBindingResolution {
+  if (!request || !isObject(request.copies)) return invalid('§10.4.3: malformed mixed-version input');
+  const asRequest: BundleBindingRequest = { jobId: '', role: 'buyer', publicKeys: request.publicKeys };
+  const parsed: Array<{ bundle: JsonObject; faultSet: Set<string>; klass: OutcomeClass; isFab: boolean }> = [];
+  for (const copy of Object.values(request.copies)) {
+    const validated = validateFaultCopy(asRequest, copy);
+    if (validated === null) {
+      return invalid('§10.4.1: a mixed-version copy is malformed or outside the permissible set (rejected)');
+    }
+    parsed.push({ ...validated, isFab: 'faultBundleVersion' in validated.bundle });
+  }
+  if (parsed.length < 2) return invalid('§10.4.3: mixed-version reconciliation needs at least two copies');
+
+  const [first, ...rest] = parsed;
+  for (const other of rest) {
+    // Outcome classes must agree (completed vs abort etc. is an unconditional divergence).
+    if (other.klass !== first!.klass) {
+      return invalid('§10.4.3: mixed-version outcome classes contradict (divergent)');
+    }
+    // Implied-fault-set intersection must be non-empty: a FAB faultedParty must be a member
+    // of the legacy implied set; two legacy perspective copies must agree after the flip.
+    const intersect = [...first!.faultSet].some((party) => other.faultSet.has(party));
+    if (!intersect) {
+      return invalid('§10.4.3: mixed-version implied absolute-fault sets contradict (divergent)');
+    }
+    if (phaseSummaryDiverges(first!.bundle, other.bundle)) {
+      return invalid('§10.4.3: mixed-version shared-index phaseSummary limb diverges (#254)');
+    }
+  }
+  const authoritative = parsed.find((copy) => copy.isFab) ?? first!;
+  return {
+    disposition: 'present',
+    detail: `§10.4.3/§10.5.1: mixed pair unified; authoritative copy is ${authoritative.isFab ? 'FaultAttestationBundle' : 'AttestationBundle'}`,
+    bundle: authoritative.bundle,
   };
 }
