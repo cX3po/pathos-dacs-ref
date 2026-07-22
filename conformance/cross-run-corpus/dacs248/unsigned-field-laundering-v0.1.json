@@ -1,0 +1,1375 @@
+{
+  "set": "unsigned-field-laundering-v0.1",
+  "spec": "DACS-5 §10.4 unsigned-field / loosely-typed member laundering defect class",
+  "provenance": {
+    "generator": "conformance/cross-run-corpus/gen-unsigned-field-vectors.mts (deterministic; --check is a byte-for-byte determinism proof)",
+    "class": "A receipt/bundle member a resolution decision depends on is either OUTSIDE the signed hash scope, or too LOOSELY TYPED, so a mutation that keeps the signature valid (or confuses the type) changes the verdict.",
+    "instances": [
+      "anchoredByRole (#248): unsigned field, flip re-attributes fault authority -> re-anchored to the copies-map key / binding.role.",
+      "budget/bundleCount (xm33): boolean-for-int, Number.isInteger gate rejects the bool -> fail-safe default.",
+      "phaseSummary[].index / windowingBasis (RB): container-for-scalar, Map-key-by-reference silently skips the cross-copy check -> canonical-key normalisation."
+    ],
+    "tripleStructure": "Each field ships PRISTINE (correct, correct disposition), MUTATED (signature-valid/type-confused laundering attempt, SAFE disposition, never present when pristine was fail/indeterminate), CONTROL (a legitimate change that SHOULD move the disposition — proves non-tautology).",
+    "canonicalisation": "RFC 8785 JCS over the artifact minus its hash-excluded fields (FAB/legacy: signatures + anchoredByRole; binding: signature); sha256 hex content hashes; ed25519 over the CORE §B.7 domain-separated payload (dacs-fault-bundle:v1: / dacs-bundle:v1: / dacs-bundle-binding:v1: / dacs-fault-bundle-pointer:v1: || hex(hash)), base64url-unpadded.",
+    "seeds": "published deterministic repeated-byte ed25519 seeds; buyer a1.., seller c3.., orchestrator 0e.. (asserted to reproduce the published pubkeys).",
+    "reachabilityNote": "reachable:true vectors are asserted AGREE against OUR resolver; reachable:false vectors are aspirational/reference-only (the field is a DACS-Standard class member not independently reachable as a decision swing in our current resolver) and are documented, not asserted."
+  },
+  "gaps": [
+    "#248 unsigned anchoredByRole fault-authority laundering",
+    "xm33 bundleCount boolean-for-int coverage",
+    "RB windowingBasis container-for-scalar type confusion"
+  ],
+  "classDefinition": "unsigned-field / loosely-typed member laundering: a decision-relevant member outside the signed scope or too loosely typed, mutable without breaking the signature, swings a resolution/reputation verdict.",
+  "publicKeys": {
+    "did:demos:buyer": "vHy8tWNjdfodgkNNRmck2SN39TuYBpXdSdJtDOEiBaU",
+    "did:demos:seller": "1AS8RFZa7buJkVDlsLOzK5RBvwy3iEwzEw2o28J90s8",
+    "did:demos:orchestrator": "C-71qeZ55qPhNP4ng3v_MsfLX11E6gm8sOVCutakwMw"
+  },
+  "seeds": {
+    "buyer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "seller": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+    "orchestrator": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+  },
+  "hash": "961f2bfaa913f2e9b55c97ef6775e9c60f1769ecad2af1adf83d241f6085544e",
+  "count": 14,
+  "vectors": [
+    {
+      "name": "anchoredByRole-pristine-contradiction",
+      "family": "mixed",
+      "field": "anchoredByRole",
+      "triple": "pristine",
+      "expected": "fail",
+      "reachable": true,
+      "copies": {
+        "seller": {
+          "jobId": "ABR-1",
+          "outcome": "aborted-by-other",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-ABR-1",
+            "version": 1,
+            "contentHash": "ccfce507918bdad0a9f800fe791795869ce3b1604d990eb0295ac40f34c41785"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "2d66f46c512d93289465e1abb1cee1ac11e8156105db3cef9a44c35c7fcf979f"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "f83d3b18e4ef26836e894d99e150e2a4a360ba2d620f5b75511a1837cb9dcdf6"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "fail"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000001,
+          "faultBundleVersion": "1",
+          "faultedParty": "seller",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "yows3ZWhmgcGRpPdN7mohY5WGL9QIZJmQzo4l8p6_lifYqyT-_cg7NEkhiZmfDcVZ4sUjWNhCti72KZmxMwABQ"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "Ub7GYxCWz7K1P0LRxOEsQkRmpn4cqq5OlI-06mXtYgGmuMKaL1G8Imvqy-mrUzx8X_yN4IY9E5CwAPqf968UAA"
+            }
+          ]
+        },
+        "buyer": {
+          "jobId": "ABR-1",
+          "outcome": "aborted-by-self",
+          "anchoredByRole": "buyer",
+          "listingRef": {
+            "listingId": "listing-ABR-1",
+            "version": 1,
+            "contentHash": "ccfce507918bdad0a9f800fe791795869ce3b1604d990eb0295ac40f34c41785"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "9d1f2ef5bc0e40a07739e9fd211c2ed545b0fa037d57839f498a78dfa8e57c65"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "c41022b2ac9e0e7b80f18406c1eeba9027f67d87ce55c515e7e98b47ab90fd5e"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "fail"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000002,
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "wQNdHrMp9ui28vw04Kbk-R24eZw3CUGoweCvO8HSI1Djgl6ay2Ov8aL677AwOKNxQRRdk4B_7fphATQQfqmTAg"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "B31rVMQCzf1SlqSm3cE6J2GlTVUyNq0zWQPIUvl-hDPgGCjnvqkYCBs_86zXNu8birYKTGYc4BEA-cKuabDLBw"
+            }
+          ]
+        }
+      },
+      "provenance": {
+        "rule": "§10.4.3 mixed-version + §10.4.1 implied absolute-fault set",
+        "signedScopeRule": "anchoredByRole is EXCLUDED from bundleScope (R5-1); it is re-anchored to the copies-map key (anchorRoleMismatch).",
+        "why": "FAB {seller} and legacy implied {buyer} do not intersect — a genuine contradiction resolves fail. Both copies carry anchoredByRole == their anchor key (coherent)."
+      }
+    },
+    {
+      "name": "anchoredByRole-mutated-launder-attempt",
+      "family": "mixed",
+      "field": "anchoredByRole",
+      "triple": "mutated",
+      "expected": "fail",
+      "reachable": true,
+      "copies": {
+        "seller": {
+          "jobId": "ABR-1",
+          "outcome": "aborted-by-other",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-ABR-1",
+            "version": 1,
+            "contentHash": "ccfce507918bdad0a9f800fe791795869ce3b1604d990eb0295ac40f34c41785"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "2d66f46c512d93289465e1abb1cee1ac11e8156105db3cef9a44c35c7fcf979f"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "f83d3b18e4ef26836e894d99e150e2a4a360ba2d620f5b75511a1837cb9dcdf6"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "fail"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000001,
+          "faultBundleVersion": "1",
+          "faultedParty": "seller",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "yows3ZWhmgcGRpPdN7mohY5WGL9QIZJmQzo4l8p6_lifYqyT-_cg7NEkhiZmfDcVZ4sUjWNhCti72KZmxMwABQ"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "Ub7GYxCWz7K1P0LRxOEsQkRmpn4cqq5OlI-06mXtYgGmuMKaL1G8Imvqy-mrUzx8X_yN4IY9E5CwAPqf968UAA"
+            }
+          ]
+        },
+        "buyer": {
+          "jobId": "ABR-1",
+          "outcome": "aborted-by-self",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-ABR-1",
+            "version": 1,
+            "contentHash": "ccfce507918bdad0a9f800fe791795869ce3b1604d990eb0295ac40f34c41785"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "9d1f2ef5bc0e40a07739e9fd211c2ed545b0fa037d57839f498a78dfa8e57c65"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "c41022b2ac9e0e7b80f18406c1eeba9027f67d87ce55c515e7e98b47ab90fd5e"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "fail"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000002,
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "wQNdHrMp9ui28vw04Kbk-R24eZw3CUGoweCvO8HSI1Djgl6ay2Ov8aL677AwOKNxQRRdk4B_7fphATQQfqmTAg"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "B31rVMQCzf1SlqSm3cE6J2GlTVUyNq0zWQPIUvl-hDPgGCjnvqkYCBs_86zXNu8birYKTGYc4BEA-cKuabDLBw"
+            }
+          ]
+        }
+      },
+      "provenance": {
+        "rule": "§10.4.2/§248 anchor-address ↔ anchoredByRole integrity",
+        "mutation": "legacy.anchoredByRole buyer->seller AFTER signing (signature untouched — anchoredByRole is outside bundleScope, so it stays valid).",
+        "signedScopeRule": "The unsigned field is re-anchored to the copies-map KEY; a copy at key=buyer that declares anchoredByRole=seller is forged/mislabeled -> reject.",
+        "why": "SAFE disposition is fail: an unsigned-field flip must NEVER launder a contradiction (fail) into agreement (present)."
+      }
+    },
+    {
+      "name": "anchoredByRole-control-legitimate-converge",
+      "family": "mixed",
+      "field": "anchoredByRole",
+      "triple": "control",
+      "expected": "present",
+      "reachable": true,
+      "copies": {
+        "seller": {
+          "jobId": "ABR-2",
+          "outcome": "aborted-by-self",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-ABR-2",
+            "version": 1,
+            "contentHash": "da5f055691291be8b9771436e6b93c9c91c043353792ac45dfd6670015b9d6c3"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "4e3df2b6e06b6471ed99d860525ac9b2929453e3908fac9a72b712443f9fff7c"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "3b8db5d8555c943aea41b05cf090cfdb124cd781d0062686e149236451d0d67e"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "fail"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000003,
+          "faultBundleVersion": "1",
+          "faultedParty": "seller",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "UgyJawOHWj87JQk_JkvW0GPCUFOYxpomLyNuvDAxmcbZxiyCPnV-u00YLsW43C9RFiZnL_VMTVVlpogEyY_rDA"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "wK-6ilaZVLToJk-wrdRHZyKaH1odMKfVIXCQpLOSjCpwbIYUEFjzS0Hu5ISO7VZN8AwjZiOL6wjMqueSebbjCQ"
+            }
+          ]
+        },
+        "buyer": {
+          "jobId": "ABR-2",
+          "outcome": "aborted-by-other",
+          "anchoredByRole": "buyer",
+          "listingRef": {
+            "listingId": "listing-ABR-2",
+            "version": 1,
+            "contentHash": "da5f055691291be8b9771436e6b93c9c91c043353792ac45dfd6670015b9d6c3"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "21e8bbef1692757c3f22891ed84487ce0065ea16c09daed9caa29db12c9d8002"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "745743477ed15d8fc36212bf356971c94e6f88907dd0ce28f36e1901ff570217"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "fail"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000004,
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "HcOerMcuDdezCWjsRzD_yQzf4dTiB7waXtPiqcvSTfDqmlDXnDUHe9XUzoo-9JZX6dn4LMh7Ui196jZhlNMBBg"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "zLcM0QyvSqnFq4o0x-y-7ktMsTheJI9Uvf8ub2EUMiA9qWJXFIN4syi6nCz6m2A3Jhca6_6WJjh4M9deqHO1Ag"
+            }
+          ]
+        }
+      },
+      "provenance": {
+        "rule": "§10.4.3 mixed-version convergence",
+        "why": "A coherent pair (each anchoredByRole == its anchor key) whose implied fault sets DO intersect ({seller} ∈ {seller,orchestrator}) genuinely resolves present. This is the non-tautology control: the resolver distinguishes a real convergence from a laundered one."
+      }
+    },
+    {
+      "name": "anchoredByRole-pointer-pristine-permissible",
+      "family": "pointer",
+      "field": "anchoredByRole",
+      "triple": "pristine",
+      "expected": "present",
+      "reachable": true,
+      "pointer": {
+        "faultBundleVersion": "1",
+        "pointerKind": "extended",
+        "fullBundleUrl": "https://cdn.example/ABR-PTR-1",
+        "fullBundleContentHash": "7132e0162f9127333ad8fd7a61190d9deaeff0c73147b626259d3cc073f4e948",
+        "signature": {
+          "algorithm": "ed25519",
+          "signer": "did:demos:seller",
+          "value": "EFwIzVm1ln9Y7mnU0lr0vUuqIBFEdxnZ6AX-nsaaTBHdOwCFj5cnnQlQN9RJakzzJ5d0bTnf1276itEPJ5V5AQ"
+        }
+      },
+      "dereferenced": {
+        "jobId": "ABR-PTR-1",
+        "outcome": "aborted-by-other",
+        "anchoredByRole": "buyer",
+        "listingRef": {
+          "listingId": "listing-ABR-PTR-1",
+          "version": 1,
+          "contentHash": "b5d3c53f384632ff8e7efe31a647cecacd6c8696e98696e70e74fcc76d892400"
+        },
+        "parties": [
+          {
+            "role": "buyer",
+            "primaryClaim": "did:demos:buyer",
+            "bundleHash": "aadd1f65d3fcabe910fb5457e6f6179edec04de87558202bcb964e3b5c0677b8"
+          },
+          {
+            "role": "seller",
+            "primaryClaim": "did:demos:seller",
+            "bundleHash": "5f557231f82a64b19a22ff0e009bff26af0aaa1e706d9dfe59770e035bc753bf"
+          }
+        ],
+        "phaseSummary": [
+          {
+            "index": 0,
+            "kind": "deliver-storage-program",
+            "outcome": "fail"
+          }
+        ],
+        "vetRecords": [],
+        "settlementEvidence": [],
+        "recipeRegistryVersion": 1,
+        "railRegistryVersion": 1,
+        "finalisedAt": 1780004000010,
+        "faultBundleVersion": "1",
+        "faultedParty": "seller",
+        "signatures": [
+          {
+            "party": "did:demos:buyer",
+            "algorithm": "ed25519",
+            "value": "hvRiMCWVvB-msr6C-cFCUKwwu0SgHpEmEzJSvYZgIgQONbHomgSF1ZnW8_BN7Lk1_-AVfBKFWgMDbYFkQ4mQCw"
+          },
+          {
+            "party": "did:demos:seller",
+            "algorithm": "ed25519",
+            "value": "oMWN-eYIJf71nnr-PP0iaATzgbmEbDZktb4j72MzphsM3KvzFS8znE7CUBZkQV-J4fImH-VvmvYW_7ea6AJFBQ"
+          }
+        ]
+      },
+      "binding": {
+        "bindingVersion": "1",
+        "jobId": "ABR-PTR-1",
+        "role": "buyer",
+        "logicalAddress": "stor-b16bf5ca1cdc3e09bc17de61ea1ab29ae3633dfd971a0a181ba16bd73f90525a",
+        "nativeAddress": "stor-860a1b049ca24ced0cd1e776fe3540975cc0418c",
+        "bundleContentHash": "7132e0162f9127333ad8fd7a61190d9deaeff0c73147b626259d3cc073f4e948",
+        "anchorTx": "demos-testnet:tx-860a1b049ca24ced",
+        "signer": "did:demos:buyer",
+        "signature": {
+          "algorithm": "ed25519",
+          "signer": "did:demos:buyer",
+          "value": "xJOp1rbCGA9ZNejQOkg931T7dZYo23AGAV7n2NrDxsKOvH-Qu57KVjNlfuUFdSrVZoctsy19OBgZFk05uOb3CA"
+        }
+      },
+      "provenance": {
+        "rule": "§10.4.2 extended-pointer triple-identity + §10.4.1 permissible set",
+        "why": "aborted-by-other with faulted(seller) != anchoredByRole(buyer) is permissible; binding.role==buyer re-anchors the unsigned field coherently -> present."
+      }
+    },
+    {
+      "name": "anchoredByRole-pointer-mutated-launder-attempt",
+      "family": "pointer",
+      "field": "anchoredByRole",
+      "triple": "mutated",
+      "expected": "fail",
+      "reachable": true,
+      "pointer": {
+        "faultBundleVersion": "1",
+        "pointerKind": "extended",
+        "fullBundleUrl": "https://cdn.example/ABR-PTR-2",
+        "fullBundleContentHash": "fccbe9d1348872bba7fe1d17ef33f9ad44f6a3924d75c0bbce651c370a91c614",
+        "signature": {
+          "algorithm": "ed25519",
+          "signer": "did:demos:seller",
+          "value": "-y4bPRoMNTAkHrcq1HBMKDQX9Lte9GsB15d0BmkNo7VcqCR2_ZsAtE6Qt6yRHlYipztu8tm3IcOFFDQll4G-Cg"
+        }
+      },
+      "dereferenced": {
+        "jobId": "ABR-PTR-2",
+        "outcome": "aborted-by-other",
+        "anchoredByRole": "seller",
+        "listingRef": {
+          "listingId": "listing-ABR-PTR-2",
+          "version": 1,
+          "contentHash": "aa10eba716210b2a42d66ac5bba8fa662dd7300ed5f89958640c1a20bf32583d"
+        },
+        "parties": [
+          {
+            "role": "buyer",
+            "primaryClaim": "did:demos:buyer",
+            "bundleHash": "7219d820267d2bc19648561e4f3110b25eb2db173d47f1344cb85297dd72d4bc"
+          },
+          {
+            "role": "seller",
+            "primaryClaim": "did:demos:seller",
+            "bundleHash": "6d95b9b716a77a617a7a1e187301c6fe7343accd99ad2e3d70c5351367ba793e"
+          }
+        ],
+        "phaseSummary": [
+          {
+            "index": 0,
+            "kind": "deliver-storage-program",
+            "outcome": "fail"
+          }
+        ],
+        "vetRecords": [],
+        "settlementEvidence": [],
+        "recipeRegistryVersion": 1,
+        "railRegistryVersion": 1,
+        "finalisedAt": 1780004000011,
+        "faultBundleVersion": "1",
+        "faultedParty": "buyer",
+        "signatures": [
+          {
+            "party": "did:demos:buyer",
+            "algorithm": "ed25519",
+            "value": "YXPpO-kQo1AKFckxHeP4S5Kw2KDzOIfDrJ-kZfV8n2XD1j-vqA85agmWyVtPX6rIifst6uJvD2ag9HpYHKC6AA"
+          },
+          {
+            "party": "did:demos:seller",
+            "algorithm": "ed25519",
+            "value": "pt5_U225nHVv-PsqOjXzchpuAa3pBJkU6_BoMl0HtkKwmTP6YdIFi-1cGdyRqd5DBbkFhNoTKOIsID0bT9XZBQ"
+          }
+        ]
+      },
+      "binding": {
+        "bindingVersion": "1",
+        "jobId": "ABR-PTR-2",
+        "role": "buyer",
+        "logicalAddress": "stor-c61903215596a1a378c66e0e284caf1d90cb5ee6d2b57f3812f57a967fb96742",
+        "nativeAddress": "stor-e769ae71d9fe5047544d1240c408175f639cf8ab",
+        "bundleContentHash": "fccbe9d1348872bba7fe1d17ef33f9ad44f6a3924d75c0bbce651c370a91c614",
+        "anchorTx": "demos-testnet:tx-e769ae71d9fe5047",
+        "signer": "did:demos:buyer",
+        "signature": {
+          "algorithm": "ed25519",
+          "signer": "did:demos:buyer",
+          "value": "p-pyCZBeqFceKoOkse6LIgP-RES_jylx4mDqp0YgJdxkJlNEvXAbqC511m86___b7mQTFAaYGoxI7zBYYWUWAQ"
+        }
+      },
+      "provenance": {
+        "rule": "§10.4.2/§248 anchor-address ↔ anchoredByRole integrity (pointer arm)",
+        "mutation": "dereferenced.anchoredByRole buyer->seller AFTER signing; binding.role stays buyer. The FAB is impermissible under its TRUE role (aborted-by-other, faulted=buyer=anchor).",
+        "why": "SAFE disposition is fail: the pointer family re-anchors the unsigned field to the SIGNED/derived binding.role; a flip away from it is rejected."
+      }
+    },
+    {
+      "name": "anchoredByRole-pointer-control-genuine-impermissible",
+      "family": "pointer",
+      "field": "anchoredByRole",
+      "triple": "control",
+      "expected": "fail",
+      "reachable": true,
+      "pointer": {
+        "faultBundleVersion": "1",
+        "pointerKind": "extended",
+        "fullBundleUrl": "https://cdn.example/ABR-PTR-3",
+        "fullBundleContentHash": "67f84b00e69ee9a761b916985b81356427a627c4c1759a425d360eeb68e2dcfe",
+        "signature": {
+          "algorithm": "ed25519",
+          "signer": "did:demos:seller",
+          "value": "UB8U408hRInVzFjARLWohDoWJen9dbZHYC9CDGKZPeVmSjypwBC-CR1HALMv98snQagXZogIPWdbddjZx6FtDQ"
+        }
+      },
+      "dereferenced": {
+        "jobId": "ABR-PTR-3",
+        "outcome": "aborted-by-other",
+        "anchoredByRole": "buyer",
+        "listingRef": {
+          "listingId": "listing-ABR-PTR-3",
+          "version": 1,
+          "contentHash": "02527d669a98bbff10f2308131252fe13d07f727ac08c9da5eba0312f5173585"
+        },
+        "parties": [
+          {
+            "role": "buyer",
+            "primaryClaim": "did:demos:buyer",
+            "bundleHash": "9cdf7370dcae57aa05ebe56d12acfaf2cc2b35c1d31a7de7ffb77e1b0fe54d63"
+          },
+          {
+            "role": "seller",
+            "primaryClaim": "did:demos:seller",
+            "bundleHash": "198eeb517b7a1a0bd4e5dbcf16f21ced7bf1e7d933b8fd89f4db3d2af501be71"
+          }
+        ],
+        "phaseSummary": [
+          {
+            "index": 0,
+            "kind": "deliver-storage-program",
+            "outcome": "fail"
+          }
+        ],
+        "vetRecords": [],
+        "settlementEvidence": [],
+        "recipeRegistryVersion": 1,
+        "railRegistryVersion": 1,
+        "finalisedAt": 1780004000012,
+        "faultBundleVersion": "1",
+        "faultedParty": "buyer",
+        "signatures": [
+          {
+            "party": "did:demos:buyer",
+            "algorithm": "ed25519",
+            "value": "1x-OS6fbLdoleoHsKvWh8xHYMvimRGy7I-zWt-zt25jIjwqfGjZJqddTBUCX45IYzAJyIJzNAhKLjA17d1wYDA"
+          },
+          {
+            "party": "did:demos:seller",
+            "algorithm": "ed25519",
+            "value": "4062ZyYZE2XC6BhVqSs9p3VWzRfmg-vkd4c1V59PlWwGxaBNL2mlRTYnK-dttY7OT3UzpfWVNTLVKbktKkzgAw"
+          }
+        ]
+      },
+      "binding": {
+        "bindingVersion": "1",
+        "jobId": "ABR-PTR-3",
+        "role": "buyer",
+        "logicalAddress": "stor-8358f358ea862e5d9090b95bc7a9b36e3fdf7c13aa576abb3cbeea1590002599",
+        "nativeAddress": "stor-31cac843c4e7d123241097f958b0b673bc165456",
+        "bundleContentHash": "67f84b00e69ee9a761b916985b81356427a627c4c1759a425d360eeb68e2dcfe",
+        "anchorTx": "demos-testnet:tx-31cac843c4e7d123",
+        "signer": "did:demos:buyer",
+        "signature": {
+          "algorithm": "ed25519",
+          "signer": "did:demos:buyer",
+          "value": "8lCo9wjCvGknhYFUa9TooUI0lGCWYnPqf1rrbgHJxUp3mNsU3r3ygCsG0zpW4iw03JGrgKZDYLjycnwz8DLjAg"
+        }
+      },
+      "provenance": {
+        "rule": "§10.4.1 permissible set",
+        "why": "aborted-by-other with faulted(buyer)==anchoredByRole(buyer) is impermissible on its own merit -> fail. No unsigned-field tamper involved; the control shows the resolver rejects genuine impermissibility (so the mutated fail is meaningful)."
+      }
+    },
+    {
+      "name": "budget-int-pristine-exhausted",
+      "family": "direct",
+      "field": "budget",
+      "triple": "pristine",
+      "expected": "indeterminate",
+      "reachable": true,
+      "request": {
+        "jobId": "BUD-1",
+        "role": "seller"
+      },
+      "bindings": [
+        {
+          "bindingVersion": "1",
+          "jobId": "BUD-1",
+          "role": "seller",
+          "logicalAddress": "stor-cb59e7af725f3a43f242b0398a2701388fdc7623c12a2f56544f8a36d8ceb5c7",
+          "nativeAddress": "stor-e5a178988c46a3223edead2a4b530e53f10b0b51",
+          "bundleContentHash": "6fb7ee14d09afb77e7f7bb129e03f5056a73b65c7f29a008e56c7271575b1f84",
+          "anchorTx": "demos-testnet:tx-e5a178988c46a322",
+          "signer": "did:demos:seller",
+          "signature": {
+            "algorithm": "ed25519",
+            "signer": "did:demos:seller",
+            "value": "sNmF_SWzvCy2dKfHKNk1ctrKU4Joa7h_-MTJ_apLTzBfmB_MWiuO5oNC79KsY8-mgsADs4V6MfmZ5UozfXleCQ"
+          }
+        },
+        {
+          "bindingVersion": "1",
+          "jobId": "BUD-1",
+          "role": "seller",
+          "logicalAddress": "stor-cb59e7af725f3a43f242b0398a2701388fdc7623c12a2f56544f8a36d8ceb5c7",
+          "nativeAddress": "stor-9f06cc0de89449d007094c20e48226d6b7ace531",
+          "bundleContentHash": "e9673e33af39ea709d856bbbe45e32f153fcee2fc1bb98c87a52175b7254f8cc",
+          "anchorTx": "demos-testnet:tx-9f06cc0de89449d0",
+          "signer": "did:demos:seller",
+          "signature": {
+            "algorithm": "ed25519",
+            "signer": "did:demos:seller",
+            "value": "IOk0VGU7jsMJN9ffmTKBIu_yhVYNpc9CEob7UgvRRYK8-11hJ3gNGxnEfBU8VOG1cmpFNnhSfFqurU3nzutMAg"
+          }
+        }
+      ],
+      "anchored": {
+        "stor-e5a178988c46a3223edead2a4b530e53f10b0b51": {
+          "jobId": "BUD-1",
+          "outcome": "completed",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-BUD-1",
+            "version": 1,
+            "contentHash": "a57a3091398779e30f05cd1ebd7e55507e0a74b5c6b6d6892e2f2bece7f9354f"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "ffff7d6a7873674f730e8167c61380afebac6142ce44cd831b398a122a5a655d"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "6d1dffe3837cca1c531453f095f81687a9d66d754caa2800f9c407d2a1b7aaed"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "ok"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000100,
+          "faultBundleVersion": "1",
+          "faultedParty": "none",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "I_bX1z9YiftR1qlt-DNdN7Vh22hq9wEQG8WwxVGKoopJuOGGySeTVjZIVIuGgoltvURKwgXVAw6EXHFoNSUJCg"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "E-4NyIUpIOGH_GXEt2dw40brmwjyz-c5LCNvePEo4Tr3xiqjTNqcjgmBGCl2-GNuw0_F4_qigl7ZqDE9VcteDg"
+            }
+          ]
+        },
+        "stor-9f06cc0de89449d007094c20e48226d6b7ace531": {
+          "jobId": "BUD-1",
+          "outcome": "completed",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-BUD-1",
+            "version": 1,
+            "contentHash": "a57a3091398779e30f05cd1ebd7e55507e0a74b5c6b6d6892e2f2bece7f9354f"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "b7190fae6723fde842763a925d701083d3e08ec731b52063e47e9b2bad768de3"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "3b2e023050ae5584582975e5b7174e477d8255bb0904a972d5bc54fecf2cae41"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "ok"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000101,
+          "faultBundleVersion": "1",
+          "faultedParty": "none",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "A7ay38Kh_VbpN8jQtRuD3bGAxQb95LItIEqBuMm_wRAONLQuy8VQ_0oRn5S0skwwScN9p66K_2nZhuTMe6fwCw"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "IU_vO1lGdG1GauYlaZoKRP3fvYpMrEm2HX4i0VU8uXY-IL3FPUm5Yxk5VztHJkHp52VPxYq4lW_Epj5mGa87Bw"
+            }
+          ]
+        }
+      },
+      "budget": 1,
+      "provenance": {
+        "rule": "§10.4.2 per-signer fetch budget N",
+        "typeRule": "budget is an integer cap; Number.isInteger(budget) gates it.",
+        "why": "budget=1 (int) with two byte-distinct copies at one signer bucket exhausts N=1 -> indeterminate. The resolver refuses to pick (safe)."
+      }
+    },
+    {
+      "name": "budget-bool-mutated-launder-attempt",
+      "family": "direct",
+      "field": "budget",
+      "triple": "mutated",
+      "expected": "indeterminate",
+      "reachable": true,
+      "request": {
+        "jobId": "BUD-1",
+        "role": "seller"
+      },
+      "bindings": [
+        {
+          "bindingVersion": "1",
+          "jobId": "BUD-1",
+          "role": "seller",
+          "logicalAddress": "stor-cb59e7af725f3a43f242b0398a2701388fdc7623c12a2f56544f8a36d8ceb5c7",
+          "nativeAddress": "stor-e5a178988c46a3223edead2a4b530e53f10b0b51",
+          "bundleContentHash": "6fb7ee14d09afb77e7f7bb129e03f5056a73b65c7f29a008e56c7271575b1f84",
+          "anchorTx": "demos-testnet:tx-e5a178988c46a322",
+          "signer": "did:demos:seller",
+          "signature": {
+            "algorithm": "ed25519",
+            "signer": "did:demos:seller",
+            "value": "sNmF_SWzvCy2dKfHKNk1ctrKU4Joa7h_-MTJ_apLTzBfmB_MWiuO5oNC79KsY8-mgsADs4V6MfmZ5UozfXleCQ"
+          }
+        },
+        {
+          "bindingVersion": "1",
+          "jobId": "BUD-1",
+          "role": "seller",
+          "logicalAddress": "stor-cb59e7af725f3a43f242b0398a2701388fdc7623c12a2f56544f8a36d8ceb5c7",
+          "nativeAddress": "stor-9f06cc0de89449d007094c20e48226d6b7ace531",
+          "bundleContentHash": "e9673e33af39ea709d856bbbe45e32f153fcee2fc1bb98c87a52175b7254f8cc",
+          "anchorTx": "demos-testnet:tx-9f06cc0de89449d0",
+          "signer": "did:demos:seller",
+          "signature": {
+            "algorithm": "ed25519",
+            "signer": "did:demos:seller",
+            "value": "IOk0VGU7jsMJN9ffmTKBIu_yhVYNpc9CEob7UgvRRYK8-11hJ3gNGxnEfBU8VOG1cmpFNnhSfFqurU3nzutMAg"
+          }
+        }
+      ],
+      "anchored": {
+        "stor-e5a178988c46a3223edead2a4b530e53f10b0b51": {
+          "jobId": "BUD-1",
+          "outcome": "completed",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-BUD-1",
+            "version": 1,
+            "contentHash": "a57a3091398779e30f05cd1ebd7e55507e0a74b5c6b6d6892e2f2bece7f9354f"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "ffff7d6a7873674f730e8167c61380afebac6142ce44cd831b398a122a5a655d"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "6d1dffe3837cca1c531453f095f81687a9d66d754caa2800f9c407d2a1b7aaed"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "ok"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000100,
+          "faultBundleVersion": "1",
+          "faultedParty": "none",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "I_bX1z9YiftR1qlt-DNdN7Vh22hq9wEQG8WwxVGKoopJuOGGySeTVjZIVIuGgoltvURKwgXVAw6EXHFoNSUJCg"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "E-4NyIUpIOGH_GXEt2dw40brmwjyz-c5LCNvePEo4Tr3xiqjTNqcjgmBGCl2-GNuw0_F4_qigl7ZqDE9VcteDg"
+            }
+          ]
+        },
+        "stor-9f06cc0de89449d007094c20e48226d6b7ace531": {
+          "jobId": "BUD-1",
+          "outcome": "completed",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-BUD-1",
+            "version": 1,
+            "contentHash": "a57a3091398779e30f05cd1ebd7e55507e0a74b5c6b6d6892e2f2bece7f9354f"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "b7190fae6723fde842763a925d701083d3e08ec731b52063e47e9b2bad768de3"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "3b2e023050ae5584582975e5b7174e477d8255bb0904a972d5bc54fecf2cae41"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "ok"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000101,
+          "faultBundleVersion": "1",
+          "faultedParty": "none",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "A7ay38Kh_VbpN8jQtRuD3bGAxQb95LItIEqBuMm_wRAONLQuy8VQ_0oRn5S0skwwScN9p66K_2nZhuTMe6fwCw"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "IU_vO1lGdG1GauYlaZoKRP3fvYpMrEm2HX4i0VU8uXY-IL3FPUm5Yxk5VztHJkHp52VPxYq4lW_Epj5mGa87Bw"
+            }
+          ]
+        }
+      },
+      "budget": true,
+      "provenance": {
+        "rule": "§10.4.2 per-signer fetch budget N — boolean-for-int coverage (xm33 bundleCount shape)",
+        "mutation": "budget: 1 (int) -> true (bool). A naive `x == 0` / truthy check would confuse a bool for an int (0==false in JS).",
+        "typeRule": "Number.isInteger(true) === false -> the resolver rejects the bool and falls back to the normative default N=8; it never treats the bool as the integer 1.",
+        "why": "SAFE disposition is indeterminate: the bool must not launder the exhaustion decision into a present. Two byte-distinct equal-standing copies still resolve indeterminate under the default budget."
+      }
+    },
+    {
+      "name": "budget-int-control-single-copy-present",
+      "family": "direct",
+      "field": "budget",
+      "triple": "control",
+      "expected": "present",
+      "reachable": true,
+      "request": {
+        "jobId": "BUD-2",
+        "role": "seller"
+      },
+      "bindings": [
+        {
+          "bindingVersion": "1",
+          "jobId": "BUD-2",
+          "role": "seller",
+          "logicalAddress": "stor-8d3563ab048228748b4d6faafcd4d20c25878cce6d65a13280315dac254d4663",
+          "nativeAddress": "stor-18f31ff1e319e543e00ffbca212d82968fbf4de3",
+          "bundleContentHash": "dc90aa48526d6c48345ab8d2e51af5b3d5f4728702125d1c299c5e39c00c7531",
+          "anchorTx": "demos-testnet:tx-18f31ff1e319e543",
+          "signer": "did:demos:seller",
+          "signature": {
+            "algorithm": "ed25519",
+            "signer": "did:demos:seller",
+            "value": "j7TpN4Iq1rz_xQNlAsSUjHzdHPvKPDE180W_3BYW_CozV8kfQuHH53kLojLIWjTxtb2JzMeyfjgZlFMVwmiLBQ"
+          }
+        }
+      ],
+      "anchored": {
+        "stor-18f31ff1e319e543e00ffbca212d82968fbf4de3": {
+          "jobId": "BUD-2",
+          "outcome": "completed",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-BUD-2",
+            "version": 1,
+            "contentHash": "88fc9ce8e93b6c44f1370b63988a91e6b159a6a1a7f1f857fd54616ea12aa9ac"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "ffff7d6a7873674f730e8167c61380afebac6142ce44cd831b398a122a5a655d"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "6d1dffe3837cca1c531453f095f81687a9d66d754caa2800f9c407d2a1b7aaed"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "ok"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000100,
+          "faultBundleVersion": "1",
+          "faultedParty": "none",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "0QZhNIqHeC9rkuxGCJpnz5DfXBlTjXomV_wMllavBenAl_jMKLfBcWvse7FzXYj3hmbKV1z6M9rjS8ekvzgoCA"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "WWZKJ4hpXhSk14cQa6sE2llRp8rACXxGew0HcREBc-yQrrRVj-pC9ChHNW7pm9oDNo5SYOCWgV-2Me7buZS7DA"
+            }
+          ]
+        }
+      },
+      "budget": 8,
+      "provenance": {
+        "rule": "§10.4.2 fetch budget with a single resolvable copy",
+        "why": "budget=8 (int) with one authenticated, authorized, byte-exact copy resolves present. The non-tautology control: a genuine int budget governs resolution and passes when the copy is resolvable."
+      }
+    },
+    {
+      "name": "phaseIndex-scalar-pristine-divergence-detected",
+      "family": "mixed",
+      "field": "phaseSummary[].index",
+      "triple": "pristine",
+      "expected": "fail",
+      "reachable": true,
+      "copies": {
+        "seller": {
+          "jobId": "IDX-1",
+          "outcome": "aborted-by-self",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-IDX-1",
+            "version": 1,
+            "contentHash": "bb42741088c214e604c529d8dd56d681789a92efde86607ff31b2d147bcd678a"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "728f24a5a5d0b1e8c3bcdb6c5802428bcf134278927d6cbcde8e96cbeead816a"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "3c3db819bc8ceab1ed1bebead1a56292a5df0a3a5a83f171caee6e5a9e203434"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "ok"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000200,
+          "faultBundleVersion": "1",
+          "faultedParty": "seller",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "kvYDarHf4vBdvx1ARkHd2By1aTya14xlZFmJt9N1V_SFtQ1fnXin6FtkpDPI7XEkABbFBm_ZNluMRLkAjSw-BA"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "-fSEMnh2dlEkloQPQ6HbZ4N_sYm6y86x9kfulM6fkH_APC1cz2Fpo3ikzQp1t3zhDXRssybq9Um926eBtD0ADA"
+            }
+          ]
+        },
+        "buyer": {
+          "jobId": "IDX-1",
+          "outcome": "aborted-by-other",
+          "anchoredByRole": "buyer",
+          "listingRef": {
+            "listingId": "listing-IDX-1",
+            "version": 1,
+            "contentHash": "bb42741088c214e604c529d8dd56d681789a92efde86607ff31b2d147bcd678a"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "bef3a914081f208561faf97893c2839cb58f5c77bb24a9aff3578ec8cf54ce31"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "be2090b1b35ec9a5168c78c731521b0b4a849c75afd80d2272e6976c439ad112"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "fail"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000201,
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "2CL2gH1_BO-LDTqYledRt28uEYiW7xGvt1qq6kk92IWYK9QNjyBDefgAaCfG4NjgVOvikriehRaEL0vPmb5FBw"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "MG_doOAaJc6_js-C5za25d1UAMB_1bFvlKAqT-3GNb9L804C_d5N2V3UpHPCKxEZ0yxTnwTxUBc_OhGvKTC7Bw"
+            }
+          ]
+        }
+      },
+      "provenance": {
+        "rule": "§254 shared-index phaseSummary limb",
+        "typeRule": "index is a scalar; phaseSummaryDiverges keys a Map by it and the shared index 0 is compared across copies.",
+        "why": "Same absolute fault {seller}, same outcome class, BUT phase outcome differs at shared index 0 (ok vs fail) -> #254 divergence -> fail. Scalar index makes the cross-copy check work."
+      }
+    },
+    {
+      "name": "phaseIndex-container-mutated-launder-attempt",
+      "family": "mixed",
+      "field": "phaseSummary[].index",
+      "triple": "mutated",
+      "expected": "fail",
+      "reachable": true,
+      "copies": {
+        "seller": {
+          "jobId": "IDX-2",
+          "outcome": "aborted-by-self",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-IDX-2",
+            "version": 1,
+            "contentHash": "c8db2aa33d0a8ae5d7e4dbb9d6e5df5bbe4314715e6eafff0d3409ad69ef5b32"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "96fc68e6f47477ab43c8636d93769df5d85d701bd48265394c31ea2e0059fcca"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "28ec480a04141df52174f5f52c7696fd718256035c0fe6db6a4f617001d49e1d"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": [
+                0
+              ],
+              "kind": "deliver-storage-program",
+              "outcome": "ok"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000202,
+          "faultBundleVersion": "1",
+          "faultedParty": "seller",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "Lg9w1pHKBCfWFn0bEMT5wMHwEPiyef1EKd-EDGWcg-wTUOcR52pdckki9UwR5_QTPPWe_WdZQm_et89P1RbuBw"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "HGn3i3Y5ATP0jLxf7RmiyVpFL8aGb7UYbERdIFtUTuHQiOUBpoEPM-SUu-J3Wf_bHEn6O64vFInTRNpJWHNNBQ"
+            }
+          ]
+        },
+        "buyer": {
+          "jobId": "IDX-2",
+          "outcome": "aborted-by-other",
+          "anchoredByRole": "buyer",
+          "listingRef": {
+            "listingId": "listing-IDX-2",
+            "version": 1,
+            "contentHash": "c8db2aa33d0a8ae5d7e4dbb9d6e5df5bbe4314715e6eafff0d3409ad69ef5b32"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "57a980d1410d8087567716cc317066d5200c15a151763f928a12c2768648fd8e"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "0a5d5dafe36ad53981efc84af238bbd1016a0525d1b3b0dbc7381a00d6b554b7"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": [
+                0
+              ],
+              "kind": "deliver-storage-program",
+              "outcome": "fail"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000203,
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "ivuRxztXC6BUsvZzmZXu7eO1e06W-zAtxA7_V-UfZxKpj2aYXXxNCmIDUIC65iasfjIGWwS3GK_GwpdsutJqDA"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "VGMMZ0kJ9cLSb4utGQJ99e3MdYxCkr0_baDhqFFAjDk2KFoOQnmg_dOFTHa4fNRiDrnfFrhQ6W8SKncTJ52ADQ"
+            }
+          ]
+        }
+      },
+      "provenance": {
+        "rule": "§254 shared-index limb — container-for-scalar coverage (RB windowingBasis shape)",
+        "mutation": "phaseSummary[0].index: 0 (scalar) -> [0] (array). Both copies re-signed WITH the container index, so signatures are valid — this is a loosely-typed-member type-confusion, not a scope-exclusion flip.",
+        "typeRule": "A Map keyed by an ARRAY compares keys by reference; two distinct [0] arrays never collide, so the shared-index cross-copy check is silently skipped.",
+        "why": "SAFE disposition is fail: a real phase divergence at index 0 must still be detected. Resolver hardening normalises the index to a canonical key so container indices cannot evade #254."
+      }
+    },
+    {
+      "name": "phaseIndex-scalar-control-genuine-agreement",
+      "family": "mixed",
+      "field": "phaseSummary[].index",
+      "triple": "control",
+      "expected": "present",
+      "reachable": true,
+      "copies": {
+        "seller": {
+          "jobId": "IDX-3",
+          "outcome": "aborted-by-self",
+          "anchoredByRole": "seller",
+          "listingRef": {
+            "listingId": "listing-IDX-3",
+            "version": 1,
+            "contentHash": "14c9583e7b50fb08ebe7f3447be24081586427463b6a2c3fe888988a76f83267"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "17973b6b1596bf2fe92b42dce6c691a32a1d8ae9ed14ed06a946b66320c31b2b"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "05fc6b1e0e4338322681a8d57db3602bfc8747ceffccd06fcdb9151e559b7557"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "fail"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000204,
+          "faultBundleVersion": "1",
+          "faultedParty": "seller",
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "VoLSewVXk2bPUGMm7dpZfC6VZ8lM9NRRAyo_rbF6iuIuoL2BZQgVRKTvgK_qXBWS16h7EOU5l0o0d6Wb6cI5Dw"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "XT1n2aa18fqO1ZqCigJCHBAKaMOhdsgZRgj-ZYyC-yWy_A74FFpVrazMULLQfy5TM0wWy7DwrjJoB5awYHajAg"
+            }
+          ]
+        },
+        "buyer": {
+          "jobId": "IDX-3",
+          "outcome": "aborted-by-other",
+          "anchoredByRole": "buyer",
+          "listingRef": {
+            "listingId": "listing-IDX-3",
+            "version": 1,
+            "contentHash": "14c9583e7b50fb08ebe7f3447be24081586427463b6a2c3fe888988a76f83267"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "primaryClaim": "did:demos:buyer",
+              "bundleHash": "6a7458adc79b5d2933b22a6321e5297dd405c565b6b71a8677cea9acdf6bf269"
+            },
+            {
+              "role": "seller",
+              "primaryClaim": "did:demos:seller",
+              "bundleHash": "5c76071ef8b5c7df260a0355ff99681e3ca7357ef1e330075426caaa096049c9"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "deliver-storage-program",
+              "outcome": "fail"
+            }
+          ],
+          "vetRecords": [],
+          "settlementEvidence": [],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000205,
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "eAKmAfuBHvYmupnIXcCpp7A1A23QX5tLHP6SFMIPi6-x7MgVy7oIqmCLmV4UeMULZoa7VZKIzCz1x-7x8it9AQ"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "i2veVT0bjQfDOhnZGo5XX4gfmKqrEENmNPlWacaBHvgj0CA7OrdAoLkMwBTNdL0awJVnb6Cwj_mADIhJrcb8CQ"
+            }
+          ]
+        }
+      },
+      "provenance": {
+        "rule": "§10.4.3 mixed-version convergence with agreeing phaseSummary",
+        "why": "Same fault {seller}, same class, AND the shared-index-0 phase outcomes AGREE (fail/fail) -> present. Non-tautology control: the #254 check passes an honest agreeing pair."
+      }
+    },
+    {
+      "name": "bundleCount-bool-reference-only",
+      "family": "direct",
+      "field": "bundleCount",
+      "triple": "mutated",
+      "expected": "indeterminate",
+      "reachable": false,
+      "request": {
+        "jobId": "REF-BC",
+        "role": "seller",
+        "bundleCount": true
+      },
+      "bindings": [],
+      "anchored": {},
+      "provenance": {
+        "rule": "ASPIRATIONAL — xm33 bundleCount boolean coverage gap",
+        "status": "reference-only",
+        "why": "OUR resolver derives copy counts structurally (array length), not from a caller-supplied bundleCount field, so a bool bundleCount has no decision to swing here. This vector documents the class member for implementations (e.g. dacs-verify) that DO read a bundleCount int; they should reject a bool. Not asserted AGREE against our resolver."
+      }
+    },
+    {
+      "name": "windowingBasis-container-reference-only",
+      "family": "direct",
+      "field": "windowingBasis",
+      "triple": "mutated",
+      "expected": "fail",
+      "reachable": false,
+      "request": {
+        "jobId": "REF-WB",
+        "role": "seller",
+        "windowingBasis": []
+      },
+      "bindings": [],
+      "anchored": {},
+      "provenance": {
+        "rule": "ASPIRATIONAL — RB windowingBasis container-type defect",
+        "status": "reference-only",
+        "why": "windowingBasis is a DACS-Standard reputation-windowing field not present in our §10.4 BundleBinding resolver. We exercise the SAME container-for-scalar class via phaseSummary[].index (reachable). This vector names the canonical field for implementations that carry it; they should reject an array/object where a scalar is required. Not asserted AGREE against our resolver."
+      }
+    }
+  ]
+}

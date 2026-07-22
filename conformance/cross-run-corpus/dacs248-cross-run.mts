@@ -16,6 +16,7 @@ import {
   type BundleBindingV1,
   type BundleBindingRole,
 } from '../../src/lib/bundle-binding-v1.js';
+import { resolveVector as resolveUnsignedFieldVector } from './unsigned-field-cross-run.mjs';
 
 type JsonObject = Record<string, any>;
 type Corpus = { set: string; publicKeys: Record<string, string>; vectors: JsonObject[] };
@@ -29,6 +30,10 @@ const files = [
   'fab-bundle-extended-pointer-v0.3.json',
   'fault-bundle-perspective-pair-v0.3.json',
   'mixed-version-reconciliation-v0.3.json',
+  // unsigned-field / loosely-typed member laundering class (anchoredByRole + boolean-for-int +
+  // container-for-scalar). Only its REACHABLE vectors are scored here; reference-only vectors are
+  // reported as REF-ONLY (not AGREE/DIVERGE). Family dispatch is via the vector's own `family` field.
+  'unsigned-field-laundering-v0.1.json',
 ] as const;
 
 /** #248 round-13 §10.4.2 extended-pointer path — the vector carries pointer/dereferenced/binding. */
@@ -202,11 +207,25 @@ for (const filename of files) {
         resolution = pairVector(corpus, vector);
       } else if (corpus.set === 'mixed-version-reconciliation-v0.3') {
         resolution = mixedVector(corpus, vector);
+      } else if (corpus.set === 'unsigned-field-laundering-v0.1') {
+        resolution = resolveUnsignedFieldVector(corpus as any, vector);
       } else {
         resolution = vector.request ? directVector(corpus, vector) : receiptVector(corpus, vector);
       }
     } catch (error) {
       resolution = { disposition: 'fail', detail: `cross-run exception: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    // The unsigned-field set uses `expected` as a raw disposition and flags aspirational vectors with
+    // reachable:false — those are reported REF-ONLY (not scored). Other sets use the pass|fail spelling.
+    if (corpus.set === 'unsigned-field-laundering-v0.1' && vector.reachable === false) {
+      rows.push({
+        id: `${corpus.set}/${vector.name}`,
+        expected: vector.expected,
+        ours: resolution.disposition,
+        result: 'REF-ONLY',
+        detail: resolution.detail,
+      });
+      continue;
     }
     const expected = vector.expected === 'pass' ? 'present' : vector.expected;
     rows.push({
@@ -225,8 +244,11 @@ console.log(`${'-'.repeat(idWidth)}  -------------  -------------  -------`);
 for (const row of rows) {
   console.log(`${row.id.padEnd(idWidth)}  ${row.expected.padEnd(13)}  ${row.ours.padEnd(13)}  ${row.result}`);
 }
-const agreements = rows.filter((row) => row.result === 'AGREE').length;
-console.log(`\nTOTAL ${rows.length}  AGREE ${agreements}  DIVERGE ${rows.length - agreements}`);
+const scored = rows.filter((row) => row.result !== 'REF-ONLY');
+const agreements = scored.filter((row) => row.result === 'AGREE').length;
+const refOnly = rows.length - scored.length;
+console.log(`\nTOTAL ${scored.length}  AGREE ${agreements}  DIVERGE ${scored.length - agreements}` +
+  (refOnly ? `   (+${refOnly} reference-only, not scored)` : ''));
 for (const row of rows.filter((candidate) => candidate.result === 'DIVERGE')) {
   console.log(`DIVERGENCE ${row.id}: ${row.detail}`);
 }
