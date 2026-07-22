@@ -45,3 +45,13 @@ jobs:
         # ~6 min; kept off the per-push path so PRs stay fast.
         if: github.event_name == 'schedule'
         run: npx tsx conformance/cross-run-corpus/bb-differential-fuzzer.mts --cases 20000 --seed 424242
+      - name: BB stateful/history fuzzer (sequence-invariant gate, deterministic seed)
+        # Complements the input-shaped fuzzer above: attacks HISTORIES (sign->alter-unsigned->perspective-
+        # flip->replay->restart->migrate), asserting cross-sequence invariants (no-launder, perspective-
+        # invariance, replay-rejection, determinism, fail-closed, monotonic-standing). Fast (~3s/300), so a
+        # generous per-push gate. Teeth proven: reverting the anchorRoleMismatch guard turns it RED.
+        run: npx tsx conformance/cross-run-corpus/bb-stateful-fuzzer.mts --cases 2000 --seed 20260701
+      - name: BB stateful/history fuzzer (extended sweep, scheduled only)
+        # Daily cron: a second seed + longer histories for a wider sequence net, off the per-push path.
+        if: github.event_name == 'schedule'
+        run: npx tsx conformance/cross-run-corpus/bb-stateful-fuzzer.mts --cases 10000 --seed 424242 --history-len 12
