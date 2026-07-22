@@ -460,15 +460,33 @@ function copySignaturesValid(
   return true;
 }
 
-/** Same-index phaseSummary limb (#254): every shared index must agree on kind+outcome. */
+/**
+ * Same-index phaseSummary limb (#254): every shared index must agree on kind+outcome.
+ *
+ * The index is keyed through a CANONICAL string, not the raw value. `index` is a loosely-typed
+ * member (unsigned-field/loose-type laundering class, §248 sibling): if a malicious signer supplies a
+ * CONTAINER (array/object) where a scalar is expected, a `Map` keyed by the raw value compares those
+ * keys by reference, so two copies' `[0]` indices never collide and the shared-index cross-copy check
+ * is SILENTLY SKIPPED — laundering a genuine phase divergence (fail) into agreement (present). JCS
+ * canonicalisation gives container indices a stable, by-value key so the check cannot be evaded; a
+ * non-canonicalisable index (e.g. a non-finite number, §7.2) falls back to a stable string tag rather
+ * than throwing. (conformance/cross-run-corpus/gen-unsigned-field-vectors.mts, phaseSummary[].index.)
+ */
+function phaseIndexKey(index: unknown): string {
+  try {
+    return `j:${Buffer.from(jcsCanonical(index)).toString('base64')}`;
+  } catch {
+    return `s:${String(index)}`;
+  }
+}
 function phaseSummaryDiverges(a: JsonObject, b: JsonObject): boolean {
   const pa = Array.isArray(a.phaseSummary) ? a.phaseSummary : [];
   const pb = Array.isArray(b.phaseSummary) ? b.phaseSummary : [];
-  const byIndex = new Map<unknown, JsonObject>();
-  for (const p of pa) if (isObject(p)) byIndex.set(p.index, p);
+  const byIndex = new Map<string, JsonObject>();
+  for (const p of pa) if (isObject(p)) byIndex.set(phaseIndexKey(p.index), p);
   for (const p of pb) {
     if (!isObject(p)) continue;
-    const other = byIndex.get(p.index);
+    const other = byIndex.get(phaseIndexKey(p.index));
     if (other && (other.kind !== p.kind || other.outcome !== p.outcome)) return true;
   }
   return false;
