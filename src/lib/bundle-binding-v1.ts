@@ -472,21 +472,41 @@ function copySignaturesValid(
  * non-canonicalisable index (e.g. a non-finite number, §7.2) falls back to a stable string tag rather
  * than throwing. (conformance/cross-run-corpus/gen-unsigned-field-vectors.mts, phaseSummary[].index.)
  */
-function phaseIndexKey(index: unknown): string {
+function phaseIndexKey(index: unknown): string | null {
+  // A non-canonicalizable index (e.g. a non-finite number, §7.2) cannot be safely keyed BY VALUE. The
+  // earlier String() fallback was lossy: two DISTINCT such indices could collide to one key, and
+  // Map.set keeps the LAST entry, overwriting a genuine counterpart — so a real same-index divergence
+  // could be MISSED and laundered into `present` (Gemini flagged the collision; Codex traced the
+  // last-write-wins fail-OPEN, 2026-07-22). At this security comparison boundary we fail CLOSED: return
+  // null, and the caller treats a null-keyed (malformed) index as divergence.
   try {
     return `j:${Buffer.from(jcsCanonical(index)).toString('base64')}`;
   } catch {
-    return `s:${String(index)}`;
+    return null;
   }
 }
 function phaseSummaryDiverges(a: JsonObject, b: JsonObject): boolean {
   const pa = Array.isArray(a.phaseSummary) ? a.phaseSummary : [];
   const pb = Array.isArray(b.phaseSummary) ? b.phaseSummary : [];
   const byIndex = new Map<string, JsonObject>();
-  for (const p of pa) if (isObject(p)) byIndex.set(phaseIndexKey(p.index), p);
+  for (const p of pa) {
+    if (!isObject(p)) continue;
+    const k = phaseIndexKey(p.index);
+    if (k === null) return true;  // non-canonicalizable index → fail-closed divergence
+    // A duplicate canonical index WITHIN a copy is malformed. Map.set is last-write-wins, so silently
+    // keeping the last would drop a genuine earlier entry and could MISS a real divergence against it
+    // (Codex 2026-07-22, fail-open residual). A duplicate index is itself a divergence signal → fail-closed.
+    if (byIndex.has(k)) return true;
+    byIndex.set(k, p);
+  }
+  const seenB = new Set<string>();
   for (const p of pb) {
     if (!isObject(p)) continue;
-    const other = byIndex.get(phaseIndexKey(p.index));
+    const k = phaseIndexKey(p.index);
+    if (k === null) return true;  // non-canonicalizable index → fail-closed divergence
+    if (seenB.has(k)) return true;  // duplicate index within pb is likewise malformed → fail-closed
+    seenB.add(k);
+    const other = byIndex.get(k);
     if (other && (other.kind !== p.kind || other.outcome !== p.outcome)) return true;
   }
   return false;
