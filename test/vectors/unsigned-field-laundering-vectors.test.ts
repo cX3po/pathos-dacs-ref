@@ -179,3 +179,52 @@ test('MUTATION-PIN (teeth): reverting the container-index canonical-key guard fa
     `the live resolver must reject the container-index laundering (fail), got ${live.disposition}: ${live.detail}`,
   );
 });
+
+// Regression (Codex 2026-07-22): the CROSS-RUN's resolveVector default branch must THROW on an
+// unknown/misspelled family, so the cross-run scores it ERROR (fails --strict) rather than laundering
+// a silent 'fail' disposition into an AGREE against a vector whose expected==='fail'. Guards the exact
+// fail-open Codex reproduced with `family:"diretc", expected:"fail"`.
+test('TOOLING GUARD: unknown vector family THROWS (no silent fail → no --strict AGREE laundering)', async () => {
+  // NodeNext maps the `.mjs` specifier to the `.mts` source (same convention as the `.js`-for-`.ts`
+  // imports above); a bare `.mts` specifier is a tsc error (TS5097).
+  const mod = await import('../../conformance/cross-run-corpus/unsigned-field-cross-run.mjs');
+  const bogus = { name: 'typo-family', family: 'diretc', field: 'x', triple: 'mutated', expected: 'fail', reachable: true };
+  const emptyCorpus = { set: corpus.set, publicKeys: corpus.publicKeys, vectors: [] };
+  assert.throws(
+    () => mod.resolveVector(emptyCorpus, bogus),
+    /unknown vector family/,
+    'an unknown family must throw so the cross-run scores it ERROR (fails --strict), never a silent fail scored AGREE',
+  );
+});
+
+// Regression (Codex 2026-07-22, finding D): malformed scoring METADATA must not silently drop a vector
+// out of strict scoring. A typo'd `reachble: true` reads as reachable===undefined (falsy) → REF-ONLY →
+// ignored by --strict, so a valid-family vector resolving WRONG could still pass. metaError() flags it →
+// the cross-run scores it ERROR → --strict fails. Also assert the committed set is all-valid.
+test('TOOLING GUARD: malformed vector metadata is rejected (no silent drop from --strict scoring)', async () => {
+  const mod = await import('../../conformance/cross-run-corpus/unsigned-field-cross-run.mjs');
+  // every committed vector must be metadata-valid (else the set itself would carry a silent-drop hole)
+  for (const v of corpus.vectors) {
+    assert.equal(mod.metaError(v), null, `committed vector ${v.name} must have valid metadata`);
+  }
+  // a misspelled `reachable` key (the exact finding-D shape) must be flagged, not silently REF-ONLY'd
+  const typoReachable = { name: 'typo-reachable', family: 'direct', field: 'x', triple: 'mutated', expected: 'fail', reachble: true };
+  assert.match(mod.metaError(typoReachable) ?? '', /unknown key "reachble"/, 'a misspelled reachable must be flagged as ERROR (unknown-key guard)');
+  // and an OMITTED reachable (no typo, just absent) is caught by the boolean check
+  assert.match(mod.metaError({ name: 'no-reachable', family: 'direct', field: 'x', triple: 'mutated', expected: 'fail' }) ?? '', /"reachable" must be boolean/, 'an absent reachable must be flagged');
+  // other malformed enums are flagged too (family / expected / triple / baseline)
+  assert.match(mod.metaError({ name: 'bad-fam', family: 'diretc', reachable: true, expected: 'fail' }) ?? '', /family/, 'bad family flagged');
+  assert.match(mod.metaError({ name: 'bad-exp', family: 'direct', reachable: true, expected: 'presnt' }) ?? '', /expected/, 'bad expected flagged');
+  // finding-D RESIDUAL (Codex): a reference-only vector whose pathosBaseline is MISSPELLED (unknown key)
+  // or MISSING must not silently drop from strict scoring — both are flagged.
+  assert.match(
+    mod.metaError({ name: 'typo-baseline', family: 'direct', field: 'x', triple: 'mutated', expected: 'fail', reachable: false, pathosBasline: 'indeterminate' }) ?? '',
+    /unknown key "pathosBasline"/, 'a misspelled pathosBaseline (unknown key) must be flagged');
+  assert.match(
+    mod.metaError({ name: 'missing-baseline', family: 'direct', field: 'x', triple: 'mutated', expected: 'fail', reachable: false }) ?? '',
+    /reference-only vector requires a valid "pathosBaseline"/, 'a ref-only vector with no baseline must be flagged');
+  // and the unknown-key guard closes the whole misspelling class (e.g. a typo'd field key)
+  assert.match(
+    mod.metaError({ name: 'typo-field', family: 'direct', reachable: true, expected: 'fail', feild: 'x' }) ?? '',
+    /unknown key "feild"/, 'any unknown/misspelled key is flagged');
+});

@@ -34,6 +34,8 @@ const SUITE: Array<{ id: string; script: string; args?: string[]; note: string }
     note: 'DACS-5 §10.4.3 two-sided verdict vs dacs-sdk #30 case set' },
   { id: 'canonical-hash 3-way', script: 'conformance/security-vectors/convergence-harness/harness.mts',
     note: 'multi-impl §10.4.1/R5-1 canonical bundle-hash agreement (pathos / dacs-verify / dacs-sdk)' },
+  { id: 'unsigned-field laundering', script: 'conformance/cross-run-corpus/unsigned-field-cross-run.mts', args: ['--strict'],
+    note: 'unsigned-field / loose-type laundering class (anchoredByRole-style): every reachable vector resolves as expected — a DIVERGE under --strict is an undocumented resolver disagreement' },
 ];
 
 const jsonMode = process.argv.includes('--json');

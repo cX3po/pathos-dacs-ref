@@ -210,6 +210,9 @@ type Vector = Json & {
   triple: 'pristine' | 'mutated' | 'control';
   expected: Disposition;
   reachable: boolean;        // false => aspirational/reference-only (documented, not asserted AGREE)
+  pathosBaseline?: Disposition; // ref-only vectors: the (safe, non-present) disposition our resolver
+                                // returns today, pinned so an un-consumed field can't silently start
+                                // swinging our verdict (BASELINE-DRIFT in the strict cross-run).
   provenance: Json;
 };
 
@@ -497,6 +500,7 @@ function buildTwoCopyDirect(jobId: string, budget: unknown): Json {
   vectors.push({
     name: 'bundleCount-bool-reference-only',
     family: 'direct', field: 'bundleCount', triple: 'mutated', expected: 'indeterminate', reachable: false,
+    pathosBaseline: 'indeterminate',
     request: { jobId: 'REF-BC', role: 'seller', bundleCount: true }, bindings: [], anchored: {}, budget: undefined,
     provenance: {
       rule: 'ASPIRATIONAL — xm33 bundleCount boolean coverage gap',
@@ -511,6 +515,7 @@ function buildTwoCopyDirect(jobId: string, budget: unknown): Json {
   vectors.push({
     name: 'windowingBasis-container-reference-only',
     family: 'direct', field: 'windowingBasis', triple: 'mutated', expected: 'fail', reachable: false,
+    pathosBaseline: 'indeterminate',
     request: { jobId: 'REF-WB', role: 'seller', windowingBasis: [] }, bindings: [], anchored: {}, budget: undefined,
     provenance: {
       rule: 'ASPIRATIONAL — RB windowingBasis container-type defect',

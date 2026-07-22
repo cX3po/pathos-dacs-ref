@@ -49,13 +49,22 @@ Every reachable field ships a **triple** so the set is not tautological:
 | `anchoredByRole` (extended-pointer) | unsigned field | **yes** | pristine `present` / mutated `fail` / control `fail` | AGREE — re-anchored to the signed/derived `binding.role`. |
 | `budget` | boolean-for-int | **yes** | pristine `indeterminate` / mutated `indeterminate` / control `present` | AGREE — `Number.isInteger(budget)` rejects the bool → normative default N=8 (never coerced to 0/1). |
 | `phaseSummary[].index` | container-for-scalar | **yes** | pristine `fail` / mutated `fail` / control `present` | AGREE **after resolver hardening** (see below). |
-| `bundleCount` | boolean-for-int | **reference-only** | — | Our resolver derives copy counts structurally (array length), not from a caller-supplied `bundleCount`; no decision to swing here. Named for implementations that carry it. |
-| `windowingBasis` | container-for-scalar | **reference-only** | — | Not present in our §10.4 surface; the same class is exercised via `phaseSummary[].index`. Named for implementations that carry it. |
+| `bundleCount` | boolean-for-int | **reference-only** (baseline-pinned) | — | Our resolver derives copy counts structurally (array length), not from a caller-supplied `bundleCount`; no decision to swing here. Named for implementations that carry it. Baseline-pinned at `indeterminate`. |
+| `windowingBasis` | container-for-scalar | **reference-only** (baseline-pinned) | — | Not present in our §10.4 surface; the same class is exercised via `phaseSummary[].index`. Named for implementations that carry it. Baseline-pinned at `indeterminate`. |
 
 `reachable:true` vectors are **scored** (AGREE/DIVERGE) against our resolver; `reachable:false`
-(aspirational) vectors are **reported REF-ONLY**, not scored — they are coverage sign-posts for other
-implementations (e.g. Marius's `dacs-verify`, the DACS-Standard reference), not fabricated passing
-cases.
+(aspirational) vectors are coverage sign-posts for other implementations (e.g. Marius's `dacs-verify`,
+the DACS-Standard reference), **not fabricated passing cases** — we do not claim our resolver reaches
+their `expected` disposition, because our resolver does not consume those fields.
+
+**Baseline-pin (regression teeth for the un-consumed fields).** A reference-only vector may carry a
+`pathosBaseline` — the disposition our resolver *actually* returns today (a safe, non-`present` value).
+The cross-run then scores it **BASELINE-OK / BASELINE-DRIFT** instead of leaving it pure documentation.
+This asserts the honest invariant we *can* assert against our own resolver: a field we don't consume
+must never silently start swinging our verdict. If a future change adds consumption of `bundleCount`
+(or `windowingBasis`) without a reject-bool / reject-container guard, the disposition drifts off the pin
+and the strict cross-run turns the convergence suite **RED**. It is a regression pin, not a fabricated
+pass: it locks *current safe behavior*, never claims the aspirational `expected`.
 
 ## Resolver gap found + closed (container-for-scalar)
 

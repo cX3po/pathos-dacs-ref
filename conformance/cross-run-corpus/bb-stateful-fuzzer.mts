@@ -69,6 +69,12 @@
  *                         never a throw/hang.
  *   monotonic-standing    a full-standing (fully-signed) copy is never overridden by a
  *                         lesser-signed one regardless of operation order.
+ *   equal-standing-divergence  THREE (>2) equal-standing copies at one side with distinct content
+ *                         must fail-closed to indeterminate — the resolver never arbitrarily elects one.
+ *   budget-exhaustion     >N same-signer copies under request.budget=N exhaust the per-signer fetch
+ *                         cap and must fail-closed to indeterminate (never skip validation → present).
+ *   multi-index-phase     the #254 shared-index divergence check catches a disagreement at a NON-ZERO
+ *                         phaseSummary index (not just index 0); an all-agree pair stays present.
  *
  * RUN + REPLAY
  * ------------
@@ -242,6 +248,7 @@ type BundleFacts = {
   nonce: number;
   fullySigned: boolean;   // sign with every roster role vs a single signer
   role: BundleBindingRole; // the requested side / anchor role
+  phases?: Array<{ index: unknown; kind: string; outcome: string }>; // override the single index-0 phaseSummary
 };
 
 function buildSignedBundle(world: World, facts: BundleFacts): { bundle: Json; contentHash: string; fullySigned: boolean } {
@@ -263,7 +270,10 @@ function buildSignedBundle(world: World, facts: BundleFacts): { bundle: Json; co
     faultedParty: facts.faultedParty,
     anchoredByRole: facts.anchoredByRole, // EXCLUDED from signed scope
     parties,
-    phaseSummary: [{ index: 0, kind: 'deliver-storage-program', outcome: phaseOutcome }],
+    // Default: a single index-0 phase. Multi-index histories override facts.phases to drive the #254
+    // shared-index divergence check at indices beyond 0 (phaseSummary IS in signed scope, so the
+    // whole array is bound — this exercises value-correct divergence detection, not laundering).
+    phaseSummary: facts.phases ?? [{ index: 0, kind: 'deliver-storage-program', outcome: phaseOutcome }],
     finalisedAt: 1780000000000 + facts.nonce,
     nonce: facts.nonce,
   };
@@ -347,6 +357,12 @@ type History = {
   // for present families
   expectPresent?: boolean;
   expectedNative?: string;
+  // for equal-standing-divergence / budget-exhaustion: the resolver must fail-closed to indeterminate
+  // (stronger than "not present" — a wrong 'fail'/'present' here is also a violation).
+  expectIndeterminate?: boolean;
+  // pin the resolution to a specific fail-closed PATH by requiring a substring in res.detail (e.g.
+  // 'budget'): without it a budget-exhaustion history could pass indeterminate for an unrelated reason.
+  expectDetailIncludes?: string;
 };
 
 function freshWorld(rng: Rng): World {
@@ -715,6 +731,116 @@ function histMalformedTransition(rng: Rng): History {
   };
 }
 
+/**
+ * equal-standing N-way divergence (>2 copies) — THREE fully-signed copies at the SAME side with
+ * DISTINCT content (distinct nonce → distinct canonical scope). No copy dominates (all full-signed),
+ * so the resolver sees three equal-standing groups and MUST fail-closed to indeterminate — it may
+ * never arbitrarily elect one as present. Extends monotonic-standing (2 copies, one dominant) into
+ * the no-dominant N-way case. Order across all three copies is randomized; determinism-under-restart
+ * (checkHistory) then asserts the verdict is order-independent across the 3! permutations sampled.
+ */
+function histThreeWayDivergence(rng: Rng): History {
+  const world = freshWorld(rng);
+  const ops: Op[] = [];
+  const role: BundleBindingRole = rng.pick(ROLES);
+  const baseNonce = rng.int(400_000);
+  // identical (valid) outcome, DISTINCT nonce — three genuinely different attested contents for the
+  // same job+side = equivocation. All valid → all reach validCopies → three canonical groups.
+  const copies = [0, 1, 2].map((i) => constructCopy(world, rng, {
+    kind: 'fab', outcome: 'completed', faultedParty: 'none', anchoredByRole: role,
+    nonce: baseNonce + 1 + i, fullySigned: true, role,
+  }));
+  const order = [0, 1, 2];
+  for (let i = order.length - 1; i > 0; i--) { const j = rng.int(i + 1); [order[i], order[j]] = [order[j]!, order[i]!]; }
+  for (const idx of order) world.copies.push(copies[idx]!);
+  ops.push({ t: 'SIGN+ANCHOR x3', detail: `three full-signed distinct copies @${role} (insertion order ${order.join(',')})` });
+  return {
+    kind: 'three-way-divergence', world, ops,
+    target: { api: 'bb', request: { jobId: world.jobId, role }, role },
+    invariant: 'equal-standing-divergence',
+    expectIndeterminate: true,
+  };
+}
+
+/**
+ * per-signer budget exhaustion (as a history) — construct N+k copies all signed by the SAME signer at
+ * the SAME side, then resolve with request.budget = N. The per-signer fetch bucket overflows, so the
+ * resolver MUST fail-closed to indeterminate (BB-7) — it may never skip validation and present, nor
+ * throw. Budget exhaustion modeled as an accumulating sequence of SIGN+ANCHOR steps, not a single input.
+ *
+ * CRITICAL (Codex 2026-07-22): every copy carries IDENTICAL canonical content (same nonce/signed
+ * fields), only the native address/binding differs. So the ONLY reason this resolves indeterminate is
+ * the per-signer budget cap firing BEFORE canonical grouping. If the copies had distinct content, a
+ * removed budget check would still yield indeterminate via equal-standing DIVERGENCE — the test would
+ * pass for the wrong reason and could not detect budget enforcement being broken. With identical
+ * content, a removed budget check instead collapses all copies into ONE group → present → the test
+ * (expectIndeterminate) correctly goes RED. expectDetailIncludes:'budget' pins it to the BB-7 path.
+ */
+function histBudgetExhaustion(rng: Rng): History {
+  const world = freshWorld(rng);
+  const ops: Op[] = [];
+  const role: BundleBindingRole = rng.pick(ROLES);
+  const budget = 1 + rng.int(3);               // N in [1,3]
+  const copyCount = budget + 1 + rng.int(3);   // strictly exceed the per-signer bucket
+  const nonce = rng.int(300_000);              // SAME nonce for all → identical canonical content
+  for (let i = 0; i < copyCount; i++) {
+    world.copies.push(constructCopy(world, rng, {
+      kind: 'fab', outcome: 'completed', faultedParty: 'none', anchoredByRole: role,
+      nonce, fullySigned: true, role,
+    }));
+    ops.push({ t: 'SIGN+ANCHOR', detail: `copy ${i + 1}/${copyCount} @${role} (signer=${role}, identical content)` });
+  }
+  ops.push({ t: 'RESOLVE(budget)', detail: `request.budget=N=${budget} < ${copyCount} same-signer copies → per-signer fetch budget exhausted` });
+  return {
+    kind: 'budget-exhaustion', world, ops,
+    target: { api: 'bb', request: { jobId: world.jobId, role, budget }, role },
+    invariant: 'budget-exhaustion',
+    expectIndeterminate: true,
+    expectDetailIncludes: 'budget',
+  };
+}
+
+/**
+ * multi-index phaseSummary (#254 beyond index 0) — a coherent, otherwise-PRESENT mixed pair whose two
+ * copies share 2..4 phaseSummary indices. In the DIVERGE variant they disagree on the outcome of a
+ * NON-ZERO index; the #254 shared-index check must catch it (never present). In the AGREE variant all
+ * shared indices match and the pair stays present. Exercises the hardened phaseSummaryDiverges (this
+ * session's container-index fix) across the whole array, not just index 0.
+ */
+function histMultiIndexPhase(rng: Rng): History {
+  const world = freshWorld(rng);
+  const ops: Op[] = [];
+  const nonce = rng.int(400_000);
+  const diverge = rng.chance(0.5);
+  const idxCount = 2 + rng.int(3); // 2..4 shared indices
+  const phasesA = Array.from({ length: idxCount }, (_, i) => ({ index: i, kind: 'deliver-storage-program', outcome: 'ok' }));
+  const phasesB = phasesA.map((p) => ({ ...p }));
+  let divergeAt = -1;
+  if (diverge) { divergeAt = 1 + rng.int(idxCount - 1); phasesB[divergeAt] = { ...phasesB[divergeAt]!, outcome: 'fail' }; }
+  // coherent present base (version-migrate shape): FAB seller aborted-by-self faulted=seller ∩ legacy
+  // buyer aborted-by-other → fault-sets intersect {seller}; ONLY phaseSummary varies between variants.
+  const fab = constructCopy(world, rng, {
+    kind: 'fab', outcome: 'aborted-by-self', faultedParty: 'seller', anchoredByRole: 'seller',
+    nonce, fullySigned: true, role: 'seller', phases: phasesA,
+  });
+  const legacy = constructCopy(world, rng, {
+    kind: 'legacy', outcome: 'aborted-by-other', faultedParty: 'none', anchoredByRole: 'buyer',
+    nonce: nonce + 1, fullySigned: true, role: 'buyer', phases: phasesB,
+  });
+  world.copies.push(fab, legacy);
+  ops.push({ t: 'SIGN+ANCHOR', detail: `FAB seller + legacy buyer, ${idxCount} shared phase indices` });
+  ops.push(diverge
+    ? { t: 'PHASE_DIVERGE', detail: `phaseSummary[${divergeAt}].outcome disagrees across the pair (non-zero index)` }
+    : { t: 'PHASE_AGREE', detail: `all ${idxCount} shared phase indices agree` });
+  const copies: Record<string, unknown> = { seller: fab.bundle, buyer: legacy.bundle };
+  return {
+    kind: diverge ? 'multi-index-phase-diverge' : 'multi-index-phase-agree', world, ops,
+    target: { api: 'mixed', copies },
+    invariant: diverge ? 'no-launder' : 'determinism-under-restart',
+    ...(diverge ? { preAdversarialFail: true } : { expectPresent: true }),
+  };
+}
+
 const GENERATORS: Array<{ gen: (rng: Rng) => History; weight: number }> = [
   { gen: histLaunderMixed, weight: 16 },
   { gen: histLaunderPair, weight: 16 },
@@ -724,6 +850,9 @@ const GENERATORS: Array<{ gen: (rng: Rng) => History; weight: number }> = [
   { gen: histMonotonicStanding, weight: 10 },
   { gen: histVersionMigrate, weight: 10 },
   { gen: histMalformedTransition, weight: 12 },
+  { gen: histThreeWayDivergence, weight: 10 },
+  { gen: histBudgetExhaustion, weight: 8 },
+  { gen: histMultiIndexPhase, weight: 10 },
 ];
 function pickGenerator(rng: Rng): (rng: Rng) => History {
   const total = GENERATORS.reduce((s, g) => s + g.weight, 0);
@@ -828,6 +957,15 @@ function checkHistory(h: History): Violation[] {
     });
   }
 
+  // fail-closed divergence families (equal-standing N-way divergence, per-signer budget exhaustion):
+  // the resolver must resolve INDETERMINATE — never present (would launder) and never a spurious fail.
+  if (h.expectIndeterminate && res.disposition !== 'indeterminate') {
+    violations.push({ invariant: h.invariant, detail: `expected indeterminate (fail-closed), got ${res.disposition}: ${res.detail}` });
+  }
+  if (h.expectDetailIncludes && !(res.detail ?? '').toLowerCase().includes(h.expectDetailIncludes.toLowerCase())) {
+    violations.push({ invariant: h.invariant, detail: `expected detail to name "${h.expectDetailIncludes}" path, got: ${res.detail}` });
+  }
+
   // constructive present families
   if (h.expectPresent) {
     if (res.disposition !== 'present') {
@@ -894,6 +1032,54 @@ function selfTest(): void {
     console.error('FATAL self-test (b): the pristine contradiction base did NOT resolve fail.');
     console.error(JSON.stringify(pristine));
     console.error('A no-launder base that is not fail would make the invariant vacuous. Aborting.');
+    process.exit(2);
+  }
+  // (c) a 3-way equal-standing divergence MUST resolve indeterminate — else the divergence family is
+  //     vacuous (a base that was already present/fail for an unrelated reason).
+  const three = histThreeWayDivergence(makeRng(5));
+  const threeOut = runResolve(three.world, three.target);
+  if (threeOut.threw || threeOut.resolution.disposition !== 'indeterminate') {
+    console.error('FATAL self-test (c): a 3-way equal-standing divergence did NOT resolve indeterminate.');
+    console.error(threeOut.threw ? threeOut.error : JSON.stringify(threeOut.resolution));
+    process.exit(2);
+  }
+  // (d) budget exhaustion MUST resolve indeterminate VIA the BB-7 budget path — else the family never
+  //     exercises the cap. The copies carry identical canonical content, so:
+  const budg = histBudgetExhaustion(makeRng(6));
+  const budgOut = runResolve(budg.world, budg.target);
+  if (budgOut.threw || budgOut.resolution.disposition !== 'indeterminate' || !/budget/i.test(budgOut.resolution.detail ?? '')) {
+    console.error('FATAL self-test (d): per-signer budget exhaustion did NOT resolve indeterminate via the BB-7 budget path.');
+    console.error(budgOut.threw ? budgOut.error : JSON.stringify(budgOut.resolution));
+    process.exit(2);
+  }
+  //     …and NON-VACUITY (Codex 2026-07-22): the SAME copies resolved under a budget large enough NOT
+  //     to exhaust must resolve PRESENT (identical content = one canonical group). If they don't, the
+  //     indeterminate above is not attributable to budget exhaustion and the family is vacuous — a
+  //     removed budget check would then pass on equal-standing divergence instead of failing RED.
+  const relaxedTarget: ResolveTarget = budg.target.api === 'bb'
+    ? { api: 'bb', request: { ...budg.target.request, budget: 4096 }, role: budg.target.role }
+    : budg.target;
+  const relaxed = runResolve(budg.world, relaxedTarget);
+  if (relaxed.threw || relaxed.resolution.disposition !== 'present') {
+    console.error('FATAL self-test (d-nonvacuity): budget-exhaustion copies under a large budget did NOT resolve present.');
+    console.error('The indeterminate is therefore NOT attributable to the budget cap (identical-content construction broke). Aborting.');
+    console.error(relaxed.threw ? relaxed.error : JSON.stringify(relaxed.resolution));
+    process.exit(2);
+  }
+  // (e) BOTH multi-index phase variants must be reachable and correct: a NON-ZERO-index divergence
+  //     resolves non-present, and the all-agree control resolves present. Search seeds for one of each
+  //     so a build where phaseSummaryDiverges silently no-ops (present on divergence) is caught here.
+  let sawDivergeFail = false, sawAgreePresent = false;
+  for (let s = 1; s <= 64 && !(sawDivergeFail && sawAgreePresent); s++) {
+    const h = histMultiIndexPhase(makeRng(s));
+    const out = runResolve(h.world, h.target);
+    if (out.threw) continue;
+    if (h.kind === 'multi-index-phase-diverge' && out.resolution.disposition !== 'present') sawDivergeFail = true;
+    if (h.kind === 'multi-index-phase-agree' && out.resolution.disposition === 'present') sawAgreePresent = true;
+  }
+  if (!sawDivergeFail || !sawAgreePresent) {
+    console.error(`FATAL self-test (e): multi-index phase family vacuous (divergeCaught=${sawDivergeFail}, agreePresent=${sawAgreePresent}).`);
+    console.error('phaseSummaryDiverges may be no-opping beyond index 0, or the coherent base is not present. Aborting.');
     process.exit(2);
   }
 }
@@ -989,7 +1175,8 @@ function main(): void {
   if (totalViolations === 0) {
     console.log(`RESULT: ${cases}/${cases} histories pass. No invariant violations across any sequence.`);
     console.log('Invariants exercised: no-launder, perspective-invariance, replay-rejection,');
-    console.log('determinism-under-restart, fail-closed, monotonic-standing.');
+    console.log('determinism-under-restart, fail-closed, monotonic-standing, equal-standing-divergence,');
+    console.log('budget-exhaustion (per-signer fetch cap), multi-index phaseSummary (#254 beyond index 0).');
     return;
   }
 

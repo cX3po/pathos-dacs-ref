@@ -30,7 +30,7 @@
     "seller": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
     "orchestrator": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
   },
-  "hash": "961f2bfaa913f2e9b55c97ef6775e9c60f1769ecad2af1adf83d241f6085544e",
+  "hash": "d1f49a7f3cef6ec294a797b26b31790b94d77dcae3b819bd887784656e98eaa3",
   "count": 14,
   "vectors": [
     {
@@ -1338,6 +1338,7 @@
       "triple": "mutated",
       "expected": "indeterminate",
       "reachable": false,
+      "pathosBaseline": "indeterminate",
       "request": {
         "jobId": "REF-BC",
         "role": "seller",
@@ -1358,6 +1359,7 @@
       "triple": "mutated",
       "expected": "fail",
       "reachable": false,
+      "pathosBaseline": "indeterminate",
       "request": {
         "jobId": "REF-WB",
         "role": "seller",
