@@ -31,7 +31,9 @@
  * only. Extending to the optional fields + failure-with-reason records is future work.
  */
 
+import { DOMAIN_SEPARATORS } from '../domain-sep.js';
 import { jcsHashHex } from '../jcs.js';
+import { sign } from './sign.js';
 import type {
   SettlementEvidenceV1,
   SettlementEvidenceV1Payment,
@@ -179,4 +181,21 @@ export function evidenceHashV1(e: SettlementEvidenceV1): string {
   const { signature: _sig, ...unsigned } = e as SettlementEvidenceV1 & { signature?: unknown };
   void _sig;
   return jcsHashHex(unsigned);
+}
+
+/**
+ * Attach a real ed25519 §9.7 signature over the canonical evidence hash.
+ *
+ * Referenced-artifact verification reconstructs the unsigned evidence, hashes its
+ * JCS form, then verifies `dacs-evidence:v1:` || UTF8(hex evidenceHash). Keep that
+ * byte contract here so producers cannot accidentally sign the evidence body.
+ */
+export function signSettlementEvidenceV1(
+  evidence: SettlementEvidenceV1,
+  signer: string,
+  privKey: Uint8Array,
+): SettlementEvidenceV1 {
+  const hashBytes = new TextEncoder().encode(evidenceHashV1(evidence));
+  const value = Buffer.from(sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, hashBytes, privKey)).toString('base64');
+  return { ...evidence, signature: { algorithm: 'ed25519', signer, value } };
 }

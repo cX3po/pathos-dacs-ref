@@ -31,7 +31,7 @@ import { generateKeypair, sign } from '../lib/sign.js';
 import { bytesToHex } from '../lib/verify-bundle.js';
 import { DOMAIN_SEPARATORS } from '../domain-sep.js';
 import { jcsCanonical, jcsHashHex } from '../jcs.js';
-import { emitSettlementEvidenceV1 } from '../lib/emit-settlement-evidence-v1.js';
+import { emitSettlementEvidenceV1, signSettlementEvidenceV1 } from '../lib/emit-settlement-evidence-v1.js';
 import { emitAttestationBundleV1 } from '../lib/emit-bundle-v1.js';
 import { verifyBundleV1Full, computeAnchorPairV1 } from '../lib/verify-bundle-v1.js';
 import type { AttestationBundleV1, BundlePhaseEntry } from '../types/bundle.js';
@@ -219,10 +219,10 @@ const agreementBody = {
   buyer: { scheme: 'cci', identifier: buyerCci },
   seller: { scheme: 'cci', identifier: sellerCci },
 };
-const agreementCanonical = jcsCanonical(agreementBody);
 const agreementHash = jcsHashHex(agreementBody);
-const buyerAgreementSig = Buffer.from(sign(DOMAIN_SEPARATORS.AGREEMENT, agreementCanonical, buyerKeys.privKey)).toString('base64');
-const sellerAgreementSig = Buffer.from(sign(DOMAIN_SEPARATORS.AGREEMENT, agreementCanonical, sellerKeys.privKey)).toString('base64');
+const agreementHashBytes = new TextEncoder().encode(agreementHash);
+const buyerAgreementSig = Buffer.from(sign(DOMAIN_SEPARATORS.AGREEMENT, agreementHashBytes, buyerKeys.privKey)).toString('base64');
+const sellerAgreementSig = Buffer.from(sign(DOMAIN_SEPARATORS.AGREEMENT, agreementHashBytes, sellerKeys.privKey)).toString('base64');
 // Codex-review HIGH fix (2026-07-07): the SIGNED agreement is anchored and referenced from the
 // bundle (agreementRef), so a verifier can independently recover + verify the signed terms —
 // not just confirm hashes it cannot resolve.
@@ -258,6 +258,7 @@ if (LIVE && handles) {
   });
   log('DACS-4', `pay-dem MOCK (dry-run) — no funds moved`);
 }
+payEvidence = signSettlementEvidenceV1(payEvidence, `cci:${buyerCci}`, buyerKeys.privKey);
 const payEvidenceStr = jcsString(payEvidence);
 const payEvidenceHash = jcsHashHex(payEvidence);
 const payEvidenceLocator = await anchorString(
@@ -286,11 +287,11 @@ const deliverableObj = {
 const deliverablePayload = jcsString(deliverableObj);
 const deliverableContentHash = jcsHashHex(deliverableObj);
 const deliverableLocator = await anchorString(handles?.seller ?? null, sellerOwner, anchorNames.deliverable(jobId), deliverablePayload);
-const deliveryEvidence = emitSettlementEvidenceV1({
+const deliveryEvidence = signSettlementEvidenceV1(emitSettlementEvidenceV1({
   kind: 'delivery', jobId, phase: 'deliver-storage-program', phaseIndex: DELIVER_PHASE_INDEX, outcome: 'success',
   deliverableContentHash, deliverableAnchorKind: 'storage-program', deliverableAnchorLocator: deliverableLocator,
   observedAt: now(),
-});
+}), `cci:${sellerCci}`, sellerKeys.privKey);
 const deliveryEvidenceStr = jcsString(deliveryEvidence);
 const deliveryEvidenceHash = jcsHashHex(deliveryEvidence);
 const deliveryEvidenceLocator = await anchorString(
