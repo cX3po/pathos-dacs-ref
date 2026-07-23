@@ -11,6 +11,7 @@
     "discovery-gen": "tsx src/cli/discovery-gen.ts",
     "verify": "tsx src/cli/verify.ts",
     "vet-gleif": "tsx src/cli/vet-gleif.ts",
+    "ap2-test-agent": "tsx src/live/ap2-test-agent.mts",
     "test": "tsx --test test/vectors/*.test.ts test/integration/*.test.ts",
     "convergence": "tsx conformance/convergence-suite.mts",
     "fuzz:bb-binding": "tsx conformance/cross-run-corpus/bb-differential-fuzzer.mts",

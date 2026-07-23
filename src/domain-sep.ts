@@ -111,6 +111,13 @@ export const DACS_X_EXTENSION_SEPARATORS = {
   // SIG-4 extension surface (no ZK/L2PS/FHE).
   //   DISPUTE_BUNDLE body := utf8(signedRoot hex)  (presenter-signed root binding; see src/lib/dispute.ts)
   DISPUTE_BUNDLE: 'dacs-x-dispute-bundle:v1:',
+
+  // pay-ap2 TEST-AGENT mock facilitator receipt (DACS-Standard #221/#222 §9.5.6). SIG-4 extension
+  // surface — a MOCK AP2 provider/facilitator "signs" its status=captured receipt under this
+  // separator so a mocked provider signature can NEVER be confused with a DACS core signature.
+  // A real deployment uses the PSP's own signature verified under SR-3 attestation, not this.
+  //   AP2_MOCK_RECEIPT body := utf8(sha256hex(JCS(receipt minus facilitatorSignature)))
+  AP2_MOCK_RECEIPT: 'dacs-x-ap2-receipt:v1:',
 } as const;
 
 /**

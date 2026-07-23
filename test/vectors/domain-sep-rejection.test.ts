@@ -92,10 +92,12 @@ test('§B.7 — registry separator count (v0.1 cutover: 10 registry + 11 dacs-x 
   // (spec §3 "consent + revocation", §5 P2) → 9 → 10. See src/lib/consent.ts.
   // 2026-06-08 dacs-disclose P3: +1 dacs-x kind (DISPUTE_BUNDLE) for the dispute-evidence bundle
   // (spec §3 dispute evidence, §5 P3; presenter===grantor binding) → 10 → 11. See src/lib/dispute.ts.
+  // 2026-07-23 pay-ap2 test agent: +1 dacs-x kind (AP2_MOCK_RECEIPT) for the MOCK AP2 facilitator
+  // receipt signature (DACS-Standard #221/#222 §9.5.6) → 11 → 12. See src/live/ap2-provider-receipt.ts.
   assert.equal(Object.keys(DOMAIN_SEPARATORS).length, 10,
     `expected 10 §B.7-registry separators, got ${Object.keys(DOMAIN_SEPARATORS).length}`);
-  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 11,
-    `expected 11 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
+  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 12,
+    `expected 12 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
   assert.equal(Object.keys(PATHOS_EXTENSION_SEPARATORS).length, 4,
     `expected 4 PATH-OS extension separators, got ${Object.keys(PATHOS_EXTENSION_SEPARATORS).length}`);
 });
