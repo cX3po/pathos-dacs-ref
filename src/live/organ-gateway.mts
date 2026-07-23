@@ -367,6 +367,41 @@ log('DACS-5', `ROLLUP: ${verdict.rollup.toUpperCase()}`);
 
 const passed = verdict.rollup === 'pass';
 
+// Opt-in, read-only receipt export (GATEWAY_DUMP_ARTIFACTS=<path>): writes the FULL signed artifact set
+// (listing, agreement, evidence, both bundle copies) + the verdict, so the deal's receipts can be
+// independently inspected + re-verified off-chain. No behaviour change when unset; never runs on-chain.
+// Output holds only signed public artifacts + on-chain addresses — no private keys or secrets.
+// Fail-soft: a dump write error is logged and swallowed so it can NEVER change the deal's outcome or
+// exit code — the deal has already settled by this point, and inspection tooling must not gate it.
+if (process.env.GATEWAY_DUMP_ARTIFACTS) {
+  try {
+    // Store BOTH the raw anchored string (byte-faithful — this is what §7.5.2 hashes, so the receipt
+    // is independently re-verifiable) and the parsed content (human-readable for inspection).
+    const artifacts: Record<string, { locator: string; raw: string; content: unknown }> = {};
+    for (const [k, v] of memoryAnchors) {
+      if (k.startsWith('name:')) continue;  // dedup: memoryAnchors is keyed by both locator and name:*
+      let content: unknown;
+      try { content = JSON.parse(v.data); } catch { content = v.data; }
+      artifacts[v.name] = { locator: k, raw: v.data, content };
+    }
+    const dump = {
+      dumpFormat: 'dacs-receipt-dump:v1',  // version tag so future readers can detect incompatibility
+      jobId, mode: LIVE ? 'live' : 'dry-run',
+      verdict: { rollup: verdict.rollup, twoSided: verdict.twoSided.outcome, attestationsVerified: verdict.attestationsVerified, attestationsFailed: verdict.attestationsFailed },
+      discovery: { logical_address: listingLogical, native_address: resolvedListing.nativeAddress, indexHash: discovery.indexHash },
+      anchors: { listing: listingLocator, agreement: agreementLocator, payEvidence: payEvidenceLocator, deliverable: deliverableLocator, deliveryEvidence: deliveryEvidenceLocator },
+      artifacts,
+    };
+    const { writeFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const dumpPath = resolve(process.env.GATEWAY_DUMP_ARTIFACTS);  // normalize operator-supplied path
+    writeFileSync(dumpPath, JSON.stringify(dump, null, 2));
+    console.log(`[dump] wrote full receipt set (${Object.keys(artifacts).length} artifacts) → ${dumpPath}`);
+  } catch (err) {
+    console.warn(`[dump] receipt export failed (deal outcome unaffected): ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 console.log(JSON.stringify({
   jobId, mode: LIVE ? 'live' : 'dry-run', rollup: verdict.rollup,
   twoSided: verdict.twoSided.outcome,

@@ -18,6 +18,7 @@
   "include": [
     "src/**/*",
     "test/**/*",
+    "scripts/**/*",
     "conformance/reproducers/dacs-v01-golden-pay-binding/**/*.ts",
     "conformance/reproducers/dacs-v01-golden-pay-binding/**/*.mts"
   ],
