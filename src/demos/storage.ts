@@ -107,10 +107,47 @@ export async function anchor(
   };
   const tx = await demosAny.storagePrograms.sign(payload);
   const validity = await demosAny.confirm(tx);
-  const result = await demosAny.broadcastAndWait(validity, { timeoutMs: 90_000 }) as {
+  // Broadcast wait window. A slow devnet node can take >90s to CONFIRM a tx it already accepted for
+  // propagation (the 2026-07-11 + 2026-07-23 BroadcastTimeoutError). Raise the default and make it tunable.
+  // Clamp to a finite, positive, capped value so a bad/Infinity env can't make the wait loops unbounded.
+  const clampMs = (v: number, def: number, max: number): number =>
+    Number.isFinite(v) && v > 0 ? Math.min(v, max) : def;
+  const broadcastTimeoutMs = clampMs(Number(process.env.GATEWAY_BROADCAST_TIMEOUT_MS), 240_000, 600_000);
+  type BroadcastResult = {
     broadcast?: { response?: { hash?: string }; data?: { tx_hash?: string; hash?: string } };
     status?: { state?: string };
   };
+  let result: BroadcastResult;
+  try {
+    result = await demosAny.broadcastAndWait(validity, { timeoutMs: broadcastTimeoutMs }) as BroadcastResult;
+  } catch (err) {
+    // A broadcast TIMEOUT means the tx was accepted for propagation but not confirmed within the wait
+    // window — it may STILL land. We MUST NOT re-broadcast (a second tx = double-anchor / double-spend).
+    // Instead poll getTransactionStatus for the SAME txHash over a bounded grace window; recover iff it
+    // reaches `included`, else fail closed (safe to re-run the deal after balance reconciliation).
+    const to = err as { name?: string; txHash?: string };
+    const timedOutHash = typeof to?.txHash === 'string' ? to.txHash : '';
+    if (to?.name !== 'BroadcastTimeoutError' || !timedOutHash) throw err;
+    const demosPoll = demos as unknown as { call: (m: string, a: string, p: unknown) => Promise<unknown> };
+    const graceMs = clampMs(Number(process.env.GATEWAY_BROADCAST_GRACE_MS), 180_000, 600_000);
+    const stepMs = 15_000;
+    const deadline = Date.now() + graceMs;
+    let landed = false;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, stepMs));
+      let statusRes: unknown;
+      try { statusRes = await demosPoll.call('nodeCall', 'getTransactionStatus', { hash: timedOutHash }); }
+      catch { continue; }   // transient transport blip — keep polling the same tx, never re-broadcast
+      const st = statusRes && typeof statusRes === 'object' ? (statusRes as { state?: unknown }).state : undefined;
+      if (st === 'included') { landed = true; break; }
+      if (st === 'failed') throw new Error(`SR-2 anchor of "${programName}" tx ${timedOutHash} FAILED on chain (not re-broadcast)`);
+    }
+    if (!landed) {
+      throw new Error(`SR-2 anchor of "${programName}" not confirmed within ${broadcastTimeoutMs + graceMs}ms ` +
+        `(tx ${timedOutHash}; never re-broadcast — reconcile balance, then re-run the deal)`);
+    }
+    result = { broadcast: { response: { hash: timedOutHash } }, status: { state: 'included' } };
+  }
 
   // Tx hash from the broadcast response (storage-program flow puts it under broadcast.response.hash).
   const txHash = result.broadcast?.response?.hash
