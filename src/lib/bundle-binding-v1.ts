@@ -9,17 +9,19 @@ import { sha256, sha512 } from '@noble/hashes/sha2';
 import { jcsCanonical } from '../jcs.js';
 import { verify } from './sign.js';
 import { claimKey, decodeEd25519Sig } from './verify-bundle-v1.js';
+import { DOMAIN_SEPARATORS } from '../domain-sep.js';
 
 ed25519.etc.sha512Sync = (...messages: Uint8Array[]): Uint8Array =>
   sha512(ed25519.etc.concatBytes(...messages));
 
 const encoder = new TextEncoder();
-const BINDING_DOMAIN = 'dacs-bundle-binding:v1:';
-const FAULT_BUNDLE_DOMAIN = 'dacs-fault-bundle:v1:';
+// Sourced from the central §B.7 registry (single source of truth) — these were added to §B.7 by #248.
+const BINDING_DOMAIN = DOMAIN_SEPARATORS.BUNDLE_BINDING;
+const FAULT_BUNDLE_DOMAIN = DOMAIN_SEPARATORS.FAULT_BUNDLE;
 // §10.4.2 extended-pointer path: the FaultBundleExtendedPointer is signed under its own domain;
 // legacy AttestationBundle copies (mixed-version reconciliation) sign under dacs-bundle:v1:.
-const FAULT_BUNDLE_POINTER_DOMAIN = 'dacs-fault-bundle-pointer:v1:';
-const LEGACY_BUNDLE_DOMAIN = 'dacs-bundle:v1:';
+const FAULT_BUNDLE_POINTER_DOMAIN = DOMAIN_SEPARATORS.FAULT_BUNDLE_POINTER;
+const LEGACY_BUNDLE_DOMAIN = DOMAIN_SEPARATORS.BUNDLE;
 const DEFAULT_FETCH_BUDGET = 8;
 const ROLES = new Set(['buyer', 'seller', 'orchestrator']);
 const OUTCOMES = new Set([
