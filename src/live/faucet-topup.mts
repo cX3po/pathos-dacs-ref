@@ -12,7 +12,7 @@
 import { connectDemos, mnemonicFromEnv } from '../demos/connection.js';
 import { config } from 'dotenv';
 
-config({ path: '/home/eric/axiom/.env' });
+config({ path: process.env.DACS_ENV_PATH ?? '.env' });
 
 const FAUCET = process.env.DEMOS_FAUCET ?? 'https://faucetbackend.demos.sh';
 const ts = () => new Date().toISOString();

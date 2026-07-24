@@ -19,7 +19,7 @@
  *       in-memory anchor map + clearly-labelled mock payment; proves the whole artifact
  *       pipeline including two-sided verification over the injected fetch)
  *   LIVE=1 npx tsx src/live/organ-gateway.mts        (real devnet: needs DEMOS_MNEMONIC
- *       (buyer, funded) + DEMOS_SELLER_MNEMONIC in ~/axiom/.env; ~6-7 DEM in fees/writes)
+ *       (buyer, funded) + DEMOS_SELLER_MNEMONIC in your .env; ~6-7 DEM in fees/writes)
  *
  * Honest scope: cci primary claims are per-run ed25519 keys (recorded in the anchored
  * artifacts) — durable gateway identities and listing discovery/indexing come next.
@@ -48,8 +48,14 @@ const ORGAN = 'nws_alerts';
 const PRICE_DEM = '1'; // CD-1 canonical
 const PRICE_OS = 1_000_000_000n;
 const SPEND_CAP_DEM = Number(process.env.GATEWAY_SPEND_CAP_DEM ?? '50');
-const AXIOM_PY = process.env.AXIOM_PY ?? '/home/eric/axiom/venv/bin/python';
-const ORGAN_CLI = process.env.ORGAN_CLI ?? '/home/eric/axiom/tools/organ_answer.py';
+// Env config for running this gateway against your own setup:
+//   DACS_ENV_PATH  path to the dotenv file holding DEMOS_MNEMONIC / DEMOS_SELLER_MNEMONIC (default: .env)
+//   AXIOM_PY       interpreter for the deliverable generator                              (default: python3)
+//   ORGAN_CLI      deliverable-generator CLI that prints the answer text on stdout        (default: organ_answer.py)
+// The generator is pluggable — point AXIOM_PY/ORGAN_CLI at any interpreter + CLI. ORGAN_CLI is resolved by
+// the interpreter as a script argument (not PATH-searched), so set it to a real path unless it sits in cwd.
+const AXIOM_PY = process.env.AXIOM_PY ?? 'python3';
+const ORGAN_CLI = process.env.ORGAN_CLI ?? 'organ_answer.py';
 
 const hex = (b: Uint8Array) => bytesToHex(b);
 /** JCS canonical form as a UTF-8 string (jcsCanonical returns bytes). */
@@ -81,7 +87,7 @@ type LiveHandles = {
 async function connectLive(): Promise<LiveHandles> {
   const { connectDemos, mnemonicFromEnv } = await import('../demos/connection.js');
   const { config } = await import('dotenv');
-  config({ path: '/home/eric/axiom/.env' });
+  config({ path: process.env.DACS_ENV_PATH ?? '.env' });
   const buyer = await connectDemos(mnemonicFromEnv('DEMOS_MNEMONIC'), RPC);
   const seller = await connectDemos(mnemonicFromEnv('DEMOS_SELLER_MNEMONIC'), RPC);
   return { buyer, seller };

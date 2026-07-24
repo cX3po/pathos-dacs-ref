@@ -6,7 +6,7 @@
 import { connectDemos, mnemonicFromEnv } from '../demos/connection.js';
 import { config } from 'dotenv';
 
-config({ path: '/home/eric/axiom/.env' });
+config({ path: process.env.DACS_ENV_PATH ?? '.env' });
 let total = 0;
 for (const env of ['DEMOS_MNEMONIC', 'DEMOS_SELLER_MNEMONIC']) {
   const h = await connectDemos(mnemonicFromEnv(env));
