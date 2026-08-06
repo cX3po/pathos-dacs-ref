@@ -19,6 +19,15 @@
  *      MUST NOT assume any-invalid-proof-anywhere -> reject.
  *  (C) Slot-key comparison is TYPE-STRICT (`0 !== "0"`). Encoders MUST normalize
  *      phaseIndex to a number; a type mismatch fail-safes to reject, never pass.
+ *  (D) payment-slot slot identity is compared here as a STRING `slotKey` for
+ *      reference brevity. The Standard profile MUST instead compare the slot key
+ *      as STRUCTURED components `(networkId, railId, jobId, phaseIndex)` — as
+ *      `verifySettlementEvidence` already does — AND bind slot identity to the
+ *      verified slot state proof. String equality lets two genuinely-same-slot
+ *      works dodge the double-settlement `reject` via encoding drift (alias,
+ *      zero-padding, delimiter ambiguity); the effect is a safe-direction
+ *      downgrade to `indeterminate` (never a false accept), but a conforming
+ *      detector MUST close it with structured, proof-bound slot-key equality.
  */
 
 import { readFileSync } from 'node:fs';

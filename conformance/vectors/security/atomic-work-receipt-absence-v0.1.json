@@ -1,8 +1,8 @@
 {
   "set": "atomic-work-receipt-absence-v0.1",
   "spec": "Atomic DACS Work \u2014 receipt proof-shape + inclusion/absence evidence model (RFC #320). PROPOSED candidate set authored by the execution-evidence lane (@cX3po). Verifier input: an atomic-Work settlement/recovery observation carrying PROOF MATERIAL (never bare booleans); output: the \u00a77.5.1-class verdict a conforming consumer MUST reach before authorizing payment resubmission or accepting DACS-4/5 evidence. Receipt proof chain (WorkReceiptProofV1): canonical receipt \u2192 receiptLeafHash \u2192 Merkle path to blockHeader.receiptRoot \u2192 finalized-block validator quorum certificate \u2192 validator set anchored to a trusted checkpoint \u2192 winner/attempt + payment-slot state-membership proofs under blockHeader.stateRoot. A verdict of `pass` REQUIRES the whole chain to verify; any absent/invalid link degrades to `indeterminate` (unknown) or `reject` (contradicted). Grounds: mj-deving's minimum-acceptance list + xm33's anchor-misattribution defect (both RFC #320) + node #973 (receipt-without-Indexer). Types profile-proposed; refine as the Standard profile lands. Proof-status fields use: valid | invalid | absent.",
-  "hash": "c1af1fbef76b109b61a6901ba7198a1c5981b91bfa04c6a83dcdb7280b72f125",
-  "count": 26,
+  "hash": "c1aee23e1561c598e954fcd8029982587ccc40deb1e0b3ef325e5aae6701171a",
+  "count": 28,
   "vectors": [
     {
       "name": "receipt-full-proof-chain-independent-of-indexer-pass",
@@ -420,6 +420,38 @@
         },
         "secondWork": {
           "slotKey": "k-2",
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed"
+        }
+      }
+    },
+    {
+      "name": "local-clock-expiry-only-insufficient-indeterminate",
+      "expected": "indeterminate",
+      "note": "Local-clock expiry is NOT authenticated lifecycle evidence. Even when an observation stamps verifiedCannotLaterInclude:true, `local-clock-expired` is not in the terminal allowlist -> indeterminate; replacement MUST NOT be authorized on local-clock expiry alone (mj-deving acceptance list). Only authenticated-lifecycle-expired evidence proving the old attempt can no longer be included permits a single replacement.",
+      "observation": {
+        "kind": "absence-claim",
+        "workId": "w-lc",
+        "evidence": {
+          "kind": "local-clock-expired",
+          "verifiedCannotLaterInclude": true,
+          "proof": "valid"
+        }
+      }
+    },
+    {
+      "name": "payment-slot-cross-network-same-tuple-no-collision-indeterminate",
+      "expected": "indeterminate",
+      "note": "mj-deving acceptance #1: the same (railId,jobId,phaseIndex) on two different networkIds MUST NOT collide. With a network-scoped slot key the two works carry DIFFERENT slotKeys, so the cross-Work double-settlement check declines to treat them as one slot -> indeterminate (not a same-slot comparison), NOT a false reject. Pairs with cross-work-double-settlement-same-slot-reject (shared key -> reject) to demonstrate network scoping. Per-network ledger isolation remains the Demos-runtime contract.",
+      "observation": {
+        "kind": "payment-slot",
+        "firstWork": {
+          "slotKey": "demos-mainnet:pay-dem:job-9:0",
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed"
+        },
+        "secondWork": {
+          "slotKey": "demos-testnet:pay-dem:job-9:0",
           "slotStateProof": "valid",
           "slotTransition": "open->consumed"
         }
