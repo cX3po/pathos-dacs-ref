@@ -1,8 +1,8 @@
 {
   "set": "atomic-work-receipt-absence-v0.1",
   "spec": "Atomic DACS Work \u2014 receipt proof-shape + inclusion/absence evidence model (RFC #320). PROPOSED candidate set authored by the execution-evidence lane (@cX3po). Verifier input: an atomic-Work settlement/recovery observation carrying PROOF MATERIAL (never bare booleans); output: the \u00a77.5.1-class verdict a conforming consumer MUST reach before authorizing payment resubmission or accepting DACS-4/5 evidence. Receipt proof chain (WorkReceiptProofV1): canonical receipt \u2192 receiptLeafHash \u2192 Merkle path to blockHeader.receiptRoot \u2192 finalized-block validator quorum certificate \u2192 validator set anchored to a trusted checkpoint \u2192 winner/attempt + payment-slot state-membership proofs under blockHeader.stateRoot. A verdict of `pass` REQUIRES the whole chain to verify; any absent/invalid link degrades to `indeterminate` (unknown) or `reject` (contradicted). Grounds: mj-deving's minimum-acceptance list + xm33's anchor-misattribution defect (both RFC #320) + node #973 (receipt-without-Indexer). Types profile-proposed; refine as the Standard profile lands. Proof-status fields use: valid | invalid | absent.",
-  "hash": "8792137e823b45ef582863a1e232a1fc5e3b44cceb3ce8022a8e761b603adaf9",
-  "count": 12,
+  "hash": "296e817aacd975ba74e86fbbcc9733ccb7c946bc1f1a0bdc8a8c844d14ea66b4",
+  "count": 13,
   "vectors": [
     {
       "name": "receipt-full-proof-chain-independent-of-indexer-pass",
@@ -218,6 +218,31 @@
         "evidenceJobId": "job-315-a",
         "anchorJobId": "wrong-job",
         "anchorRailId": "wrong-rail"
+      }
+    },
+    {
+      "name": "cross-work-double-settlement-same-slot-reject",
+      "expected": "reject",
+      "note": "Two DISTINCT Works (different workId) target the same payment slot (networkId,railId,jobId,phaseIndex). Per-Work atomicity does NOT prevent this: the slot MUST be a consensus-LEDGER singleton with compare-and-set enforced ACROSS Works, not only within each Work's isolated overlay. The second Work's payment op MUST fail the slot CAS pre-effect. A consumer seeing two settlement claims on one slot MUST reject the later one; exactly one effect set commits.",
+      "observation": {
+        "kind": "payment-slot",
+        "slot": {
+          "networkId": "demos-mainnet",
+          "railId": "pay-dem",
+          "jobId": "job-9",
+          "phaseIndex": 0
+        },
+        "firstWork": {
+          "workId": "w-a",
+          "slotTransition": "open->consumed",
+          "committed": true
+        },
+        "secondWork": {
+          "workId": "w-b",
+          "slotTransition": "open->consumed",
+          "committed": true
+        },
+        "ledgerLevelCAS": false
       }
     }
   ]
