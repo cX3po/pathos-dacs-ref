@@ -1,8 +1,8 @@
 {
   "set": "atomic-work-receipt-absence-v0.1",
   "spec": "Atomic DACS Work \u2014 receipt proof-shape + inclusion/absence evidence model (RFC #320). PROPOSED candidate set authored by the execution-evidence lane (@cX3po). Verifier input: an atomic-Work settlement/recovery observation carrying PROOF MATERIAL (never bare booleans); output: the \u00a77.5.1-class verdict a conforming consumer MUST reach before authorizing payment resubmission or accepting DACS-4/5 evidence. Receipt proof chain (WorkReceiptProofV1): canonical receipt \u2192 receiptLeafHash \u2192 Merkle path to blockHeader.receiptRoot \u2192 finalized-block validator quorum certificate \u2192 validator set anchored to a trusted checkpoint \u2192 winner/attempt + payment-slot state-membership proofs under blockHeader.stateRoot. A verdict of `pass` REQUIRES the whole chain to verify; any absent/invalid link degrades to `indeterminate` (unknown) or `reject` (contradicted). Grounds: mj-deving's minimum-acceptance list + xm33's anchor-misattribution defect (both RFC #320) + node #973 (receipt-without-Indexer). Types profile-proposed; refine as the Standard profile lands. Proof-status fields use: valid | invalid | absent.",
-  "hash": "296e817aacd975ba74e86fbbcc9733ccb7c946bc1f1a0bdc8a8c844d14ea66b4",
-  "count": 13,
+  "hash": "c1af1fbef76b109b61a6901ba7198a1c5981b91bfa04c6a83dcdb7280b72f125",
+  "count": 26,
   "vectors": [
     {
       "name": "receipt-full-proof-chain-independent-of-indexer-pass",
@@ -149,6 +149,7 @@
         "evidence": {
           "kind": "included-rollback-receipt",
           "workId": "w-5",
+          "proof": "valid",
           "proofChain": "valid"
         }
       }
@@ -175,7 +176,7 @@
         "evidence": {
           "kind": "non-membership-proof",
           "asOfHeight": 200,
-          "provesCannotLaterInclude": false,
+          "verifiedCannotLaterInclude": false,
           "proof": "valid"
         }
       }
@@ -188,7 +189,7 @@
         "kind": "absence-claim",
         "evidence": {
           "kind": "authenticated-pre-admission-rejection",
-          "provesCannotLaterInclude": true,
+          "verifiedCannotLaterInclude": true,
           "proof": "valid"
         }
       }
@@ -202,7 +203,7 @@
         "workId": "w-8",
         "evidence": {
           "kind": "authenticated-lifecycle-expired",
-          "provesCannotLaterInclude": true,
+          "verifiedCannotLaterInclude": true,
           "proof": "valid"
         }
       }
@@ -234,15 +235,194 @@
         },
         "firstWork": {
           "workId": "w-a",
+          "slotKey": "k-9",
           "slotTransition": "open->consumed",
+          "slotStateProof": "valid",
           "committed": true
         },
         "secondWork": {
           "workId": "w-b",
+          "slotKey": "k-9",
           "slotTransition": "open->consumed",
+          "slotStateProof": "valid",
           "committed": true
         },
         "ledgerLevelCAS": false
+      }
+    },
+    {
+      "name": "settlement-evidence-missing-jobids-indeterminate",
+      "expected": "indeterminate",
+      "observation": {
+        "kind": "settlement-evidence",
+        "signatureValid": true
+      }
+    },
+    {
+      "name": "settlement-evidence-absent-evidence-rail-indeterminate",
+      "expected": "indeterminate",
+      "observation": {
+        "kind": "settlement-evidence",
+        "signatureValid": true,
+        "evidenceJobId": "job-rail-absent",
+        "anchorJobId": "job-rail-absent",
+        "anchorRailId": "pay-dem",
+        "evidencePhaseIndex": 0,
+        "anchorPhaseIndex": 0
+      }
+    },
+    {
+      "name": "settlement-evidence-phaseindex-mismatch-reject",
+      "expected": "reject",
+      "observation": {
+        "kind": "settlement-evidence",
+        "signatureProof": "valid",
+        "evidenceJobId": "job-phase-mismatch",
+        "anchorJobId": "job-phase-mismatch",
+        "evidenceRailId": "pay-dem",
+        "anchorRailId": "pay-dem",
+        "evidencePhaseIndex": 1,
+        "anchorPhaseIndex": 2
+      }
+    },
+    {
+      "name": "payment-slot-both-committed-cas-claimed-reject",
+      "expected": "reject",
+      "observation": {
+        "kind": "payment-slot",
+        "firstWork": {
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed"
+        },
+        "secondWork": {
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed"
+        },
+        "ledgerLevelCAS": true
+      }
+    },
+    {
+      "name": "payment-slot-consumed-but-uncommitted-indeterminate",
+      "expected": "indeterminate",
+      "observation": {
+        "kind": "payment-slot",
+        "firstWork": {
+          "slotTransition": "open->consumed"
+        },
+        "secondWork": {
+          "slotTransition": "open"
+        }
+      }
+    },
+    {
+      "name": "payment-slot-no-state-material-indeterminate",
+      "expected": "indeterminate",
+      "observation": {
+        "kind": "payment-slot",
+        "firstWork": {},
+        "secondWork": {}
+      }
+    },
+    {
+      "name": "rollback-roots-absent-indeterminate",
+      "expected": "indeterminate",
+      "observation": {
+        "kind": "work-receipt-proof",
+        "receipt": {
+          "workId": "w-roots-absent",
+          "outcome": "rolled-back"
+        },
+        "receiptInclusionProof": "valid",
+        "finalityProof": "valid",
+        "validatorSetProof": "valid",
+        "businessRootEqualityProof": "valid"
+      }
+    },
+    {
+      "name": "absence-unknown-kind-terminal-flag-indeterminate",
+      "expected": "indeterminate",
+      "observation": {
+        "kind": "absence-claim",
+        "evidence": {
+          "kind": "unknown-terminal-proof-kind",
+          "verifiedCannotLaterInclude": true,
+          "proof": "valid"
+        }
+      }
+    },
+    {
+      "name": "receipt-committed-payment-slot-proof-absent-indeterminate",
+      "expected": "indeterminate",
+      "observation": {
+        "kind": "work-receipt-proof",
+        "receipt": {
+          "workId": "w-payment-slot-proof-absent",
+          "outcome": "committed"
+        },
+        "receiptInclusionProof": "valid",
+        "finalityProof": "valid",
+        "validatorSetProof": "valid",
+        "winnerStateProof": "valid"
+      }
+    },
+    {
+      "name": "settlement-evidence-full-slotkey-match-pass",
+      "expected": "pass",
+      "observation": {
+        "kind": "settlement-evidence",
+        "signatureProof": "valid",
+        "evidenceJobId": "job-full-match",
+        "anchorJobId": "job-full-match",
+        "evidenceRailId": "pay-dem",
+        "anchorRailId": "pay-dem",
+        "evidencePhaseIndex": 3,
+        "anchorPhaseIndex": 3
+      }
+    },
+    {
+      "name": "settlement-evidence-null-slotkey-components-indeterminate",
+      "expected": "indeterminate",
+      "observation": {
+        "kind": "settlement-evidence",
+        "signatureValid": true,
+        "evidenceJobId": "job-1",
+        "anchorJobId": "job-1",
+        "evidenceRailId": null,
+        "anchorRailId": null,
+        "evidencePhaseIndex": null,
+        "anchorPhaseIndex": null
+      }
+    },
+    {
+      "name": "payment-slot-unknown-transition-indeterminate",
+      "expected": "indeterminate",
+      "observation": {
+        "kind": "payment-slot",
+        "firstWork": {
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed"
+        },
+        "secondWork": {
+          "slotStateProof": "valid",
+          "slotTransition": "reopened->consumed"
+        }
+      }
+    },
+    {
+      "name": "payment-slot-different-slotkeys-indeterminate",
+      "expected": "indeterminate",
+      "observation": {
+        "kind": "payment-slot",
+        "firstWork": {
+          "slotKey": "k-1",
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed"
+        },
+        "secondWork": {
+          "slotKey": "k-2",
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed"
+        }
       }
     }
   ]
