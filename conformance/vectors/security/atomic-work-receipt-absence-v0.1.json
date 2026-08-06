@@ -1,8 +1,8 @@
 {
   "set": "atomic-work-receipt-absence-v0.1",
   "spec": "Atomic DACS Work \u2014 receipt proof-shape + inclusion/absence evidence model (RFC #320). PROPOSED candidate set authored by the execution-evidence lane (@cX3po). Verifier input: an atomic-Work settlement/recovery observation carrying PROOF MATERIAL (never bare booleans); output: the \u00a77.5.1-class verdict a conforming consumer MUST reach before authorizing payment resubmission or accepting DACS-4/5 evidence. Receipt proof chain (WorkReceiptProofV1): canonical receipt \u2192 receiptLeafHash \u2192 Merkle path to blockHeader.receiptRoot \u2192 finalized-block validator quorum certificate \u2192 validator set anchored to a trusted checkpoint \u2192 winner/attempt + payment-slot state-membership proofs under blockHeader.stateRoot. A verdict of `pass` REQUIRES the whole chain to verify; any absent/invalid link degrades to `indeterminate` (unknown) or `reject` (contradicted). Grounds: mj-deving's minimum-acceptance list + xm33's anchor-misattribution defect (both RFC #320) + node #973 (receipt-without-Indexer). Types profile-proposed; refine as the Standard profile lands. Proof-status fields use: valid | invalid | absent.",
-  "hash": "c1aee23e1561c598e954fcd8029982587ccc40deb1e0b3ef325e5aae6701171a",
-  "count": 28,
+  "hash": "b10b642d4044552a3f16fbd21427040049b3bedbf230afb6b3aed950c0f7407b",
+  "count": 31,
   "vectors": [
     {
       "name": "receipt-full-proof-chain-independent-of-indexer-pass",
@@ -227,25 +227,27 @@
       "note": "Two DISTINCT Works (different workId) target the same payment slot (networkId,railId,jobId,phaseIndex). Per-Work atomicity does NOT prevent this: the slot MUST be a consensus-LEDGER singleton with compare-and-set enforced ACROSS Works, not only within each Work's isolated overlay. The second Work's payment op MUST fail the slot CAS pre-effect. A consumer seeing two settlement claims on one slot MUST reject the later one; exactly one effect set commits.",
       "observation": {
         "kind": "payment-slot",
-        "slot": {
-          "networkId": "demos-mainnet",
-          "railId": "pay-dem",
-          "jobId": "job-9",
-          "phaseIndex": 0
-        },
         "firstWork": {
           "workId": "w-a",
-          "slotKey": "k-9",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          },
           "slotTransition": "open->consumed",
-          "slotStateProof": "valid",
-          "committed": true
+          "slotStateProof": "valid"
         },
         "secondWork": {
           "workId": "w-b",
-          "slotKey": "k-9",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          },
           "slotTransition": "open->consumed",
-          "slotStateProof": "valid",
-          "committed": true
+          "slotStateProof": "valid"
         },
         "ledgerLevelCAS": false
       }
@@ -292,11 +294,23 @@
         "kind": "payment-slot",
         "firstWork": {
           "slotStateProof": "valid",
-          "slotTransition": "open->consumed"
+          "slotTransition": "open->consumed",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
         },
         "secondWork": {
           "slotStateProof": "valid",
-          "slotTransition": "open->consumed"
+          "slotTransition": "open->consumed",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
         },
         "ledgerLevelCAS": true
       }
@@ -307,10 +321,17 @@
       "observation": {
         "kind": "payment-slot",
         "firstWork": {
-          "slotTransition": "open->consumed"
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
         },
         "secondWork": {
-          "slotTransition": "open"
+          "slotTransition": "open->consumed"
         }
       }
     },
@@ -400,11 +421,23 @@
         "kind": "payment-slot",
         "firstWork": {
           "slotStateProof": "valid",
-          "slotTransition": "open->consumed"
+          "slotTransition": "open->consumed",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
         },
         "secondWork": {
           "slotStateProof": "valid",
-          "slotTransition": "reopened->consumed"
+          "slotTransition": "reopened->consumed",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
         }
       }
     },
@@ -414,14 +447,24 @@
       "observation": {
         "kind": "payment-slot",
         "firstWork": {
-          "slotKey": "k-1",
           "slotStateProof": "valid",
-          "slotTransition": "open->consumed"
+          "slotTransition": "open->consumed",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-1",
+            "phaseIndex": 0
+          }
         },
         "secondWork": {
-          "slotKey": "k-2",
           "slotStateProof": "valid",
-          "slotTransition": "open->consumed"
+          "slotTransition": "open->consumed",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-2",
+            "phaseIndex": 0
+          }
         }
       }
     },
@@ -442,18 +485,124 @@
     {
       "name": "payment-slot-cross-network-same-tuple-no-collision-indeterminate",
       "expected": "indeterminate",
-      "note": "mj-deving acceptance #1: the same (railId,jobId,phaseIndex) on two different networkIds MUST NOT collide. With a network-scoped slot key the two works carry DIFFERENT slotKeys, so the cross-Work double-settlement check declines to treat them as one slot -> indeterminate (not a same-slot comparison), NOT a false reject. Pairs with cross-work-double-settlement-same-slot-reject (shared key -> reject) to demonstrate network scoping. Per-network ledger isolation remains the Demos-runtime contract.",
+      "note": "mj-deving acceptance #1: the same (railId,jobId,phaseIndex) on two different networkIds MUST NOT collide. The verified, proof-bound canonical tuples differ by networkId, so the cross-Work double-settlement check declines to treat them as one slot -> indeterminate (not a same-slot comparison), NOT a false reject. Pairs with cross-work-double-settlement-same-slot-reject to demonstrate network scoping. Per-network ledger isolation remains the Demos-runtime contract.",
       "observation": {
         "kind": "payment-slot",
         "firstWork": {
-          "slotKey": "demos-mainnet:pay-dem:job-9:0",
           "slotStateProof": "valid",
-          "slotTransition": "open->consumed"
+          "slotTransition": "open->consumed",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
         },
         "secondWork": {
-          "slotKey": "demos-testnet:pay-dem:job-9:0",
           "slotStateProof": "valid",
-          "slotTransition": "open->consumed"
+          "slotTransition": "open->consumed",
+          "provenSlot": {
+            "networkId": "demos-testnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "payment-slot-same-provenslot-different-presented-encoding-reject",
+      "expected": "reject",
+      "note": "Different claimant-presented jobId encodings cannot evade double-settlement detection when both verified proofs attest the same canonical slot tuple.",
+      "observation": {
+        "kind": "payment-slot",
+        "firstWork": {
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed",
+          "slot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          },
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
+        },
+        "secondWork": {
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed",
+          "slot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-09",
+            "phaseIndex": 0
+          },
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "payment-slot-unbound-labels-only-indeterminate",
+      "expected": "indeterminate",
+      "note": "Equal claimant-presented labels do not establish slot identity without proof-bound canonical provenSlot tuples.",
+      "observation": {
+        "kind": "payment-slot",
+        "firstWork": {
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed",
+          "slot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
+        },
+        "secondWork": {
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed",
+          "slot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "payment-slot-single-verified-commit-pass",
+      "expected": "pass",
+      "note": "Coverage for the sole accept path: exactly one Work verifiably consumes the slot (slotStateProof valid + open->consumed) while the other holds the same proven slot open (slotTransition 'open', not consuming). Both proven slots trusted + equal, verifiedCommitCount==1 -> pass (a legitimate single settlement, no double-spend).",
+      "observation": {
+        "kind": "payment-slot",
+        "firstWork": {
+          "slotStateProof": "valid",
+          "slotTransition": "open->consumed",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
+        },
+        "secondWork": {
+          "slotStateProof": "valid",
+          "slotTransition": "open",
+          "provenSlot": {
+            "networkId": "demos-mainnet",
+            "railId": "pay-dem",
+            "jobId": "job-9",
+            "phaseIndex": 0
+          }
         }
       }
     }

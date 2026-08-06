@@ -19,15 +19,15 @@
  *      MUST NOT assume any-invalid-proof-anywhere -> reject.
  *  (C) Slot-key comparison is TYPE-STRICT (`0 !== "0"`). Encoders MUST normalize
  *      phaseIndex to a number; a type mismatch fail-safes to reject, never pass.
- *  (D) payment-slot slot identity is compared here as a STRING `slotKey` for
- *      reference brevity. The Standard profile MUST instead compare the slot key
- *      as STRUCTURED components `(networkId, railId, jobId, phaseIndex)` — as
- *      `verifySettlementEvidence` already does — AND bind slot identity to the
- *      verified slot state proof. String equality lets two genuinely-same-slot
- *      works dodge the double-settlement `reject` via encoding drift (alias,
- *      zero-padding, delimiter ambiguity); the effect is a safe-direction
- *      downgrade to `indeterminate` (never a false accept), but a conforming
- *      detector MUST close it with structured, proof-bound slot-key equality.
+ *  (D) Payment-slot identity is the structured canonical tuple attested by the
+ *      verified slot-state proof, never a claimant-presented label. This closes
+ *      encoding-drift evasions (alias, zero-padding, delimiter ambiguity) while
+ *      refusing to reject on unbound labels alone.
+ *  (E) A valid slotStateProof SHOULD carry a proof-derived `slotTransition`;
+ *      the profile should treat valid-proof-with-absent-transition as degrading
+ *      the pair to indeterminate rather than a non-consuming `pass`. phaseIndex
+ *      is trusted only as a number; per note (A) the Standard should also exclude
+ *      non-finite numbers from a trusted proven slot.
  */
 
 import { readFileSync } from 'node:fs';
@@ -98,20 +98,28 @@ interface SettlementEvidenceObservation {
 }
 
 // Profile-proposed; refine when the Standard profile lands.
+interface PaymentSlotIdentity {
+  networkId?: string;
+  railId?: string;
+  jobId?: string;
+  phaseIndex?: number;
+}
+
+interface PaymentSlotWork {
+  slotStateProof?: ProofStatus;
+  slotTransition?: string;
+  /** Consensus-canonical tuple attested by slotStateProof. */
+  provenSlot?: PaymentSlotIdentity;
+  /** Optional claimant-presented/display label; never used for a verdict. */
+  slot?: PaymentSlotIdentity;
+  [field: string]: unknown;
+}
+
+// Profile-proposed; refine when the Standard profile lands.
 interface PaymentSlotObservation {
   kind: 'payment-slot';
-  firstWork?: {
-    slotKey?: string;
-    slotStateProof?: ProofStatus;
-    slotTransition?: string;
-    [field: string]: unknown;
-  };
-  secondWork?: {
-    slotKey?: string;
-    slotStateProof?: ProofStatus;
-    slotTransition?: string;
-    [field: string]: unknown;
-  };
+  firstWork?: PaymentSlotWork;
+  secondWork?: PaymentSlotWork;
   ledgerLevelCAS?: boolean;
   [field: string]: unknown;
 }
@@ -128,6 +136,9 @@ export type Observation =
   | SettlementEvidenceObservation
   | PaymentSlotObservation
   | UnknownObservation;
+
+const isAbsent = (value: unknown): boolean =>
+  value === undefined || value === null;
 
 function verifyProofChain(statuses: Array<ProofStatus | undefined>): Verdict {
   if (statuses.some((status) => status === 'invalid')) return 'reject';
@@ -209,9 +220,6 @@ function verifySettlementEvidence(obs: SettlementEvidenceObservation): Verdict {
     [obs.evidenceRailId, obs.anchorRailId],
     [obs.evidencePhaseIndex, obs.anchorPhaseIndex],
   ];
-  const isAbsent = (value: unknown): boolean =>
-    value === undefined || value === null;
-
   // A present contradiction outranks missing material elsewhere in the key.
   if (slotKeyPairs.some(([evidence, anchor]) =>
     !isAbsent(evidence) && !isAbsent(anchor) && evidence !== anchor
@@ -228,12 +236,6 @@ function verifyPaymentSlot(obs: PaymentSlotObservation): Verdict {
   if (!obs.firstWork || !obs.secondWork) return 'indeterminate';
 
   const works = [obs.firstWork, obs.secondWork];
-  if (
-    obs.firstWork.slotKey !== undefined &&
-    obs.secondWork.slotKey !== undefined &&
-    obs.firstWork.slotKey !== obs.secondWork.slotKey
-  ) return 'indeterminate';
-
   const allowedTransitions = new Set(['open', 'open->consumed']);
   if (works.some((work) =>
     work.slotTransition !== undefined &&
@@ -248,6 +250,30 @@ function verifyPaymentSlot(obs: PaymentSlotObservation): Verdict {
   if (works.some((work, index) =>
     claimsConsumption[index] && work.slotStateProof !== 'valid'
   )) return 'indeterminate';
+
+  const trustedProvenSlots = works.map((work) => {
+    const slot = work.provenSlot;
+    if (
+      work.slotStateProof !== 'valid' ||
+      !slot ||
+      isAbsent(slot.networkId) || typeof slot.networkId !== 'string' ||
+      isAbsent(slot.railId) || typeof slot.railId !== 'string' ||
+      isAbsent(slot.jobId) || typeof slot.jobId !== 'string' ||
+      isAbsent(slot.phaseIndex) || typeof slot.phaseIndex !== 'number'
+    ) {
+      return undefined;
+    }
+    return slot as Required<PaymentSlotIdentity>;
+  });
+
+  const [firstSlot, secondSlot] = trustedProvenSlots;
+  if (!firstSlot || !secondSlot) return 'indeterminate';
+  if (
+    firstSlot.networkId !== secondSlot.networkId ||
+    firstSlot.railId !== secondSlot.railId ||
+    firstSlot.jobId !== secondSlot.jobId ||
+    firstSlot.phaseIndex !== secondSlot.phaseIndex
+  ) return 'indeterminate';
 
   const verifiedCommitCount = works.filter(
     (work) =>
