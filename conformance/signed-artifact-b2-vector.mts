@@ -119,10 +119,12 @@ function sourceHashes(): Record<string, string> {
   return out;
 }
 function depVersion(pkg: string): string {
-  try {
-    const pj = JSON.parse(readFileSync(path.join(HERE, '..', 'node_modules', pkg, 'package.json'), 'utf8'));
-    return String(pj.version ?? 'unknown');
-  } catch { return 'unknown'; }
+  // Fail CLOSED, matching sourceHashes(): emitting "unknown" would claim complete provenance
+  // while recording none.
+  const pj = JSON.parse(readFileSync(path.join(HERE, '..', 'node_modules', pkg, 'package.json'), 'utf8'));
+  const v = pj.version;
+  if (typeof v !== 'string' || !v) throw new Error(`depVersion: no version for ${pkg}`);
+  return v;
 }
 
 const buyer = mk(0x11);
@@ -218,10 +220,16 @@ if (pyHash !== publishedStyle) throw new Error(`signed-artifact-b2: python/JS pa
 if (!encodersAgreeOnThisArtifact) throw new Error('signed-artifact-b2: JCS and json.dumps disagree on this artifact — the stated scope-only divergence would be false, refusing to emit');
 
 const SOURCE_HASHES = sourceHashes();
-const PYTHON_VERSION = (() => {
-  try { return execFileSync('python3', ['--version'], { encoding: 'utf8' }).trim(); }
-  catch { return 'unknown'; }
+// The lockfile carries per-package integrity hashes, so pinning it constrains dependency
+// CONTENTS rather than just their self-reported version strings.
+const LOCKFILE_SHA256 = (() => {
+  for (const f of ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock']) {
+    try { return `${f}:${createHash('sha256').update(readFileSync(path.join(HERE, '..', f))).digest('hex')}`; }
+    catch { /* try next */ }
+  }
+  throw new Error('no lockfile found — refusing to emit without dependency-content provenance');
 })();
+const PYTHON_VERSION = execFileSync('python3', ['--version'], { encoding: 'utf8' }).trim();
 
 const vector = {
   vectorId: 'signed-artifact-b2-contenthash',
@@ -290,6 +298,16 @@ const vector = {
       node: process.version,
       python3: PYTHON_VERSION,
     },
+    lockfile: LOCKFILE_SHA256,
+    // HONEST SCOPE OF THESE PINS. They identify the inputs; they are not a hermetic
+    // supply-chain attestation and this vector does not claim to be one. Specifically NOT
+    // pinned: the TypeScript runner and transformer (tsx/esbuild), the python3 binary itself
+    // beyond its reported version, and the OS/runtime closure. A different transformer, a
+    // rebuilt dependency carrying the same version string, or a different python3 with the
+    // same --version could in principle change bytes without changing any value above.
+    // `--check` is the operative guarantee: it re-runs the generator in YOUR environment and
+    // byte-compares, which detects such a divergence directly rather than assuming its absence.
+    pinScope: 'identifies inputs; not a hermetic build attestation — see --check',
     deterministic: 'fixed ed25519 fill-byte keys (0x11 buyer / 0x22 seller) + fixed timestamp '
       + '2026-01-01T00:00:00.000Z. Byte-stable for the sourceHashes + dependency versions above; '
       + 'no git commit is pinned, because the commit containing this output does not exist when '
