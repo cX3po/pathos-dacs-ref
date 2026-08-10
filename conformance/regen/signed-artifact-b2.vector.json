@@ -40,7 +40,7 @@
     "generator": "pathos-dacs-ref conformance/signed-artifact-b2-vector.mts",
     "repo": "https://github.com/cX3po/pathos-dacs-ref",
     "sourceHashes": {
-      "conformance/signed-artifact-b2-vector.mts": "23e40a70a57550cd374ffc06d2df4482da506ff923566e59745ced4a212294ca",
+      "conformance/signed-artifact-b2-vector.mts": "f477d33917979de5f4f68855cc12b1edb44560dcdcaa5f7616cffbe2b4a74544",
       "src/lib/emit-bundle-v1.ts": "bea4cee9edf95dc736f0cb4b4733cc2c896b753421b713dbebd1cf718ae2ddf1",
       "src/lib/verify-bundle-v1.ts": "7a2d4cf6f86cc25709612ac776d5c7c8697cde050ece3a000e1eaa781cedb15b",
       "src/lib/bundle-signed-scope-v1.ts": "9927ad1735d72f9f6e812fea670a20e5880719a3a88f85705287c4155c837bc0",
@@ -59,7 +59,7 @@
     },
     "lockfile": "package-lock.json:ec2ab29515140228e7f9430448940e510f021ec4f1c267247b41cc8b3c02d160",
     "pinScope": "identifies inputs; not a hermetic build attestation — see --check",
-    "deterministic": "fixed ed25519 fill-byte keys (0x11 buyer / 0x22 seller) + fixed timestamp 2026-01-01T00:00:00.000Z. Byte-stable for the sourceHashes + dependency versions above; no git commit is pinned, because the commit containing this output does not exist when the output is produced."
+    "deterministic": "INPUTS are fixed: ed25519 fill-byte keys (0x11 buyer / 0x22 seller) and the timestamp 2026-01-01T00:00:00.000Z, so nothing here varies per run by construction. Byte stability is NOT asserted from the pins above — it is established only by a successful `--check` in the environment doing the checking. No git commit is pinned, because the commit containing this output does not exist when the output is produced."
   },
   "artifact": {
     "bundleVersion": "1",

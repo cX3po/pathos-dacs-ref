@@ -23,8 +23,11 @@
  * A vector built on an artifact with no carve-out would not have surfaced that.
  *
  * Determinism: keys are fixed fill-bytes and timestamps are constants (same convention as
- * conformance/regen-lifecycle.mts), so the output is byte-stable and independently
- * reproducible by a third party — the chain keeps its provenance.
+ * conformance/regen-lifecycle.mts), so no input varies per run by construction. That is a
+ * statement about INPUTS, not a guarantee of identical output bytes elsewhere: the runner and
+ * transformer (tsx/esbuild), the python3 binary and the runtime closure are not attested.
+ * Independent reproduction is DEMONSTRATED, not assumed, by running `--check` in your own
+ * environment — it re-emits and byte-compares, so a divergence shows up rather than hiding.
  *
  *   npx tsx conformance/signed-artifact-b2-vector.mts           # emit + self-verify
  *   npx tsx conformance/signed-artifact-b2-vector.mts --check   # re-emit, assert byte-identical
@@ -308,10 +311,11 @@ const vector = {
     // `--check` is the operative guarantee: it re-runs the generator in YOUR environment and
     // byte-compares, which detects such a divergence directly rather than assuming its absence.
     pinScope: 'identifies inputs; not a hermetic build attestation — see --check',
-    deterministic: 'fixed ed25519 fill-byte keys (0x11 buyer / 0x22 seller) + fixed timestamp '
-      + '2026-01-01T00:00:00.000Z. Byte-stable for the sourceHashes + dependency versions above; '
-      + 'no git commit is pinned, because the commit containing this output does not exist when '
-      + 'the output is produced.',
+    deterministic: 'INPUTS are fixed: ed25519 fill-byte keys (0x11 buyer / 0x22 seller) and the '
+      + 'timestamp 2026-01-01T00:00:00.000Z, so nothing here varies per run by construction. Byte '
+      + 'stability is NOT asserted from the pins above — it is established only by a successful '
+      + '`--check` in the environment doing the checking. No git commit is pinned, because the '
+      + 'commit containing this output does not exist when the output is produced.',
   },
   artifact: bundle,
 };
