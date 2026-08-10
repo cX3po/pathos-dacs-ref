@@ -78,10 +78,20 @@ function pythonPublishedStyleHash(artifact: unknown): string {
   return execFileSync('python3', ['-c', src], { input: JSON.stringify(artifact), encoding: 'utf8' }).trim();
 }
 
-/** Pin what a third party needs to reproduce these exact bytes. */
-function gitCommit(): string {
-  try { return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: HERE, encoding: 'utf8' }).trim(); }
-  catch { return 'unknown'; }
+/**
+ * Pin what a third party needs to reproduce these exact bytes.
+ *
+ * This is the sha256 of THIS GENERATOR'S OWN SOURCE, not a git commit. A commit SHA cannot work
+ * here: the commit containing this output does not exist when the output is produced, so pinning
+ * live HEAD names a tree that does not contain the generator that ran — false provenance. It also
+ * forced --check to normalize the field, which made --check blind to tampering in it.
+ * A source hash has neither problem: it is stable across commits, it changes exactly when the
+ * generator changes (which is precisely when the vector must be regenerated), and a third party
+ * can verify they hold the same generator bytes with a single sha256sum.
+ */
+function generatorSourceSha256(): string {
+  const self = path.join(HERE, 'signed-artifact-b2-vector.mts');
+  return createHash('sha256').update(readFileSync(self)).digest('hex');
 }
 function depVersion(pkg: string): string {
   try {
@@ -182,7 +192,7 @@ if (signaturesVerifyOverSignatureOnly) throw new Error('signed-artifact-b2: sign
 if (pyHash !== publishedStyle) throw new Error(`signed-artifact-b2: python/JS parity failed for the validator method (py=${pyHash} js=${publishedStyle}) — refusing to emit an unverified 'validator method' claim`);
 if (!encodersAgreeOnThisArtifact) throw new Error('signed-artifact-b2: JCS and json.dumps disagree on this artifact — the stated scope-only divergence would be false, refusing to emit');
 
-const GENERATOR_COMMIT = gitCommit();
+const GENERATOR_SOURCE_SHA256 = generatorSourceSha256();
 const NOBLE_ED25519_VERSION = depVersion('@noble/ed25519');
 
 const vector = {
@@ -235,11 +245,9 @@ const vector = {
   provenance: {
     generator: 'pathos-dacs-ref conformance/signed-artifact-b2-vector.mts',
     repo: 'https://github.com/cX3po/pathos-dacs-ref',
-    // The tree state the generator RAN against. It cannot name the commit that contains this
-    // file (that commit does not exist until this output is committed), so it names the parent.
-    // Reproduction does not depend on it — keys and timestamps are fixed — but it tells a third
-    // party which tree produced these bytes. `--check` is the actual reproduction guarantee.
-    generatedAtCommit: GENERATOR_COMMIT,
+    // sha256 of the generator source that produced these bytes. Verify with:
+    //   sha256sum conformance/signed-artifact-b2-vector.mts
+    generatorSourceSha256: GENERATOR_SOURCE_SHA256,
     command: 'npx tsx conformance/signed-artifact-b2-vector.mts',
     checkCommand: 'npx tsx conformance/signed-artifact-b2-vector.mts --check',
     // Signature BYTES depend on the ed25519 implementation, so the library version is part of
@@ -256,13 +264,10 @@ const serialized = JSON.stringify(vector, null, 2) + '\n';
 
 if (process.argv.includes('--check')) {
   if (!existsSync(OUT)) { console.error(`missing ${OUT} — run without --check first`); process.exit(1); }
-  // `generatedAtCommit` is live-HEAD provenance: it necessarily differs once this output is
-  // committed, so comparing it would make --check fail forever after the first commit. Normalize
-  // that ONE field on both sides and byte-compare everything else — the hashes, the artifact, the
-  // signatures and every assertion result are all still compared exactly.
-  const norm = (t: string) => t.replace(/("generatedAtCommit":\s*)"[^"]*"/, '$1"<normalized>"');
+  // A TRUE byte comparison — nothing is exempted. Normalizing any field would mean --check
+  // could not detect tampering in it while still reporting "byte-identical".
   const onDisk = readFileSync(OUT, 'utf8');
-  if (norm(onDisk) !== norm(serialized)) { console.error('DRIFT: re-emit is not byte-identical to the committed vector'); process.exit(1); }
+  if (onDisk !== serialized) { console.error('DRIFT: re-emit is not byte-identical to the committed vector'); process.exit(1); }
   console.log('byte-identical ✓  b2=%s  published-style=%s', b2ContentHash, publishedStyle);
   process.exit(0);
 }

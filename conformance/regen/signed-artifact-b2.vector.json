@@ -39,7 +39,7 @@
   "provenance": {
     "generator": "pathos-dacs-ref conformance/signed-artifact-b2-vector.mts",
     "repo": "https://github.com/cX3po/pathos-dacs-ref",
-    "generatedAtCommit": "3dc457cfe33fb00a4b0cced278f3ae242cd271a4",
+    "generatorSourceSha256": "c1cf995ed4ea1a38c76628655908f426a09d0c611e0a9c6352e9277d44791620",
     "command": "npx tsx conformance/signed-artifact-b2-vector.mts",
     "checkCommand": "npx tsx conformance/signed-artifact-b2-vector.mts --check",
     "dependencies": {
