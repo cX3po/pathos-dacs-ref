@@ -85,13 +85,34 @@ function pythonPublishedStyleHash(artifact: unknown): string {
  * here: the commit containing this output does not exist when the output is produced, so pinning
  * live HEAD names a tree that does not contain the generator that ran — false provenance. It also
  * forced --check to normalize the field, which made --check blind to tampering in it.
- * A source hash has neither problem: it is stable across commits, it changes exactly when the
- * generator changes (which is precisely when the vector must be regenerated), and a third party
- * can verify they hold the same generator bytes with a single sha256sum.
+ * Source hashes have neither problem: they are stable across commits, they change when any
+ * source that can alter these bytes changes, and a third party can verify they hold the same
+ * inputs with sha256sum. The set must cover the implementation modules too — pinning only the
+ * generator would leave emit/verify/jcs changes able to move the output silently.
  */
-function generatorSourceSha256(): string {
-  const self = path.join(HERE, 'signed-artifact-b2-vector.mts');
-  return createHash('sha256').update(readFileSync(self)).digest('hex');
+function sha256File(rel: string): string {
+  return createHash('sha256').update(readFileSync(path.join(HERE, rel))).digest('hex');
+}
+/**
+ * Every source whose bytes can change this output: the generator itself PLUS the
+ * implementation modules it emits and hashes through. Pinning only the generator would
+ * overclaim — a change in emit-bundle-v1 or jcs alters the emitted bytes while leaving the
+ * generator's own hash untouched.
+ */
+const SOURCE_FILES: Record<string, string> = {
+  'conformance/signed-artifact-b2-vector.mts': 'signed-artifact-b2-vector.mts',
+  'src/lib/emit-bundle-v1.ts': '../src/lib/emit-bundle-v1.ts',
+  'src/lib/verify-bundle-v1.ts': '../src/lib/verify-bundle-v1.ts',
+  'src/lib/bundle-signed-scope-v1.ts': '../src/lib/bundle-signed-scope-v1.ts',
+  'src/jcs.ts': '../src/jcs.ts',
+  'src/domain-sep.ts': '../src/domain-sep.ts',
+};
+function sourceHashes(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [label, rel] of Object.entries(SOURCE_FILES)) {
+    try { out[label] = sha256File(rel); } catch { out[label] = 'unreadable'; }
+  }
+  return out;
 }
 function depVersion(pkg: string): string {
   try {
@@ -192,7 +213,7 @@ if (signaturesVerifyOverSignatureOnly) throw new Error('signed-artifact-b2: sign
 if (pyHash !== publishedStyle) throw new Error(`signed-artifact-b2: python/JS parity failed for the validator method (py=${pyHash} js=${publishedStyle}) — refusing to emit an unverified 'validator method' claim`);
 if (!encodersAgreeOnThisArtifact) throw new Error('signed-artifact-b2: JCS and json.dumps disagree on this artifact — the stated scope-only divergence would be false, refusing to emit');
 
-const GENERATOR_SOURCE_SHA256 = generatorSourceSha256();
+const SOURCE_HASHES = sourceHashes();
 const NOBLE_ED25519_VERSION = depVersion('@noble/ed25519');
 
 const vector = {
@@ -245,9 +266,9 @@ const vector = {
   provenance: {
     generator: 'pathos-dacs-ref conformance/signed-artifact-b2-vector.mts',
     repo: 'https://github.com/cX3po/pathos-dacs-ref',
-    // sha256 of the generator source that produced these bytes. Verify with:
-    //   sha256sum conformance/signed-artifact-b2-vector.mts
-    generatorSourceSha256: GENERATOR_SOURCE_SHA256,
+    // sha256 of EVERY source whose bytes can change this output — the generator and the
+    // implementation modules it emits/hashes through. Verify with `sha256sum <path>` per entry.
+    sourceHashes: SOURCE_HASHES,
     command: 'npx tsx conformance/signed-artifact-b2-vector.mts',
     checkCommand: 'npx tsx conformance/signed-artifact-b2-vector.mts --check',
     // Signature BYTES depend on the ed25519 implementation, so the library version is part of
@@ -255,7 +276,9 @@ const vector = {
     // same as reproducibility by a third party at an unspecified commit.
     dependencies: { '@noble/ed25519': NOBLE_ED25519_VERSION, node: process.version },
     deterministic: 'fixed ed25519 fill-byte keys (0x11 buyer / 0x22 seller) + fixed timestamp '
-      + '2026-01-01T00:00:00.000Z; byte-stable for the pinned commit + dependency versions above',
+      + '2026-01-01T00:00:00.000Z. Byte-stable for the sourceHashes + dependency versions above; '
+      + 'no git commit is pinned, because the commit containing this output does not exist when '
+      + 'the output is produced.',
   },
   artifact: bundle,
 };
