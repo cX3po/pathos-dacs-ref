@@ -1,0 +1,84 @@
+{
+  "vectorId": "signed-artifact-b2-contenthash",
+  "title": "Signed artifact whose contentHash is the §B.2 canonical form (cross-impl confirmation for #278)",
+  "dacsVersion": "0.1",
+  "purpose": "Exercises the §B.2 canonical-form hash of a SIGNED artifact — the property #278 identifies as unexercised by any published vector. A conforming reader MUST reproduce b2ContentHash from the artifact with the per-kind excluded fields omitted; publishedStyleHash is recorded only to make the divergence explicit and is NOT a conformance target.",
+  "artifactKind": "AttestationBundleV1",
+  "excludedFields": [
+    "signatures",
+    "anchoredByRole"
+  ],
+  "excludedFieldsBasis": "CORE §B.2 (signature omitted) + DACS-5 §10.4.1 R5-1 (anchoredByRole excluded)",
+  "b2ContentHash": "57331dedbd518bb313d5053caf076d041e531e68b337845221e318217545e12d",
+  "publishedStyleHash": "230c24c0951c6d35db748afb37cad21043817d16aa9ea5d15f511cb77c33cd12",
+  "divergesOnTwoAxes": [
+    "signature-bearing fields are included in the published-style value and omitted from the §B.2 value",
+    "json.dumps(sort_keys) is not RFC 8785 JCS (they coincide only on ASCII, signature-less content)"
+  ],
+  "signaturesCommitTo": "b2ContentHash",
+  "selfVerified": {
+    "signaturesVerify": true,
+    "hashesDiverge": true,
+    "scopeMatchesImplementation": true,
+    "signaturesVerifyOverB2": true,
+    "signaturesVerifyOverPublishedStyle": false
+  },
+  "provenance": {
+    "generator": "pathos-dacs-ref conformance/signed-artifact-b2-vector.mts",
+    "command": "npx tsx conformance/signed-artifact-b2-vector.mts",
+    "checkCommand": "npx tsx conformance/signed-artifact-b2-vector.mts --check",
+    "deterministic": "fixed ed25519 fill-byte keys + fixed timestamps; byte-stable across runs"
+  },
+  "artifact": {
+    "bundleVersion": "1",
+    "jobId": "job-b2-278",
+    "outcome": "completed",
+    "anchoredByRole": "buyer",
+    "listingRef": {
+      "listingId": "lst-b2-278",
+      "version": 1,
+      "contentHash": "e8086b0aab204806795e0363e83c881a5f644bb4a4bc08285d51925457bfb8ab"
+    },
+    "parties": [
+      {
+        "role": "buyer",
+        "bundleHash": "b59c3655a16fd9a485e144625a60485743af48e37a6219abf28cac73088f1a7c",
+        "primaryClaim": "cci:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+      },
+      {
+        "role": "seller",
+        "bundleHash": "342ccc0109b196e6504e86755826c68cc9f0bf81f0b320066ebc675809ff6c3a",
+        "primaryClaim": "cci:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+      }
+    ],
+    "phaseSummary": [
+      {
+        "index": 0,
+        "kind": "vet-credentials",
+        "outcome": "ok"
+      },
+      {
+        "index": 1,
+        "kind": "settle",
+        "outcome": "ok"
+      }
+    ],
+    "vetRecords": [],
+    "settlementEvidence": [],
+    "recipeRegistryVersion": 1,
+    "railRegistryVersion": 1,
+    "finalisedAt": 1767225600000,
+    "signatures": [
+      {
+        "party": "cci:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "algorithm": "ed25519",
+        "value": "riMQ/4jZNr4hcxWy20CCLZzx1EO9lk5rj5fEENi/3eP7qbR8vpOPKj7S0FR/M+Fqtb2haQiMiwpJkRNKI9ZACg=="
+      },
+      {
+        "party": "cci:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+        "algorithm": "ed25519",
+        "value": "26UGRBwLVR80XWsptvbAVObF/oyjh4o3y3vEBttaC1Ch/Ytg/hh3XFgqi2YvLKzlZIC0mcwI+Ob8Zbi7b1WZCQ=="
+      }
+    ]
+  }
+}
