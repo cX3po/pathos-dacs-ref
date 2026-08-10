@@ -88,7 +88,8 @@ function pythonPublishedStyleHash(artifact: unknown): string {
  * Source hashes have neither problem: they are stable across commits, they change when any
  * source that can alter these bytes changes, and a third party can verify they hold the same
  * inputs with sha256sum. The set must cover the implementation modules too — pinning only the
- * generator would leave emit/verify/jcs changes able to move the output silently.
+ * generator would leave emit/verify/sign/jcs changes able to move the output silently. sign.ts
+ * matters most: it produces the signature bytes themselves.
  */
 function sha256File(rel: string): string {
   return createHash('sha256').update(readFileSync(path.join(HERE, rel))).digest('hex');
@@ -104,13 +105,16 @@ const SOURCE_FILES: Record<string, string> = {
   'src/lib/emit-bundle-v1.ts': '../src/lib/emit-bundle-v1.ts',
   'src/lib/verify-bundle-v1.ts': '../src/lib/verify-bundle-v1.ts',
   'src/lib/bundle-signed-scope-v1.ts': '../src/lib/bundle-signed-scope-v1.ts',
+  'src/lib/sign.ts': '../src/lib/sign.ts',          // produces the emitted signature BYTES
   'src/jcs.ts': '../src/jcs.ts',
   'src/domain-sep.ts': '../src/domain-sep.ts',
 };
 function sourceHashes(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [label, rel] of Object.entries(SOURCE_FILES)) {
-    try { out[label] = sha256File(rel); } catch { out[label] = 'unreadable'; }
+    // Fail CLOSED. Recording "unreadable" would emit a vector whose provenance cannot be
+    // verified while still looking complete — the failure mode this whole block exists to stop.
+    out[label] = sha256File(rel);
   }
   return out;
 }
@@ -214,7 +218,10 @@ if (pyHash !== publishedStyle) throw new Error(`signed-artifact-b2: python/JS pa
 if (!encodersAgreeOnThisArtifact) throw new Error('signed-artifact-b2: JCS and json.dumps disagree on this artifact — the stated scope-only divergence would be false, refusing to emit');
 
 const SOURCE_HASHES = sourceHashes();
-const NOBLE_ED25519_VERSION = depVersion('@noble/ed25519');
+const PYTHON_VERSION = (() => {
+  try { return execFileSync('python3', ['--version'], { encoding: 'utf8' }).trim(); }
+  catch { return 'unknown'; }
+})();
 
 const vector = {
   vectorId: 'signed-artifact-b2-contenthash',
@@ -274,7 +281,15 @@ const vector = {
     // Signature BYTES depend on the ed25519 implementation, so the library version is part of
     // reproducibility, not a footnote. Byte-stability across runs of the same tree is not the
     // same as reproducibility by a third party at an unspecified commit.
-    dependencies: { '@noble/ed25519': NOBLE_ED25519_VERSION, node: process.version },
+    // Signature and hash BYTES come out of these, so they are reproduction inputs, not trivia.
+    // python3 is pinned because the published-style value is measured by executing it.
+    dependencies: {
+      '@noble/ed25519': depVersion('@noble/ed25519'),
+      '@noble/hashes': depVersion('@noble/hashes'),
+      canonicalize: depVersion('canonicalize'),
+      node: process.version,
+      python3: PYTHON_VERSION,
+    },
     deterministic: 'fixed ed25519 fill-byte keys (0x11 buyer / 0x22 seller) + fixed timestamp '
       + '2026-01-01T00:00:00.000Z. Byte-stable for the sourceHashes + dependency versions above; '
       + 'no git commit is pinned, because the commit containing this output does not exist when '

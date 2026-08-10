@@ -40,10 +40,11 @@
     "generator": "pathos-dacs-ref conformance/signed-artifact-b2-vector.mts",
     "repo": "https://github.com/cX3po/pathos-dacs-ref",
     "sourceHashes": {
-      "conformance/signed-artifact-b2-vector.mts": "599e0a8b05682015e1acf4a29dad346e712bbab4d95a7a92b18bd936562e08cf",
+      "conformance/signed-artifact-b2-vector.mts": "4136ab4243782e96d04d15e3f469d0bd1f2c8a4d0925d3b0f43bfa74a0fc19cd",
       "src/lib/emit-bundle-v1.ts": "bea4cee9edf95dc736f0cb4b4733cc2c896b753421b713dbebd1cf718ae2ddf1",
       "src/lib/verify-bundle-v1.ts": "7a2d4cf6f86cc25709612ac776d5c7c8697cde050ece3a000e1eaa781cedb15b",
       "src/lib/bundle-signed-scope-v1.ts": "9927ad1735d72f9f6e812fea670a20e5880719a3a88f85705287c4155c837bc0",
+      "src/lib/sign.ts": "42d4e911754010df9a5a8c49d9bf4e7d2135a6251da67ee2cde9ef603e706db2",
       "src/jcs.ts": "935e33226e856677b8f8a83768cf81a97a8a3733830fb5f5eb9c0cb98e4a48bc",
       "src/domain-sep.ts": "19c051ac0376bf7b9a8e1a0db93305424ea4a703aacb26d2bd2fca409c9dfa91"
     },
@@ -51,7 +52,10 @@
     "checkCommand": "npx tsx conformance/signed-artifact-b2-vector.mts --check",
     "dependencies": {
       "@noble/ed25519": "2.3.0",
-      "node": "v20.20.2"
+      "@noble/hashes": "1.8.0",
+      "canonicalize": "2.1.0",
+      "node": "v20.20.2",
+      "python3": "Python 3.12.3"
     },
     "deterministic": "fixed ed25519 fill-byte keys (0x11 buyer / 0x22 seller) + fixed timestamp 2026-01-01T00:00:00.000Z. Byte-stable for the sourceHashes + dependency versions above; no git commit is pinned, because the commit containing this output does not exist when the output is produced."
   },
