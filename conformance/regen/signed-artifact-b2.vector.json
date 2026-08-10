@@ -11,6 +11,12 @@
   "excludedFieldsBasis": "CORE §B.2 (signature omitted) + DACS-5 §10.4.1 R5-1 (anchoredByRole excluded)",
   "b2ContentHash": "57331dedbd518bb313d5053caf076d041e531e68b337845221e318217545e12d",
   "publishedStyleHash": "230c24c0951c6d35db748afb37cad21043817d16aa9ea5d15f511cb77c33cd12",
+  "encoderAgreement": {
+    "jcsWholeArtifactHash": "230c24c0951c6d35db748afb37cad21043817d16aa9ea5d15f511cb77c33cd12",
+    "pythonJsonDumpsHash": "230c24c0951c6d35db748afb37cad21043817d16aa9ea5d15f511cb77c33cd12",
+    "agree": true,
+    "note": "Equal on THIS artifact, which is why the divergence below is scope-only. Encoder divergence between JCS and json.dumps is real in general (non-ASCII, numeric forms) but is a separate property that this vector deliberately does not claim to exercise."
+  },
   "divergence": {
     "axis": "scope — which fields are hashed",
     "detail": "the published-style value hashes the whole artifact including `signatures`; the §B.2 value omits the per-kind excluded fields. This vector does NOT exercise an encoder-level difference between RFC 8785 JCS and json.dumps: the artifact is ASCII with no distinguishing numeric or string forms, so the two encoders agree on identical input here. Encoder divergence is real in general but is a separate property needing its own vector."
@@ -33,7 +39,7 @@
   "provenance": {
     "generator": "pathos-dacs-ref conformance/signed-artifact-b2-vector.mts",
     "repo": "https://github.com/cX3po/pathos-dacs-ref",
-    "generatedAtCommit": "084f71aababc0c77d3574190134b5690bbc87e7e",
+    "generatedAtCommit": "3dc457cfe33fb00a4b0cced278f3ae242cd271a4",
     "command": "npx tsx conformance/signed-artifact-b2-vector.mts",
     "checkCommand": "npx tsx conformance/signed-artifact-b2-vector.mts --check",
     "dependencies": {

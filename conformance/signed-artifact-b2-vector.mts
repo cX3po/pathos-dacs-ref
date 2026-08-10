@@ -126,6 +126,12 @@ const { signatures: _sigs, anchoredByRole: _anchor, ...b2Scope } = bundle as Rec
 const b2ContentHash = jcsHashHex(b2Scope);
 const publishedStyle = publishedStyleHash(bundle);
 const pyHash = pythonPublishedStyleHash(bundle);   // executed, then asserted equal below
+// Executes the encoder-agreement statement instead of asserting it: real RFC 8785 JCS over the
+// WHOLE artifact vs real python json.dumps over the same input. Equal here means the two encoders
+// agree on THIS artifact (ASCII, no distinguishing forms) — which is precisely why this vector
+// claims a scope divergence and not an encoder divergence.
+const jcsWholeArtifactHash = jcsHashHex(bundle);
+const encodersAgreeOnThisArtifact = jcsWholeArtifactHash === pyHash;
 
 // ── self-verify: the claims this vector makes must hold at emit time ─────────
 const v = verifyBundleV1(bundle);
@@ -174,6 +180,7 @@ if (signaturesVerifyOverPublishedStyle) throw new Error('signed-artifact-b2: sig
 if (!perKindExclusionMatters) throw new Error('signed-artifact-b2: signature-only exclusion equals the B.2 scope — the per-kind claim is unsupported, refusing to emit');
 if (signaturesVerifyOverSignatureOnly) throw new Error('signed-artifact-b2: signatures verify over the signature-only scope — per-kind exclusion not demonstrated, refusing to emit');
 if (pyHash !== publishedStyle) throw new Error(`signed-artifact-b2: python/JS parity failed for the validator method (py=${pyHash} js=${publishedStyle}) — refusing to emit an unverified 'validator method' claim`);
+if (!encodersAgreeOnThisArtifact) throw new Error('signed-artifact-b2: JCS and json.dumps disagree on this artifact — the stated scope-only divergence would be false, refusing to emit');
 
 const GENERATOR_COMMIT = gitCommit();
 const NOBLE_ED25519_VERSION = depVersion('@noble/ed25519');
@@ -192,6 +199,14 @@ const vector = {
   excludedFieldsBasis: 'CORE §B.2 (signature omitted) + DACS-5 §10.4.1 R5-1 (anchoredByRole excluded)',
   b2ContentHash,
   publishedStyleHash: publishedStyle,
+  encoderAgreement: {
+    jcsWholeArtifactHash,                    // RFC 8785 JCS over the whole artifact
+    pythonJsonDumpsHash: pyHash,             // python json.dumps over the same input
+    agree: encodersAgreeOnThisArtifact,      // MUST be true — executed, not assumed
+    note: 'Equal on THIS artifact, which is why the divergence below is scope-only. Encoder '
+      + 'divergence between JCS and json.dumps is real in general (non-ASCII, numeric forms) but '
+      + 'is a separate property that this vector deliberately does not claim to exercise.',
+  },
   divergence: {
     axis: 'scope — which fields are hashed',
     detail: 'the published-style value hashes the whole artifact including `signatures`; the §B.2 value '
@@ -241,8 +256,13 @@ const serialized = JSON.stringify(vector, null, 2) + '\n';
 
 if (process.argv.includes('--check')) {
   if (!existsSync(OUT)) { console.error(`missing ${OUT} — run without --check first`); process.exit(1); }
+  // `generatedAtCommit` is live-HEAD provenance: it necessarily differs once this output is
+  // committed, so comparing it would make --check fail forever after the first commit. Normalize
+  // that ONE field on both sides and byte-compare everything else — the hashes, the artifact, the
+  // signatures and every assertion result are all still compared exactly.
+  const norm = (t: string) => t.replace(/("generatedAtCommit":\s*)"[^"]*"/, '$1"<normalized>"');
   const onDisk = readFileSync(OUT, 'utf8');
-  if (onDisk !== serialized) { console.error('DRIFT: re-emit is not byte-identical to the committed vector'); process.exit(1); }
+  if (norm(onDisk) !== norm(serialized)) { console.error('DRIFT: re-emit is not byte-identical to the committed vector'); process.exit(1); }
   console.log('byte-identical ✓  b2=%s  published-style=%s', b2ContentHash, publishedStyle);
   process.exit(0);
 }
