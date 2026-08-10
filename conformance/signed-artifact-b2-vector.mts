@@ -8,7 +8,10 @@
  * A property the suite never exercises is one it cannot discriminate on (#270).
  *
  * This emits one signed AttestationBundleV1 from the reference impl and pins BOTH values
- * side by side, so the divergence is executable rather than asserted:
+ * side by side, so the divergence is executable rather than asserted. The divergence this
+ * vector exercises is SCOPE (which fields are hashed) — not encoder behaviour. This artifact
+ * contains no serialization feature (non-ASCII, exotic numbers) that would distinguish JCS
+ * from Python's json.dumps, so it deliberately does NOT claim an encoder-level divergence:
  *
  *   b2ContentHash        sha256(JCS(artifact minus the per-kind excluded fields))   <- §B.2
  *   publishedStyleHash   sha256(json.dumps(whole artifact, incl. signatures))       <- current validator
@@ -30,6 +33,7 @@ import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import * as ed25519 from '@noble/ed25519';
 import { emitAttestationBundleV1 } from '../src/lib/emit-bundle-v1.js';
 import { verifyBundleV1 } from '../src/lib/verify-bundle-v1.js';
@@ -58,6 +62,32 @@ function sortDeep(v: unknown): unknown {
     return out;
   }
   return v;
+}
+
+/**
+ * Compute the published validator's value with REAL python3, not a JS reproduction.
+ * The upstream validator is Python (`validate_conformance_vectors.py` canonical_json), so a
+ * JS lookalike is a claim about Python, not a measurement of it. We compute both and refuse
+ * to emit unless they agree — that turns "this is the validator's method" into a checked fact.
+ */
+function pythonPublishedStyleHash(artifact: unknown): string {
+  const src = 'import sys,json,hashlib;'
+    + 'v=json.load(sys.stdin);'
+    + 's=json.dumps(v,sort_keys=True,separators=(",",":"),ensure_ascii=False);'
+    + 'print(hashlib.sha256(s.encode("utf-8")).hexdigest())';
+  return execFileSync('python3', ['-c', src], { input: JSON.stringify(artifact), encoding: 'utf8' }).trim();
+}
+
+/** Pin what a third party needs to reproduce these exact bytes. */
+function gitCommit(): string {
+  try { return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: HERE, encoding: 'utf8' }).trim(); }
+  catch { return 'unknown'; }
+}
+function depVersion(pkg: string): string {
+  try {
+    const pj = JSON.parse(readFileSync(path.join(HERE, '..', 'node_modules', pkg, 'package.json'), 'utf8'));
+    return String(pj.version ?? 'unknown');
+  } catch { return 'unknown'; }
 }
 
 const buyer = mk(0x11);
@@ -95,6 +125,7 @@ const bundle: AttestationBundleV1 = emitAttestationBundleV1(unsigned, [
 const { signatures: _sigs, anchoredByRole: _anchor, ...b2Scope } = bundle as Record<string, unknown> as any;
 const b2ContentHash = jcsHashHex(b2Scope);
 const publishedStyle = publishedStyleHash(bundle);
+const pyHash = pythonPublishedStyleHash(bundle);   // executed, then asserted equal below
 
 // ── self-verify: the claims this vector makes must hold at emit time ─────────
 const v = verifyBundleV1(bundle);
@@ -125,6 +156,14 @@ const verifyAll = (h: string) => bundle.signatures.every((s) => {
 });
 const signaturesVerifyOverB2 = verifyAll(b2ContentHash);
 const signaturesVerifyOverPublishedStyle = verifyAll(publishedStyle);
+
+// EXECUTE the per-kind-exclusion claim rather than leaving it to be inferred: omitting only
+// `signatures` (the naive global rule) is NOT the §B.2 scope for this kind. If these ever
+// coincided, this artifact would not demonstrate the need for a per-kind excluded-field table.
+const { signatures: _s2, ...sigOnlyScope } = bundle as Record<string, unknown> as any;
+const signatureOnlyExcludedHash = jcsHashHex(sigOnlyScope);
+const perKindExclusionMatters = signatureOnlyExcludedHash !== b2ContentHash;
+const signaturesVerifyOverSignatureOnly = verifyAll(signatureOnlyExcludedHash);
 // The whole point of #278: the signatures commit to the §B.2 scope, NOT to the published value.
 // If these ever coincided, the vector would no longer discriminate and must not be published.
 if (!signaturesVerify) throw new Error('signed-artifact-b2: emitted bundle does not self-verify');
@@ -132,6 +171,12 @@ if (!hashesDiverge) throw new Error('signed-artifact-b2: hashes coincide — vec
 if (!scopeMatchesImpl) throw new Error('signed-artifact-b2: computed B.2 scope != emitter signed scope — refusing to emit');
 if (!signaturesVerifyOverB2) throw new Error('signed-artifact-b2: signatures do NOT verify over the B.2 value — the core claim is false, refusing to emit');
 if (signaturesVerifyOverPublishedStyle) throw new Error('signed-artifact-b2: signatures ALSO verify over the published-style value — no discrimination, refusing to emit');
+if (!perKindExclusionMatters) throw new Error('signed-artifact-b2: signature-only exclusion equals the B.2 scope — the per-kind claim is unsupported, refusing to emit');
+if (signaturesVerifyOverSignatureOnly) throw new Error('signed-artifact-b2: signatures verify over the signature-only scope — per-kind exclusion not demonstrated, refusing to emit');
+if (pyHash !== publishedStyle) throw new Error(`signed-artifact-b2: python/JS parity failed for the validator method (py=${pyHash} js=${publishedStyle}) — refusing to emit an unverified 'validator method' claim`);
+
+const GENERATOR_COMMIT = gitCommit();
+const NOBLE_ED25519_VERSION = depVersion('@noble/ed25519');
 
 const vector = {
   vectorId: 'signed-artifact-b2-contenthash',
@@ -147,10 +192,22 @@ const vector = {
   excludedFieldsBasis: 'CORE §B.2 (signature omitted) + DACS-5 §10.4.1 R5-1 (anchoredByRole excluded)',
   b2ContentHash,
   publishedStyleHash: publishedStyle,
-  divergesOnTwoAxes: [
-    'signature-bearing fields are included in the published-style value and omitted from the §B.2 value',
-    'json.dumps(sort_keys) is not RFC 8785 JCS (they coincide only on ASCII, signature-less content)',
-  ],
+  divergence: {
+    axis: 'scope — which fields are hashed',
+    detail: 'the published-style value hashes the whole artifact including `signatures`; the §B.2 value '
+      + 'omits the per-kind excluded fields. This vector does NOT exercise an encoder-level difference '
+      + 'between RFC 8785 JCS and json.dumps: the artifact is ASCII with no distinguishing numeric or '
+      + 'string forms, so the two encoders agree on identical input here. Encoder divergence is real in '
+      + 'general but is a separate property needing its own vector.',
+  },
+  perKindExclusion: {
+    signatureOnlyExcludedHash,                      // JCS(bundle minus `signatures` only)
+    differsFromB2: perKindExclusionMatters,          // MUST be true
+    signaturesVerifyOverSignatureOnly,               // MUST be false
+    why: 'omitting only `signatures` is not the §B.2 scope for AttestationBundleV1 — `anchoredByRole` '
+      + 'is also excluded (§10.4.1 R5-1), so a single global rule computes the wrong hash. This is the '
+      + 'executable case for the per-kind excluded-field table.',
+  },
   signaturesCommitTo: 'b2ContentHash',
   selfVerified: {
     signaturesVerify,
@@ -158,12 +215,24 @@ const vector = {
     scopeMatchesImplementation: scopeMatchesImpl,
     signaturesVerifyOverB2,                       // MUST be true
     signaturesVerifyOverPublishedStyle,           // MUST be false — this is what discriminates
+    publishedStyleHashPythonParity: pyHash === publishedStyle,  // computed by real python3, not reproduced in JS
   },
   provenance: {
     generator: 'pathos-dacs-ref conformance/signed-artifact-b2-vector.mts',
+    repo: 'https://github.com/cX3po/pathos-dacs-ref',
+    // The tree state the generator RAN against. It cannot name the commit that contains this
+    // file (that commit does not exist until this output is committed), so it names the parent.
+    // Reproduction does not depend on it — keys and timestamps are fixed — but it tells a third
+    // party which tree produced these bytes. `--check` is the actual reproduction guarantee.
+    generatedAtCommit: GENERATOR_COMMIT,
     command: 'npx tsx conformance/signed-artifact-b2-vector.mts',
     checkCommand: 'npx tsx conformance/signed-artifact-b2-vector.mts --check',
-    deterministic: 'fixed ed25519 fill-byte keys + fixed timestamps; byte-stable across runs',
+    // Signature BYTES depend on the ed25519 implementation, so the library version is part of
+    // reproducibility, not a footnote. Byte-stability across runs of the same tree is not the
+    // same as reproducibility by a third party at an unspecified commit.
+    dependencies: { '@noble/ed25519': NOBLE_ED25519_VERSION, node: process.version },
+    deterministic: 'fixed ed25519 fill-byte keys (0x11 buyer / 0x22 seller) + fixed timestamp '
+      + '2026-01-01T00:00:00.000Z; byte-stable for the pinned commit + dependency versions above',
   },
   artifact: bundle,
 };
