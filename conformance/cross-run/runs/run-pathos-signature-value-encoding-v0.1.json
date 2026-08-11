@@ -1,0 +1,46 @@
+{
+  "set": "signature-value-encoding-v0.1",
+  "impl": "pathos-dacs-ref@cross-run-1",
+  "results": [
+    {
+      "name": "canonical-base64url-unpadded",
+      "verdict": "accept"
+    },
+    {
+      "name": "standard-base64-same-bytes-rejected",
+      "verdict": "reject"
+    },
+    {
+      "name": "padded-base64url-same-bytes-rejected",
+      "verdict": "reject"
+    },
+    {
+      "name": "embedded-whitespace-rejected",
+      "verdict": "reject"
+    },
+    {
+      "name": "impossible-length-rejected",
+      "verdict": "reject"
+    },
+    {
+      "name": "non-zero-residual-bits-rejected",
+      "verdict": "reject"
+    },
+    {
+      "name": "canonical-wire-wrong-ed25519-length-rejected",
+      "verdict": "reject"
+    },
+    {
+      "name": "declared-standard-base64-legacy-import",
+      "verdict": "accept"
+    },
+    {
+      "name": "declared-lowercase-hex-legacy-import",
+      "verdict": "accept"
+    },
+    {
+      "name": "undeclared-legacy-encoding-rejected",
+      "verdict": "reject"
+    }
+  ]
+}
