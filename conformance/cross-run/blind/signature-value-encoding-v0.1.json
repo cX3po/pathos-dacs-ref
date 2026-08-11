@@ -1,0 +1,66 @@
+{
+  "set": "signature-value-encoding-v0.1",
+  "spec": "CORE \u00a7B.7 SIG-6",
+  "count": 10,
+  "vectors": [
+    {
+      "name": "canonical-base64url-unpadded",
+      "mode": "conforming-verifier",
+      "algorithm": "ed25519",
+      "value": "eXw8XpICZUHierYG2zdyFuru6LU0zbtbCf7V9uCpfhfKNb3JwbrVK28DZxBn5RJy3ojM6_PgbxYDQNEW2CG2BA"
+    },
+    {
+      "name": "standard-base64-same-bytes-rejected",
+      "mode": "conforming-verifier",
+      "algorithm": "ed25519",
+      "value": "eXw8XpICZUHierYG2zdyFuru6LU0zbtbCf7V9uCpfhfKNb3JwbrVK28DZxBn5RJy3ojM6/PgbxYDQNEW2CG2BA=="
+    },
+    {
+      "name": "padded-base64url-same-bytes-rejected",
+      "mode": "conforming-verifier",
+      "algorithm": "ed25519",
+      "value": "eXw8XpICZUHierYG2zdyFuru6LU0zbtbCf7V9uCpfhfKNb3JwbrVK28DZxBn5RJy3ojM6_PgbxYDQNEW2CG2BA=="
+    },
+    {
+      "name": "embedded-whitespace-rejected",
+      "mode": "conforming-verifier",
+      "algorithm": "ed25519",
+      "value": "eXw8XpICZUHierYG2zdy Furu6LU0zbtbCf7V9uCpfhfKNb3JwbrVK28DZxBn5RJy3ojM6_PgbxYDQNEW2CG2BA"
+    },
+    {
+      "name": "impossible-length-rejected",
+      "mode": "conforming-verifier",
+      "algorithm": "ed25519",
+      "value": "A"
+    },
+    {
+      "name": "non-zero-residual-bits-rejected",
+      "mode": "conforming-verifier",
+      "algorithm": "ed25519",
+      "value": "AB"
+    },
+    {
+      "name": "canonical-wire-wrong-ed25519-length-rejected",
+      "mode": "conforming-verifier",
+      "algorithm": "ed25519",
+      "value": "eXw8XpICZUHierYG2zdyFuru6LU0zbtbCf7V9uCpfhfKNb3JwbrVK28DZxBn5RJy3ojM6_PgbxYDQNEW2CG2"
+    },
+    {
+      "name": "declared-standard-base64-legacy-import",
+      "mode": "legacy-import",
+      "declaredEncoding": "standard-base64-padded",
+      "value": "eXw8XpICZUHierYG2zdyFuru6LU0zbtbCf7V9uCpfhfKNb3JwbrVK28DZxBn5RJy3ojM6/PgbxYDQNEW2CG2BA=="
+    },
+    {
+      "name": "declared-lowercase-hex-legacy-import",
+      "mode": "legacy-import",
+      "declaredEncoding": "lowercase-hex",
+      "value": "797c3c5e92026541e27ab606db377216eaeee8b534cdbb5b09fed5f6e0a97e17ca35bdc9c1bad52b6f03671067e51272de88ccebf3e06f160340d116d821b604"
+    },
+    {
+      "name": "undeclared-legacy-encoding-rejected",
+      "mode": "legacy-import",
+      "value": "eXw8XpICZUHierYG2zdyFuru6LU0zbtbCf7V9uCpfhfKNb3JwbrVK28DZxBn5RJy3ojM6/PgbxYDQNEW2CG2BA=="
+    }
+  ]
+}
