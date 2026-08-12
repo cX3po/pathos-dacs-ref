@@ -1,0 +1,9 @@
+{
+  "_note": "Normalized DACS-2 VerifyResult verdict (deterministic surface only — per-run attestation/timestamps excluded). Recorded at correct live state 2026-06-23 (registration LAPSED; nextRenewalDate 2026-06-17 already past, so re-fetching live risks an ISSUED flip — diff against THIS recorded verdict, not a live re-run). Reproduce: npx tsx src/cli/vet-gleif.ts --lei 743700SEJ147Y3TSFE83 --jobId <uuid> --dry-run",
+  "claim": { "scheme": "lei", "identifier": "743700SEJ147Y3TSFE83" },
+  "recipeFamily": "consensus-backed-proxy",
+  "decision": "indeterminate",
+  "resolvedEntity": "Dadaal Service Oy",
+  "registrationStatus": "LAPSED",
+  "impl": "pathos-dacs-ref (PATH-OS Labs), recipe gleif-cbp:1"
+}
