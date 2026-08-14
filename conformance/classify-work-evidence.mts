@@ -1,15 +1,21 @@
 /**
- * Executable reference verifier for the proposed Atomic-DACS Work-receipt and
- * absence-proof profile (RFC #320). It makes receipt acceptance independent of
+ * Executable reference evidence classifier for the proposed Atomic-DACS Work-receipt and
+ * absence-proof profile (RFC #320). It consumes pre-verified evidence and classifies
+ * its coherence with the receipt contract. It makes receipt acceptance independent of
  * Indexer hydration, as required by the receipt-without-Indexer work in #973.
  *
- * Run `npx tsx conformance/verify-work-receipt.mts` for the human-readable
+ * IMPORTANT: This classifier performs NO signature verification, Merkle-path validation,
+ * quorum/finality-certificate checking, validator-set verification, or proof-subject
+ * validation. It consumes already-verified ProofStatus tokens and classifies their
+ * coherence. Implementers MUST perform cryptographic verification independently.
+ *
+ * Run `npx tsx conformance/classify-work-evidence.mts` for the human-readable
  * conformance table, or append `--json` for a machine-readable summary.
  *
  * Profile-hardening notes for the Standard profile (from adversarial review;
  * none affect the verdicts below, recorded so implementers normalize inputs):
  *  (A) Slot-key / root components: the Standard profile SHOULD require each
- *      component to be a non-empty string or a finite number. This verifier
+ *      component to be a non-empty string or a finite number. This classifier
  *      treats `undefined`/`null` as absent (-> indeterminate); an empty string
  *      or non-finite number is currently treated as present material.
  *  (B) Verdict chains are outcome-scoped: a `rolled-back` receipt is judged on
@@ -18,14 +24,14 @@
  *      `winnerStateProof` that only applies to a `committed` outcome). Consumers
  *      MUST NOT assume any-invalid-proof-anywhere -> reject.
  *  (C) Slot-key comparison is TYPE-STRICT (`0 !== "0"`). Encoders MUST normalize
- *      phaseIndex to a number; a type mismatch fail-safes to reject, never pass.
+ *      phaseIndex to a number; a type mismatch fail-safes to reject, never coherent.
  *  (D) Payment-slot identity is the structured canonical tuple attested by the
  *      verified slot-state proof, never a claimant-presented label. This closes
  *      encoding-drift evasions (alias, zero-padding, delimiter ambiguity) while
  *      refusing to reject on unbound labels alone.
  *  (E) A valid slotStateProof SHOULD carry a proof-derived `slotTransition`;
  *      the profile should treat valid-proof-with-absent-transition as degrading
- *      the pair to indeterminate rather than a non-consuming `pass`. phaseIndex
+ *      the pair to indeterminate rather than a non-consuming `coherent`. phaseIndex
  *      is trusted only as a number; per note (A) the Standard should also exclude
  *      non-finite numbers from a trusted proven slot.
  */
@@ -34,7 +40,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export type Verdict = 'pass' | 'indeterminate' | 'reject' | 'fail';
+export type Verdict = 'coherent' | 'indeterminate' | 'reject' | 'fail';
 
 // Profile-proposed; refine when the Standard profile lands.
 type ProofStatus = 'valid' | 'invalid' | 'absent';
@@ -143,7 +149,7 @@ const isAbsent = (value: unknown): boolean =>
 function verifyProofChain(statuses: Array<ProofStatus | undefined>): Verdict {
   if (statuses.some((status) => status === 'invalid')) return 'reject';
   if (statuses.some((status) => status !== 'valid')) return 'indeterminate';
-  return 'pass';
+  return 'coherent';
 }
 
 function verifyReceiptProof(obs: WorkReceiptProofObservation): Verdict {
@@ -168,7 +174,7 @@ function verifyReceiptProof(obs: WorkReceiptProofObservation): Verdict {
       ...common,
       obs.businessRootEqualityProof,
     ]);
-    if (proofVerdict !== 'pass') return proofVerdict;
+    if (proofVerdict !== 'coherent') return proofVerdict;
 
     const { preBusinessStateRoot, postBusinessStateRoot } = obs.receipt;
     if (
@@ -181,7 +187,7 @@ function verifyReceiptProof(obs: WorkReceiptProofObservation): Verdict {
     }
 
     return preBusinessStateRoot === postBusinessStateRoot
-      ? 'pass'
+      ? 'coherent'
       : 'reject';
   }
 
@@ -203,7 +209,7 @@ function verifyAbsenceClaim(obs: AbsenceClaimObservation): Verdict {
   }
 
   if (evidence.kind === 'authenticated-pre-admission-rejection') return 'fail';
-  if (evidence.kind === 'authenticated-lifecycle-expired') return 'pass';
+  if (evidence.kind === 'authenticated-lifecycle-expired') return 'coherent';
   return 'indeterminate';
 }
 
@@ -229,7 +235,7 @@ function verifySettlementEvidence(obs: SettlementEvidenceObservation): Verdict {
     isAbsent(evidence) || isAbsent(anchor)
   )) return 'indeterminate';
 
-  return 'pass';
+  return 'coherent';
 }
 
 function verifyPaymentSlot(obs: PaymentSlotObservation): Verdict {
@@ -283,11 +289,11 @@ function verifyPaymentSlot(obs: PaymentSlotObservation): Verdict {
 
   // ledgerLevelCAS is merely a claim and cannot whitewash two committed sets.
   if (verifiedCommitCount === 2) return 'reject';
-  if (verifiedCommitCount === 1) return 'pass';
+  if (verifiedCommitCount === 1) return 'coherent';
   return 'indeterminate';
 }
 
-export function verifyWorkReceipt(obs: Observation): Verdict {
+export function classifyVerifiedWorkEvidence(obs: Observation): Verdict {
   switch (obs.kind) {
     case 'work-receipt-proof':
       return verifyReceiptProof(obs as WorkReceiptProofObservation);
@@ -335,7 +341,7 @@ function run(): void {
 
   const results: Result[] = vectorSet.vectors.map((vector) => {
     try {
-      const computed = verifyWorkReceipt(vector.observation);
+      const computed = classifyVerifiedWorkEvidence(vector.observation);
       return {
         name: vector.name,
         expected: vector.expected,
