@@ -146,13 +146,13 @@ export type Observation =
 const isAbsent = (value: unknown): boolean =>
   value === undefined || value === null;
 
-function verifyProofChain(statuses: Array<ProofStatus | undefined>): Verdict {
+function classifyProofChain(statuses: Array<ProofStatus | undefined>): Verdict {
   if (statuses.some((status) => status === 'invalid')) return 'reject';
   if (statuses.some((status) => status !== 'valid')) return 'indeterminate';
   return 'coherent';
 }
 
-function verifyReceiptProof(obs: WorkReceiptProofObservation): Verdict {
+function classifyReceiptProof(obs: WorkReceiptProofObservation): Verdict {
   if (!obs.receipt || typeof obs.receipt !== 'object') return 'indeterminate';
 
   const common = [
@@ -162,7 +162,7 @@ function verifyReceiptProof(obs: WorkReceiptProofObservation): Verdict {
   ];
 
   if (obs.receipt.outcome === 'committed') {
-    return verifyProofChain([
+    return classifyProofChain([
       ...common,
       obs.winnerStateProof,
       obs.paymentSlotStateProof,
@@ -170,7 +170,7 @@ function verifyReceiptProof(obs: WorkReceiptProofObservation): Verdict {
   }
 
   if (obs.receipt.outcome === 'rolled-back') {
-    const proofVerdict = verifyProofChain([
+    const proofVerdict = classifyProofChain([
       ...common,
       obs.businessRootEqualityProof,
     ]);
@@ -191,11 +191,11 @@ function verifyReceiptProof(obs: WorkReceiptProofObservation): Verdict {
       : 'reject';
   }
 
-  const commonVerdict = verifyProofChain(common);
+  const commonVerdict = classifyProofChain(common);
   return commonVerdict === 'reject' ? 'reject' : 'indeterminate';
 }
 
-function verifyAbsenceClaim(obs: AbsenceClaimObservation): Verdict {
+function classifyAbsenceClaim(obs: AbsenceClaimObservation): Verdict {
   const { evidence } = obs;
   if (!evidence || typeof evidence !== 'object') return 'indeterminate';
 
@@ -213,7 +213,7 @@ function verifyAbsenceClaim(obs: AbsenceClaimObservation): Verdict {
   return 'indeterminate';
 }
 
-function verifySettlementEvidence(obs: SettlementEvidenceObservation): Verdict {
+function classifySettlementEvidence(obs: SettlementEvidenceObservation): Verdict {
   if (obs.signatureProof === 'invalid' || obs.signatureValid === false) {
     return 'reject';
   }
@@ -238,7 +238,7 @@ function verifySettlementEvidence(obs: SettlementEvidenceObservation): Verdict {
   return 'coherent';
 }
 
-function verifyPaymentSlot(obs: PaymentSlotObservation): Verdict {
+function classifyPaymentSlot(obs: PaymentSlotObservation): Verdict {
   if (!obs.firstWork || !obs.secondWork) return 'indeterminate';
 
   const works = [obs.firstWork, obs.secondWork];
@@ -296,13 +296,13 @@ function verifyPaymentSlot(obs: PaymentSlotObservation): Verdict {
 export function classifyVerifiedWorkEvidence(obs: Observation): Verdict {
   switch (obs.kind) {
     case 'work-receipt-proof':
-      return verifyReceiptProof(obs as WorkReceiptProofObservation);
+      return classifyReceiptProof(obs as WorkReceiptProofObservation);
     case 'absence-claim':
-      return verifyAbsenceClaim(obs as AbsenceClaimObservation);
+      return classifyAbsenceClaim(obs as AbsenceClaimObservation);
     case 'settlement-evidence':
-      return verifySettlementEvidence(obs as SettlementEvidenceObservation);
+      return classifySettlementEvidence(obs as SettlementEvidenceObservation);
     case 'payment-slot':
-      return verifyPaymentSlot(obs as PaymentSlotObservation);
+      return classifyPaymentSlot(obs as PaymentSlotObservation);
     default:
       // Fail-closed contract: embedders MUST treat this throw as non-accept.
       throw new Error(`Unknown work-receipt observation kind: ${String(obs.kind)}`);
