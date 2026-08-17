@@ -5,8 +5,8 @@
   "count": 31,
   "vectors": [
     {
-      "name": "receipt-full-proof-chain-independent-of-indexer-pass",
-      "expected": "pass",
+      "name": "receipt-full-proof-chain-independent-of-indexer-coherent",
+      "expected": "coherent",
       "note": "Every link verifies against a trusted checkpoint, WITHOUT any Indexer read: the accepting consumer never touches public Indexer hydration.",
       "observation": {
         "kind": "work-receipt-proof",
@@ -80,8 +80,8 @@
       }
     },
     {
-      "name": "included-failure-rollback-roots-equal-pass",
-      "expected": "pass",
+      "name": "included-failure-rollback-roots-equal-coherent",
+      "expected": "coherent",
       "note": "outcome==rolled-back with a verified receipt proof: every prior critical op result is rolled-back, later ops not-executed, and a state-membership proof shows preBusinessStateRoot == postBusinessStateRoot. Fee/nonce effects reported SEPARATELY (may persist).",
       "observation": {
         "kind": "work-receipt-proof",
@@ -195,8 +195,8 @@
       }
     },
     {
-      "name": "expiry-authenticated-lifecycle-permits-single-replacement-pass",
-      "expected": "pass",
+      "name": "expiry-authenticated-lifecycle-permits-single-replacement-coherent",
+      "expected": "coherent",
       "note": "Authenticated lifecycle evidence proving the old attempt can no longer be included permits exactly one replacement under the same workId; local-clock expiry alone is insufficient (separate indeterminate case).",
       "observation": {
         "kind": "absence-claim",
@@ -387,8 +387,8 @@
       }
     },
     {
-      "name": "settlement-evidence-full-slotkey-match-pass",
-      "expected": "pass",
+      "name": "settlement-evidence-full-slotkey-match-coherent",
+      "expected": "coherent",
       "observation": {
         "kind": "settlement-evidence",
         "signatureProof": "valid",
@@ -579,8 +579,8 @@
       }
     },
     {
-      "name": "payment-slot-single-verified-commit-pass",
-      "expected": "pass",
+      "name": "payment-slot-single-verified-commit-coherent",
+      "expected": "coherent",
       "note": "Coverage for the sole accept path: exactly one Work verifiably consumes the slot (slotStateProof valid + open->consumed) while the other holds the same proven slot open (slotTransition 'open', not consuming). Both proven slots trusted + equal, verifiedCommitCount==1 -> pass (a legitimate single settlement, no double-spend).",
       "observation": {
         "kind": "payment-slot",
