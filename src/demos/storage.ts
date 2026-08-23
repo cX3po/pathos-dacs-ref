@@ -12,7 +12,6 @@
  */
 
 import { StorageProgram } from '@kynesyslabs/demosdk/storage';
-import { DemosTransactions } from '@kynesyslabs/demosdk/websdk';
 import type { DemosHandle } from './connection.js';
 
 export interface AnchorResult {
@@ -97,18 +96,67 @@ export async function anchor(
     { nonce, salt: options.salt }
   );
 
-  // Sign + broadcast via DemosTransactions pipeline.
-  // Canonical SDK flow: prepare(payload) → demos.sign(tx) → confirm(tx) → broadcastAndWait(validity)
-  const tx = await DemosTransactions.prepare(payload);
-  // Instance method demos.sign(tx) is the non-deprecated path (per DemosTransactions.sign jsdoc)
-  const signedTx = await demos.sign(tx);
-  const validity = await DemosTransactions.confirm(signedTx, demos);
-  const result = await DemosTransactions.broadcastAndWait(validity, demos);
+  // Sign + broadcast via the DEDICATED storage-program flow (not DemosTransactions.prepare +
+  // demos.sign — that validates a `to` address the storage-program payload doesn't carry, and
+  // fails live with "Invalid To address: 0x"). This is the exact path the receipt-anchor proved
+  // live: storagePrograms.sign(payload) → demos.confirm(tx) → demos.broadcastAndWait(validity).
+  const demosAny = demos as unknown as {
+    storagePrograms: { sign: (p: unknown) => Promise<unknown> };
+    confirm: (tx: unknown) => Promise<unknown>;
+    broadcastAndWait: (v: unknown, o?: { timeoutMs?: number }) => Promise<unknown>;
+  };
+  const tx = await demosAny.storagePrograms.sign(payload);
+  const validity = await demosAny.confirm(tx);
+  // Broadcast wait window. A slow devnet node can take >90s to CONFIRM a tx it already accepted for
+  // propagation (the 2026-07-11 + 2026-07-23 BroadcastTimeoutError). Raise the default and make it tunable.
+  // Clamp to a finite, positive, capped value so a bad/Infinity env can't make the wait loops unbounded.
+  const clampMs = (v: number, def: number, max: number): number =>
+    Number.isFinite(v) && v > 0 ? Math.min(v, max) : def;
+  const broadcastTimeoutMs = clampMs(Number(process.env.GATEWAY_BROADCAST_TIMEOUT_MS), 240_000, 600_000);
+  type BroadcastResult = {
+    broadcast?: { response?: { hash?: string }; data?: { tx_hash?: string; hash?: string } };
+    status?: { state?: string };
+  };
+  let result: BroadcastResult;
+  try {
+    result = await demosAny.broadcastAndWait(validity, { timeoutMs: broadcastTimeoutMs }) as BroadcastResult;
+  } catch (err) {
+    // A broadcast TIMEOUT means the tx was accepted for propagation but not confirmed within the wait
+    // window — it may STILL land. We MUST NOT re-broadcast (a second tx = double-anchor / double-spend).
+    // Instead poll getTransactionStatus for the SAME txHash over a bounded grace window; recover iff it
+    // reaches `included`, else fail closed (safe to re-run the deal after balance reconciliation).
+    const to = err as { name?: string; txHash?: string };
+    const timedOutHash = typeof to?.txHash === 'string' ? to.txHash : '';
+    if (to?.name !== 'BroadcastTimeoutError' || !timedOutHash) throw err;
+    const demosPoll = demos as unknown as { call: (m: string, a: string, p: unknown) => Promise<unknown> };
+    const graceMs = clampMs(Number(process.env.GATEWAY_BROADCAST_GRACE_MS), 180_000, 600_000);
+    const stepMs = 15_000;
+    const deadline = Date.now() + graceMs;
+    let landed = false;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, stepMs));
+      let statusRes: unknown;
+      try { statusRes = await demosPoll.call('nodeCall', 'getTransactionStatus', { hash: timedOutHash }); }
+      catch { continue; }   // transient transport blip — keep polling the same tx, never re-broadcast
+      const st = statusRes && typeof statusRes === 'object' ? (statusRes as { state?: unknown }).state : undefined;
+      if (st === 'included') { landed = true; break; }
+      if (st === 'failed') throw new Error(`SR-2 anchor of "${programName}" tx ${timedOutHash} FAILED on chain (not re-broadcast)`);
+    }
+    if (!landed) {
+      throw new Error(`SR-2 anchor of "${programName}" not confirmed within ${broadcastTimeoutMs + graceMs}ms ` +
+        `(tx ${timedOutHash}; never re-broadcast — reconcile balance, then re-run the deal)`);
+    }
+    result = { broadcast: { response: { hash: timedOutHash } }, status: { state: 'included' } };
+  }
 
-  // broadcastAndWait returns { broadcast: RPCResponse, status: {state, blockNumber?} }
-  // Tx hash typically lives on the broadcast response payload
-  const broadcastBody = (result.broadcast as { data?: { tx_hash?: string; hash?: string } })?.data ?? {};
-  const txHash = broadcastBody.tx_hash ?? broadcastBody.hash ?? '';
+  // Tx hash from the broadcast response (storage-program flow puts it under broadcast.response.hash).
+  const txHash = result.broadcast?.response?.hash
+    ?? result.broadcast?.data?.tx_hash ?? result.broadcast?.data?.hash ?? '';
+  // Require an explicit terminal `included` — a missing/other state is NOT success (matches the
+  // receipt-anchor's positive check; never treat an unobserved anchor as confirmed).
+  if (result.status?.state !== 'included') {
+    throw new Error(`SR-2 anchor of "${programName}" not included (state=${result.status?.state ?? 'missing'})`);
+  }
 
   const sizeBytes = StorageProgram.getDataSize(data, encoding);
 

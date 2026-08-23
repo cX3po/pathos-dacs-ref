@@ -1,0 +1,98 @@
+{
+  "set": "artifact-reference-shapes-v0.1",
+  "impl": "pathos-dacs-ref@cross-run-1",
+  "results": [
+    {
+      "name": "attestation-storage-program",
+      "verdict": "pass"
+    },
+    {
+      "name": "attestation-ipfs",
+      "verdict": "pass"
+    },
+    {
+      "name": "attestation-https",
+      "verdict": "pass"
+    },
+    {
+      "name": "attestation-legacy-kind-id-rejected",
+      "verdict": "fail"
+    },
+    {
+      "name": "txref-evm",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-evm-event",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-solana",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-solana-instruction",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-demos",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-storage-program",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-ap2",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-x402",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-x402-event",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-htlc-lock",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-htlc-reveal",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-htlc-claim",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-htlc-refund",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-liquidity-tank",
+      "verdict": "pass"
+    },
+    {
+      "name": "txref-legacy-rail-kind-rejected",
+      "verdict": "fail"
+    },
+    {
+      "name": "txref-solana-missing-cluster-rejected",
+      "verdict": "fail"
+    },
+    {
+      "name": "txref-evm-event-missing-index-rejected",
+      "verdict": "fail"
+    },
+    {
+      "name": "txref-extra-role-rejected",
+      "verdict": "fail"
+    },
+    {
+      "name": "txref-ap2-legacy-receipt-attestation-rejected",
+      "verdict": "fail"
+    }
+  ]
+}

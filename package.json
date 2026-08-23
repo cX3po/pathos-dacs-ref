@@ -1,15 +1,24 @@
 {
   "name": "pathos-dacs-ref",
   "version": "0.1.0",
-  "description": "PATH-OS reference implementation of DACS — Demos Agent Commerce Standards (paper v0.7, DACS-1..5 v0.1). Scope: DACS-1 listing publisher, DACS-5 envelope-receipt verifier CLI, DACS-2 evm-rpc + GLEIF consensus-backed-proxy recipe.",
+  "description": "PATH-OS reference implementation of DACS \u2014 Demos Agent Commerce Standards (paper v0.7, DACS-1..5 v0.1). Scope: DACS-1 listing publisher, DACS-5 envelope-receipt verifier CLI, DACS-2 evm-rpc + GLEIF consensus-backed-proxy recipe.",
   "type": "module",
   "license": "MIT",
   "scripts": {
     "build": "tsc --noEmit",
+    "repro:dacs-v01-golden-pay-binding": "tsx conformance/reproducers/dacs-v01-golden-pay-binding/reproduce.mts",
     "listing-pub": "tsx src/cli/listing-pub.ts",
+    "discovery-gen": "tsx src/cli/discovery-gen.ts",
     "verify": "tsx src/cli/verify.ts",
     "vet-gleif": "tsx src/cli/vet-gleif.ts",
-    "test": "tsx --test test/vectors/*.test.ts test/integration/*.test.ts"
+    "ap2-test-agent": "tsx src/live/ap2-test-agent.mts",
+    "test": "tsx --test test/vectors/*.test.ts test/integration/*.test.ts",
+    "convergence": "tsx conformance/convergence-suite.mts",
+    "fuzz:bb-binding": "tsx conformance/cross-run-corpus/bb-differential-fuzzer.mts",
+    "fuzz:bb-stateful": "tsx conformance/cross-run-corpus/bb-stateful-fuzzer.mts",
+    "gen:unsigned-vectors": "tsx conformance/cross-run-corpus/gen-unsigned-field-vectors.mts && tsx conformance/cross-run-corpus/gen-unsigned-field-vectors.mts --check",
+    "cross-run:unsigned-vectors": "tsx conformance/cross-run-corpus/unsigned-field-cross-run.mts",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@kynesyslabs/demosdk": "^4.0.10",
@@ -21,7 +30,8 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "patch-package": "^8.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

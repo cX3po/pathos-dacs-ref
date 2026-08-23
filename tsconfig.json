@@ -15,6 +15,12 @@
     "verbatimModuleSyntax": false,
     "outDir": "dist"
   },
-  "include": ["src/**/*", "test/**/*"],
+  "include": [
+    "src/**/*",
+    "test/**/*",
+    "scripts/**/*",
+    "conformance/reproducers/dacs-v01-golden-pay-binding/**/*.ts",
+    "conformance/reproducers/dacs-v01-golden-pay-binding/**/*.mts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

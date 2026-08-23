@@ -1,0 +1,54 @@
+{
+  "set": "x402-receipt-hash-v0.1",
+  "impl": "pathos-dacs-ref@cross-run-1",
+  "results": [
+    {
+      "name": "v1-success-x-payment-response",
+      "verdict": "pass"
+    },
+    {
+      "name": "v2-success-payment-response",
+      "verdict": "pass"
+    },
+    {
+      "name": "v2-reordered-pretty-json-same-hash",
+      "verdict": "pass"
+    },
+    {
+      "name": "v2-decomposed-unicode-is-nfc-normalised",
+      "verdict": "pass"
+    },
+    {
+      "name": "v2-extension-member-is-committed",
+      "verdict": "pass"
+    },
+    {
+      "name": "v2-extension-mutation-breaks-hash",
+      "verdict": "fail"
+    },
+    {
+      "name": "transaction-hash-placeholder-is-not-receipt-hash",
+      "verdict": "fail"
+    },
+    {
+      "name": "v2-wrong-v1-response-header",
+      "verdict": "error"
+    },
+    {
+      "name": "v2-invalid-base64",
+      "verdict": "error"
+    },
+    {
+      "name": "v2-non-success-response",
+      "verdict": "error"
+    },
+    {
+      "name": "v2-transaction-mismatch",
+      "verdict": "fail"
+    },
+    {
+      "name": "v2-network-chainid-mismatch",
+      "verdict": "fail"
+    }
+  ]
+}

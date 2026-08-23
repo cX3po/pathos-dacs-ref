@@ -1,0 +1,9 @@
+{
+  "_note": "Normalized DACS-2 VerifyResult verdict (deterministic surface only — per-run attestation/timestamps excluded). Recorded at correct live state 2026-06-23 (registration RETIRED) before any renewal flip. Reproduce: npx tsx src/cli/vet-gleif.ts --lei 9845006A7A5583CF9B64 --jobId <uuid> --dry-run",
+  "claim": { "scheme": "lei", "identifier": "9845006A7A5583CF9B64" },
+  "recipeFamily": "consensus-backed-proxy",
+  "decision": "indeterminate",
+  "resolvedEntity": "ΤΑΜΕΙΟ ΠΡΟΝΟΙΑΣ ΕΡΓΑΤΩΝ ΔΗΜΟΥ ΑΓΛΑΝΤΖΙΑΣ",
+  "registrationStatus": "RETIRED",
+  "impl": "pathos-dacs-ref (PATH-OS Labs), recipe gleif-cbp:1"
+}

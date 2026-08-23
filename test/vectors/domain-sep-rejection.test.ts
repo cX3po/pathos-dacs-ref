@@ -80,7 +80,7 @@ test('§B.7 — verify() returns false for unknown separator (does NOT throw)', 
   assert.equal(result, false);
 });
 
-test('§B.7 — registry separator count (v0.1 cutover: 10 registry + 11 dacs-x extension)', () => {
+test('§B.7 — registry separator count (13 registry + 12 dacs-x extension)', () => {
   // v0.1 §B.7 alignment 2026-06-07 (dacs-repin cutover): the 6 drifted strings were renamed
   // to their canonical §B.7 form, the legacy `dacs5-bundle:v1:` was folded into `dacs-bundle:v1:`,
   // and the 7 residual non-registry kinds moved to the SIG-4 `dacs-x-` extension map.
@@ -92,12 +92,21 @@ test('§B.7 — registry separator count (v0.1 cutover: 10 registry + 11 dacs-x 
   // (spec §3 "consent + revocation", §5 P2) → 9 → 10. See src/lib/consent.ts.
   // 2026-06-08 dacs-disclose P3: +1 dacs-x kind (DISPUTE_BUNDLE) for the dispute-evidence bundle
   // (spec §3 dispute evidence, §5 P3; presenter===grantor binding) → 10 → 11. See src/lib/dispute.ts.
-  assert.equal(Object.keys(DOMAIN_SEPARATORS).length, 10,
-    `expected 10 §B.7-registry separators, got ${Object.keys(DOMAIN_SEPARATORS).length}`);
-  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 11,
-    `expected 11 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
+  // 2026-07-23 pay-ap2 test agent: +1 dacs-x kind (AP2_MOCK_RECEIPT) for the MOCK AP2 facilitator
+  // receipt signature (DACS-Standard #221/#222 §9.5.6) → 11 → 12. See src/live/ap2-provider-receipt.ts.
+  // 2026-07-24 #248 registry alignment: +3 §B.7 registry kinds (BUNDLE_BINDING, FAULT_BUNDLE,
+  // FAULT_BUNDLE_POINTER) — added to the CORE §B.7 table by #248 and previously only defined locally
+  // in src/lib/bundle-binding-v1.ts; now centralized into DOMAIN_SEPARATORS → 10 → 13.
+  assert.equal(Object.keys(DOMAIN_SEPARATORS).length, 13,
+    `expected 13 §B.7-registry separators, got ${Object.keys(DOMAIN_SEPARATORS).length}`);
+  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 12,
+    `expected 12 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
   assert.equal(Object.keys(PATHOS_EXTENSION_SEPARATORS).length, 4,
     `expected 4 PATH-OS extension separators, got ${Object.keys(PATHOS_EXTENSION_SEPARATORS).length}`);
+  // Pin the exact canonical strings — a count check alone can't catch a remove-one/add-one substitution.
+  assert.equal(DOMAIN_SEPARATORS.BUNDLE_BINDING, 'dacs-bundle-binding:v1:');
+  assert.equal(DOMAIN_SEPARATORS.FAULT_BUNDLE, 'dacs-fault-bundle:v1:');
+  assert.equal(DOMAIN_SEPARATORS.FAULT_BUNDLE_POINTER, 'dacs-fault-bundle-pointer:v1:');
 });
 
 test('dacs-disclose — CLAIM_COMMIT/CLAIM_REVEAL are known AND emittable (SIG-4 dacs-x)', () => {

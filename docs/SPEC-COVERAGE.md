@@ -16,9 +16,9 @@ This document maps each in-scope DACS section to the file(s) that implement it.
 | §6.3.1 Identity-claim reference grammar | TS type | `src/types/identity.ts` | ✅ |
 | §6.3.2 IdentityBundle schema + 3 presentation kinds | TS type | `src/types/identity.ts` | ✅ types; SIWD presentation kind exercised |
 | §6.3.3 BundleRequirement matching algorithm | function | `src/lib/bundle-match.ts` | ❌ v0.3 (deferred — first consumer is buyer-agent in DACS-3 negotiate, which is out of scope) |
-| §6.3.4 Listing document (16 KB cap, JCS, monotonically versioned, SR-2 anchored, LP-1..LP-4) | TS type + publisher CLI | `src/types/listing.ts`, `src/cli/listing-pub.ts` | ✅ LP-1, LP-2 (cci scheme), LP-3 (caller responsibility), LP-4 (revocation) ❌ deferred |
-| §6.3.5 `.well-known/agent.json` `dacs` block | TS type only | — | ❌ v0.3 (off-chain catalog) |
-| §6.3.6 Off-chain catalog API | — | — | ❌ v0.3 |
+| §6.3.4 Listing logical/native split | CF-4 addressing + publisher CLI | `src/dacs1/addressing.ts`, `src/types/listing.ts`, `src/cli/listing-pub.ts` | ✅ go-forward `logical_address` metadata; opaque colon-free Demos write input; native locator is discovery-only |
+| §6.3.5 `.well-known/agent.json` `dacs` block + listing index | generator + LR resolver | `src/dacs1/discovery.ts`, `src/cli/discovery-gen.ts` | ✅ exact-byte `indexHash`; logical→native binding; immutable legacy-record disclosure |
+| §6.3.6 Off-chain catalog API artifacts | generator | `src/dacs1/discovery.ts`, `discovery/api/dacs/` | ✅ logical/native binding via host-ready collection/detail + ListingSummary; seller/reputation endpoint deferred outside this addressing-only slice; HTTP hosting remains deployment work |
 
 ## DACS-2 Vet
 
@@ -29,7 +29,7 @@ This document maps each in-scope DACS section to the file(s) that implement it.
 | §7.5.1 VerifyResult outcomes (pass/fail/indeterminate) — **NEVER coerce** | TS enum + verifier invariant | `src/types/verify-result.ts`, `src/lib/verify-bundle.ts` | ✅ enforced at type + runtime; 4 regression tests; distinct exit codes 0/1/2 |
 | §7.5.2 AttestationRef contentHash recomputation | function | `src/lib/verify-bundle.ts` (walkAttestationRefs) | ✅ fetch + sha256 + compare; mismatch → fail; stub locators verify prefix |
 | §7.7 CompositeVerificationRecord aggregation | function | `src/lib/verify-bundle.ts` (StepLog.rollupDecision) | ✅ §7.7.1 precedence — fail > indeterminate > pass; never collapses |
-| §7.7 Universal signature scheme — 17 domain separators | constants + sign/verify | `src/domain-sep.ts`, `src/lib/sign.ts` | ✅ closed registry asserted; cross-context replay protection tested |
+| §B.7 Universal signature scheme — domain separators (23-entry closed registry) | constants + sign/verify | `src/domain-sep.ts`, `src/lib/sign.ts` | ✅ closed registry asserted; cross-context replay protection tested |
 | §7.3.1–7.3.4, 7.3.6, 7.3.8 (5 other methods) | — | — | ❌ v0.3 (compose same way as evm-rpc + cbp-gleif) |
 | §7.4.4 Recipe-track governance | — | — | ❌ v0.3 |
 
@@ -58,7 +58,7 @@ This document maps each in-scope DACS section to the file(s) that implement it.
 | Spec section | Coverage | File | State |
 |---|---|---|---|
 | RFC 8785 JCS (JSON Canonicalization Scheme) | function | `src/jcs.ts` | ✅ via `canonicalize` npm pkg; 5 round-trip tests |
-| All 17 domain separators (§7.7 inventory) | constants | `src/domain-sep.ts` | ✅ closed registry + assertion + 5 closure tests |
+| All §B.7 domain separators (23-entry closed-registry inventory) | constants | `src/domain-sep.ts` | ✅ closed registry + assertion + 5 closure tests |
 | ed25519 signing with domain-separated prefix | function | `src/lib/sign.ts` | ✅ via `@noble/ed25519`; 4 sign/verify round-trip tests |
 | Test vectors per §14.6 | implemented | `test/vectors/*.test.ts` (7 files, 72 passing tests) | ✅ |
 

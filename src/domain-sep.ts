@@ -24,9 +24,11 @@
  */
 
 /**
- * v0.1 §B.7 closed-registry separators that this reference impl uses, aligned to CORE.md:237-259.
- * (The full §B.7 registry has 20 entries; this map carries only the kinds our code signs/verifies
- * plus the ones it has historically declared, each now mapped to its canonical v0.1 string.)
+ * v0.1 §B.7 closed-registry separators that this reference impl uses, aligned to CORE §B.7.
+ * This map carries the §B.7 kinds our code signs/verifies — including the DACS-5 fault-bundle +
+ * BundleBinding separators added to the §B.7 table by #248. The full normative §B.7 closed registry
+ * (23 entries as of #248) is defined in CORE §B.7; this map is the subset this impl actually uses,
+ * and it is the single source of truth those signers draw from (see src/lib/bundle-binding-v1.ts).
  * Adding new ones requires a DACS spec revision — use the `dacs-x-` extension form for experiments.
  */
 export const DOMAIN_SEPARATORS = {
@@ -49,6 +51,9 @@ export const DOMAIN_SEPARATORS = {
   // DACS-5 Verify
   BUNDLE: 'dacs-bundle:v1:',                                // §10.4.1 — DACS-5 attestation bundle: sep || bundle_hash (single-hash). Canonical EMISSION separator.
   REPUTATION_ATTESTATION: 'dacs-rating:v1:',                // §10.6 — DACS-5 rating record
+  BUNDLE_BINDING: 'dacs-bundle-binding:v1:',                // §10.4.2 — DACS-5 two-sided BundleBinding (BB-1..BB-8); added to §B.7 by #248
+  FAULT_BUNDLE: 'dacs-fault-bundle:v1:',                    // §10.4 — DACS-5 FaultAttestationBundle; added to §B.7 by #248
+  FAULT_BUNDLE_POINTER: 'dacs-fault-bundle-pointer:v1:',    // §10.4 — DACS-5 fault-bundle pointer; added to §B.7 by #248
 } as const;
 
 /**
@@ -111,6 +116,13 @@ export const DACS_X_EXTENSION_SEPARATORS = {
   // SIG-4 extension surface (no ZK/L2PS/FHE).
   //   DISPUTE_BUNDLE body := utf8(signedRoot hex)  (presenter-signed root binding; see src/lib/dispute.ts)
   DISPUTE_BUNDLE: 'dacs-x-dispute-bundle:v1:',
+
+  // pay-ap2 TEST-AGENT mock facilitator receipt (DACS-Standard #221/#222 §9.5.6). SIG-4 extension
+  // surface — a MOCK AP2 provider/facilitator "signs" its status=captured receipt under this
+  // separator so a mocked provider signature can NEVER be confused with a DACS core signature.
+  // A real deployment uses the PSP's own signature verified under SR-3 attestation, not this.
+  //   AP2_MOCK_RECEIPT body := utf8(sha256hex(JCS(receipt minus facilitatorSignature)))
+  AP2_MOCK_RECEIPT: 'dacs-x-ap2-receipt:v1:',
 } as const;
 
 /**

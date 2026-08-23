@@ -1,0 +1,1 @@
+{"dacs":{"dacsVersion":"1","identityClaims":["key:1111111111111111111111111111111111111111111111111111111111111111"],"listings":{"indexHash":"sha256-7d04cc8e1eb4dfc93438a9a6e89459f383888ae15e0aa98ed71b9ee151bf6e8f","indexUrl":"https://seller.example/.well-known/dacs/listings.json"}}}
