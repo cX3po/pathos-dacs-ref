@@ -38,15 +38,15 @@ type C = { name: string; expected: 'pass' | 'fail' | 'indeterminate' | 'error'; 
 const m = (f: (p: Presentation) => void) => { const p = clone(base); f(p); return p; };
 
 const cases: C[] = [
-  // SN-1: the verifier-issued nonce is the binding; a matching challenge nonce is accepted (happy path).
-  // (Not tagged SN-4 — this does not exercise single-use/replay-ledger; it only shows match-accept.)
-  { name: 'valid-holder-binding', expected: 'pass', p: base, nonce: NONCE, resolve, sn: 'SN-1' },
+  // A matching challenge nonce is accepted. The harness supplies the expected nonce, so this proves
+  // the comparison branch but not SN-1 verifier-generation provenance or SN-4 single-use state.
+  { name: 'valid-holder-binding', expected: 'pass', p: base, nonce: NONCE, resolve, sn: '§7.3.2-step6' },
   // the headline: a genuine, issuer-valid credential with NO holder proof must NOT pass (issuer-genuine ≠ holder-presents)
   { name: 'issuer-genuine-but-no-holder-proof', expected: 'fail', p: m((p) => { delete p.holderProof; }), nonce: NONCE, resolve, sn: '§7.3.2-step6' },
-  // SN-4 single-use: the REAL holder's proof from an OLD session re-presented now → reject (nonce not issued for THIS session)
+  // SN-3 issuance binding: the REAL holder's proof from an OLD session is not the nonce issued for this jobId.
   { name: 'cross-session-nonce-replay', expected: 'fail',
     p: { credential, holderProof: { challenge: { sessionNonce: OLD_NONCE, audience: 'verifier-1' }, signature: edSign(holderSignedBytes({ sessionNonce: OLD_NONCE, audience: 'verifier-1' }), SUBJECT) } },
-    nonce: NONCE, resolve, sn: 'SN-4' },
+    nonce: NONCE, resolve, sn: 'SN-3' },
   // replay by a non-holder: attacker signs THIS session's challenge, but is not the credential subject
   { name: 'non-holder-presenter', expected: 'fail',
     p: { credential, holderProof: { challenge: validChallenge, signature: edSign(holderSignedBytes(validChallenge), ATTACKER) } },
@@ -58,16 +58,17 @@ const cases: C[] = [
   // issuer key unresolvable → indeterminate (genuineness undecidable), holder-binding otherwise valid
   { name: 'issuer-unresolvable-indeterminate', expected: 'indeterminate', p: base, nonce: NONCE, resolve: () => null, sn: '§7.5.1-indeterminate' },
   // ── edge cases the security review demanded ──
-  // SN-1: verifier handed NO issued session nonce to bind against → indeterminate, MUST NOT silently pass
-  { name: 'empty-expected-nonce-indeterminate', expected: 'indeterminate', p: base, nonce: '', resolve, sn: 'SN-1' },
-  // SN-4: challenge omits sessionNonce entirely (holder validly signed it) → fail (the SIWD-note bypass, closed)
+  // No expected session nonce is available → indeterminate, MUST NOT silently pass. This is a
+  // harness-availability boundary, not proof that the verifier generated the nonce under SN-1.
+  { name: 'empty-expected-nonce-indeterminate', expected: 'indeterminate', p: base, nonce: '', resolve, sn: '§7.5.1-indeterminate' },
+  // SN-3: challenge omits the nonce issued for this jobId (holder validly signed it) → fail.
   { name: 'challenge-omits-session-nonce', expected: 'fail',
     p: { credential, holderProof: { challenge: { audience: 'verifier-1' }, signature: edSign(holderSignedBytes({ audience: 'verifier-1' }), SUBJECT) } },
-    nonce: NONCE, resolve, sn: 'SN-4' },
-  // SN-4: empty-string challenge nonce → fail (a vacuous nonce must not clear the guard)
+    nonce: NONCE, resolve, sn: 'SN-3' },
+  // SN-3: empty challenge nonce cannot match the nonce issued for this jobId.
   { name: 'empty-challenge-nonce', expected: 'fail',
     p: { credential, holderProof: { challenge: { sessionNonce: '', audience: 'verifier-1' }, signature: edSign(holderSignedBytes({ sessionNonce: '', audience: 'verifier-1' }), SUBJECT) } },
-    nonce: NONCE, resolve, sn: 'SN-4' },
+    nonce: NONCE, resolve, sn: 'SN-3' },
   // malformed holderProof signature (not 64-byte hex) → error (verifier-side parse, not fail)
   { name: 'malformed-holderproof-sig', expected: 'error', p: m((p) => { p.holderProof!.signature = 'zz'; }), nonce: NONCE, resolve, sn: '§7.5.1-error' },
   // malformed subject key hex → error
@@ -86,15 +87,17 @@ const snTags = [...new Set(vectors.flatMap((v) => v.sn.split(',').map((s) => s.t
 const snCoverage = {
   exercised: snTags,                            // SN rules this set actually drives a verdict for
   notEnforcedHere: {
-    'SN-2': 'session-nonce entropy/format (≥128-bit CSPRNG, native ≥32 lowercase-hex) is NOT verifier-enforced in this validator — OPEN CONVERGENCE QUESTION for #143: do both impls enforce SN-2 format verifier-side, or is it issuance-side only? (our test nonces are intentionally non-hex placeholders to expose this.)',
-    'SN-3': 'issuance/travel + jobId-binding is transport/substrate-specific (out of scope per SN-3); our challenge carries sessionNonce+audience, not jobId.',
+    'SN-1': 'Verifier generation and nonce provenance are not exercised: this stateless harness receives an expected nonce as input and has no generator or authenticated issuance record.',
+    'SN-2': 'SN-2 entropy/native-format checks are issuer obligations. CORE explicitly does not require a verifier to re-check entropy or hex length on the presented value, and such a unilateral re-check is not a conformance divergence. These vectors therefore keep non-hex placeholders.',
+    'SN-4': 'single-use consumption, bounded lifetime, and retain-until-terminal require verifier-side state and are not exercised by this stateless expected-nonce validator; see the dedicated sn4-single-use set.',
   },
-  sn4Scope: 'SN-4 is exercised ONLY on its "reject a nonce the verifier did not issue for this session" branch (challenge nonce ≠ the single expected/issued nonce). The "never accept the same nonce twice" replay-ledger branch is NOT exercised — this validator compares against one expected nonce and keeps no used-nonce ledger.',
-  note: 'Each vector carries an `sn` tag = the SN-1..4 rule it exercises, or the §7.3.2/§7.5.1 surface when not an SN rule. SN-1 (verifier-generated nonce is the binding) is exercised; SN-4 partially (see sn4Scope); SN-2/SN-3 flagged above for the #143 cross-impl discussion.',
+  sn3Scope: 'The three mismatch/omission cases exercise only the SN-3 comparison branch while assuming the explicit expected nonce is authenticated current-job issuance state. This harness has no jobId or issue-before-presentation proof.',
+  note: 'Each vector carries an `sn` tag for the rule it exercises, or the §7.3.2/§7.5.1 surface when not an SN rule. This stateless set exercises only the SN-3 comparison branch. SN-1 provenance and SN-4 state require separate stateful harnesses; SN-2 is issuer-side.',
+  hashDivergence: 'Semantic verdict inputs remain identical to DACS-Standard vp-replay-v0.1 (hash 1cebf46c4b1007d29989996eef23b1ac26de534ea052e43727e8e3aa89eb9c74), but this implementation adds and retags `sn` metadata. The resulting local set hash therefore differs and the two JSON corpora are not byte-identical.',
   spec: 'CORE §B.8 SN-1..SN-4 (PR #143, closes D9/#133)',
 };
 writeFileSync(`${DIR}/vectors/vp-replay-v0.1.json`, JSON.stringify({ set: 'vp-replay-v0.1', spec: 'DACS §7.3.2 + CORE §B.8 (SN-1..4)', hash: setHash, count: vectors.length, snCoverage, vectors, keys: { subjectPub, issuerPub, note: 'seeds 0x51/0x52/0x53; raw ed25519' } }, null, 2));
-console.log(`SN coverage: exercised ${snTags.join(',')} | SN-2 (format) + SN-3 (transport) flagged as open/out-of-scope`);
+console.log(`SN coverage: exercised ${snTags.join(',')} | SN-1 provenance out-of-scope | SN-2 issuer-side | SN-4 stateful/out-of-scope`);
 
 let pass = 0;
 console.log('\n=== DACS §7.3.2 VP holder-binding conformance vectors v0.1 (GAP #11 VP-replay) ===');
