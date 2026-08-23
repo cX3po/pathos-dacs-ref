@@ -41,6 +41,8 @@ export interface AttestationRef {
   type: string;
   /** When the attestation was produced (ISO 8601) */
   producedAt: string;
+  /** Expected author when the artifact body does not define its own signer policy. */
+  signer?: ClaimRef | string;
 }
 
 /** A single verification's outcome. */

@@ -6,7 +6,7 @@
  *     reproduces the dacs-x fixture's evidenceHash (payment + delivery) — convergence
  *     by emitting the same bytes, NOT by re-hashing a shared fixture.
  *   - verifySettlementEvidenceV1 negatives (§7.5.1 do-not-collapse):
- *       · missing phaseIndex (PC-2)               → fail
+ *       · missing phaseIndex → PASS (SB-1: not an evidence field; in-body copy tolerated)
  *       · success payment without settlementFinality (PC-6) → fail
  *       · delivery carrying settlementFinality (PC-6)        → fail
  */
@@ -16,8 +16,14 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { jcsHashHex } from '../../src/jcs.js';
-import { emitSettlementEvidenceV1, evidenceHashV1 } from '../../src/lib/emit-settlement-evidence-v1.js';
+import {
+  emitSettlementEvidenceV1,
+  evidenceHashV1,
+  signSettlementEvidenceV1,
+} from '../../src/lib/emit-settlement-evidence-v1.js';
 import { verifySettlementEvidenceV1 } from '../../src/lib/verify-settlement-evidence-v1.js';
+import { DOMAIN_SEPARATORS } from '../../src/domain-sep.js';
+import { generateKeypair, verify } from '../../src/lib/sign.js';
 
 const FIXDIR = fileURLToPath(new URL('./dacs-x-fixtures', import.meta.url));
 const load = (name: string): Record<string, unknown> =>
@@ -71,6 +77,25 @@ test('delivery evidence byte-matches the SDK fixture (independent emission)', ()
   assert.equal(evidenceHashV1(emitted), targetHash(fx));
 });
 
+test('signed evidence authenticates the canonical signature-omitted artifact hash', () => {
+  const fx = load('settlement-evidence-payment.json');
+  const unsigned = emitPaymentFrom(fx);
+  const keys = generateKeypair();
+  const signed = signSettlementEvidenceV1(unsigned, `cci:${Buffer.from(keys.pubKey).toString('hex')}`, keys.privKey);
+  const signature = Buffer.from(signed.signature!.value, 'base64');
+
+  assert.equal(evidenceHashV1(signed), evidenceHashV1(unsigned));
+  assert.equal(
+    verify(
+      DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE,
+      signature,
+      new TextEncoder().encode(evidenceHashV1(unsigned)),
+      keys.pubKey,
+    ),
+    true,
+  );
+});
+
 test('F1: nested extra subfields are IGNORED — emitted bytes/hash unchanged', () => {
   const fx = load('settlement-evidence-payment.json');
   const clean = emitPaymentFrom(fx);
@@ -82,11 +107,11 @@ test('F1: nested extra subfields are IGNORED — emitted bytes/hash unchanged', 
   assert.equal(evidenceHashV1(dirty), targetHash(fx));
 });
 
-test('verifier: missing phaseIndex → fail (PC-2)', () => {
+test('verifier: missing phaseIndex → pass (SB-1: "not a new evidence field" — recovered from the PC-2 anchor address)', () => {
   const fx = load('settlement-evidence-payment.json') as Record<string, unknown>;
   delete fx.signature;
   delete fx.phaseIndex;
-  assert.equal(verifySettlementEvidenceV1(fx).decision, 'fail');
+  assert.equal(verifySettlementEvidenceV1(fx).decision, 'pass');
 });
 
 test('verifier: success payment without settlementFinality → fail (PC-6)', () => {

@@ -1,0 +1,21 @@
+{
+  "schema": "dacs-shared-suite-source-lock/1",
+  "authority": "DACS-Standard",
+  "status": "proposal-270-seed-lock; replace only with a reviewed DACS-Standard manifest or release",
+  "sources": {
+    "partnerKit": {
+      "path": "../partner-kit/vectors.json",
+      "sha256": "a8fb331a5286a4653704e8c2af5a2bf8aee1853a9b8a48364c7c0d524f140bc7",
+      "declared": 49,
+      "provenanceRepository": "https://github.com/cX3po/pathos-dacs-ref",
+      "provenanceRevision": "1340ea0ba22002f211a3733c722c7c30bfcf59ee"
+    },
+    "sig6": {
+      "path": "../vectors/dacs-263-sig-value-encoding-v1.json",
+      "sha256": "a7311471b7d8050f06996ff8774815af2e441f719e75353a2ae37a2ca4feaff7",
+      "declared": 3,
+      "provenanceRepository": "https://github.com/cX3po/pathos-dacs-ref",
+      "provenanceRevision": "1340ea0ba22002f211a3733c722c7c30bfcf59ee"
+    }
+  }
+}

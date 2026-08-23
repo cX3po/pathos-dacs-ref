@@ -28,7 +28,16 @@
 export interface ClaimReference {
   /** Closed v1 scheme registry — see §6.3.1 Table */
   scheme:
-    | 'cci'        // Demos CCI native context
+    | 'key'        // Registered self-signing Ed25519 key form
+    | 'cci-xm'     // Demos cross-model CCI context
+    | 'cci-web2'
+    | 'cci-pqc'
+    | 'cci-ud'
+    | 'cci-nomis'
+    | 'cci-humanpassport'
+    | 'cci-ethos'
+    | 'cci-tlsn'
+    | 'cci'        // Legacy reference-implementation read compatibility only
     | 'evm-key'    // Generic EVM signing key
     | 'sol-key'    // Generic Solana key
     | 'did'        // W3C DID

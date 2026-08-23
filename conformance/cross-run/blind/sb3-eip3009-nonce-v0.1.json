@@ -1,0 +1,140 @@
+{
+  "set": "sb3-eip3009-nonce-v0.1",
+  "spec": "DACS-4 \u00a79.5.8 (SB-3 EIP-3009 nonce binding)",
+  "count": 14,
+  "vectors": [
+    {
+      "name": "reported-live-vector",
+      "op": "verify-binding",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": 3,
+      "presentedNonce": "0x2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff",
+      "validationScope": "derivation-only",
+      "expectedNonce": "0x2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff"
+    },
+    {
+      "name": "phase-index-changes-nonce",
+      "op": "verify-binding",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": 4,
+      "presentedNonce": "0x80fa47321a52f728f5ecbde7a5ceb44dd6086c9902dd8b95980b05909e5ea969",
+      "validationScope": "derivation-only",
+      "expectedNonce": "0x80fa47321a52f728f5ecbde7a5ceb44dd6086c9902dd8b95980b05909e5ea969"
+    },
+    {
+      "name": "job-id-changes-nonce",
+      "op": "verify-binding",
+      "jobId": "practice-dacs-0002",
+      "phaseIndex": 3,
+      "presentedNonce": "0x69256a3bf1c9bd6a5ba1ffc93705d44c5322e03de8f1e3ad6b6d709f4254ce29",
+      "validationScope": "derivation-only",
+      "expectedNonce": "0x69256a3bf1c9bd6a5ba1ffc93705d44c5322e03de8f1e3ad6b6d709f4254ce29"
+    },
+    {
+      "name": "job-id-nfc-normalized",
+      "op": "verify-binding",
+      "jobId": "cafe\u0301-job",
+      "phaseIndex": 0,
+      "presentedNonce": "0xc4d6eb3c8774ff6078765567559c1ce1953badb01ba1ea8a5252561712294397",
+      "validationScope": "derivation-only",
+      "expectedNonce": "0xc4d6eb3c8774ff6078765567559c1ce1953badb01ba1ea8a5252561712294397"
+    },
+    {
+      "name": "random-nonce-mismatch",
+      "op": "verify-binding",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": 3,
+      "presentedNonce": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "validationScope": "derivation-only",
+      "expectedNonce": "0x2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff"
+    },
+    {
+      "name": "wrong-phase-nonce-mismatch",
+      "op": "verify-binding",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": 4,
+      "presentedNonce": "0x2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff",
+      "validationScope": "derivation-only",
+      "expectedNonce": "0x80fa47321a52f728f5ecbde7a5ceb44dd6086c9902dd8b95980b05909e5ea969"
+    },
+    {
+      "name": "short-nonce-error",
+      "op": "verify-binding",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": 3,
+      "presentedNonce": "0x00000000000000000000000000000000000000000000000000000000000000",
+      "validationScope": "derivation-only"
+    },
+    {
+      "name": "missing-hex-prefix-error",
+      "op": "verify-binding",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": 3,
+      "presentedNonce": "2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff",
+      "validationScope": "derivation-only"
+    },
+    {
+      "name": "negative-phase-index-error",
+      "op": "derive",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": -1,
+      "validationScope": "derivation-only"
+    },
+    {
+      "name": "leading-zero-phase-index-error",
+      "op": "derive",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": "03",
+      "validationScope": "derivation-only"
+    },
+    {
+      "name": "used-same-transfer-resumes",
+      "op": "retry",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": 3,
+      "derivedNonce": "0x2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff",
+      "priorAuthorization": {
+        "state": "used",
+        "sameTransferParameters": true,
+        "settlementTxId": "evm:84532:1111111111111111111111111111111111111111111111111111111111111111:0"
+      },
+      "validationScope": "derivation-only",
+      "expectedNonce": "0x2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff"
+    },
+    {
+      "name": "used-different-transfer-fails-closed",
+      "op": "retry",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": 3,
+      "derivedNonce": "0x2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff",
+      "priorAuthorization": {
+        "state": "used",
+        "sameTransferParameters": false
+      },
+      "validationScope": "derivation-only",
+      "expectedNonce": "0x2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff"
+    },
+    {
+      "name": "cancelled-nonce-fails-closed",
+      "op": "retry",
+      "jobId": "practice-dacs-0001",
+      "phaseIndex": 3,
+      "derivedNonce": "0x2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff",
+      "priorAuthorization": {
+        "state": "cancelled",
+        "sameTransferParameters": false
+      },
+      "validationScope": "derivation-only",
+      "expectedNonce": "0x2fc3598e85489ed2fb4d2bf9f4eb5cc8dd6998eec89645d64450f9630240e1ff"
+    },
+    {
+      "name": "valid-ulid-full-input",
+      "op": "verify-binding",
+      "jobId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      "phaseIndex": 3,
+      "presentedNonce": "0xaeed3b79a6eedc2c19ce773a286dc5a897271cd92ed41a7f7ae5847fe3c9e9e2",
+      "validationScope": "full-input",
+      "expectedNonce": "0xaeed3b79a6eedc2c19ce773a286dc5a897271cd92ed41a7f7ae5847fe3c9e9e2"
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "set": "sb3-eip3009-nonce-v0.1",
+  "impl": "pathos-dacs-ref@cross-run-1",
+  "results": [
+    {
+      "name": "reported-live-vector",
+      "verdict": "pass"
+    },
+    {
+      "name": "phase-index-changes-nonce",
+      "verdict": "pass"
+    },
+    {
+      "name": "job-id-changes-nonce",
+      "verdict": "pass"
+    },
+    {
+      "name": "job-id-nfc-normalized",
+      "verdict": "pass"
+    },
+    {
+      "name": "random-nonce-mismatch",
+      "verdict": "fail"
+    },
+    {
+      "name": "wrong-phase-nonce-mismatch",
+      "verdict": "fail"
+    },
+    {
+      "name": "short-nonce-error",
+      "verdict": "error"
+    },
+    {
+      "name": "missing-hex-prefix-error",
+      "verdict": "error"
+    },
+    {
+      "name": "negative-phase-index-error",
+      "verdict": "error"
+    },
+    {
+      "name": "leading-zero-phase-index-error",
+      "verdict": "error"
+    },
+    {
+      "name": "used-same-transfer-resumes",
+      "verdict": "pass"
+    },
+    {
+      "name": "used-different-transfer-fails-closed",
+      "verdict": "fail"
+    },
+    {
+      "name": "cancelled-nonce-fails-closed",
+      "verdict": "fail"
+    },
+    {
+      "name": "valid-ulid-full-input",
+      "verdict": "pass"
+    }
+  ]
+}

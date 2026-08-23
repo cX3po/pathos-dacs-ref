@@ -1,0 +1,57 @@
+# DACS convergence gate — runs every independent cross-run + the multi-impl canonical-hash
+# harness on each change, so a golden-vector edit or a canonicalization drift anywhere in the
+# ecosystem is caught continuously instead of by an ad-hoc manual read. Zero on-chain cost —
+# every check is offline + deterministic (vendored goldens under conformance/vet-drift/golden/).
+name: dacs-convergence
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # daily 07:00 UTC — catches dependency/runtime drift (npm, tsx, Node) with no local change.
+    # NB: goldens under conformance/vet-drift/golden/ are VENDORED, so this does NOT auto-detect
+    # upstream golden changes — refresh those manually per conformance/vet-drift/golden/SOURCE.md.
+    - cron: '0 7 * * *'
+
+jobs:
+  convergence:
+    name: independent cross-runs + canonical-hash convergence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run the convergence suite
+        run: npx tsx conformance/convergence-suite.mts
+      - name: BB resolver property fuzzer (invariant gate, deterministic seed)
+        # Exit-code-gated: any invariant violation (no-throw, determinism, permutation-invariance,
+        # fail-closed monotonicity, full-sig precedence, equal-standing void, budget→indeterminate,
+        # BB-5 reject-on-any) fails CI. Fixed seed → reproducible; the case that regressed prints a
+        # `--case-seed` replay command. Found 2 exception escapes on first run (2026-07); guards the
+        # class so no future BB change silently reintroduces one. 3k cases (~1 min: real Ed25519 per
+        # case) is a fast regression gate; the scheduled sweep below casts the wider net.
+        run: npx tsx conformance/cross-run-corpus/bb-differential-fuzzer.mts --cases 3000 --seed 20260701
+      - name: BB resolver property fuzzer (extended sweep, scheduled only)
+        # The daily cron sweeps a second seed at higher volume than the PR-gate seed — a wider net that
+        # still replays deterministically from its printed --case-seed on a hit. 20k verified clean at
+        # ~6 min; kept off the per-push path so PRs stay fast.
+        if: github.event_name == 'schedule'
+        run: npx tsx conformance/cross-run-corpus/bb-differential-fuzzer.mts --cases 20000 --seed 424242
+      - name: BB stateful/history fuzzer (sequence-invariant gate, deterministic seed)
+        # Complements the input-shaped fuzzer above: attacks HISTORIES (sign->alter-unsigned->perspective-
+        # flip->replay->restart->migrate), asserting cross-sequence invariants (no-launder, perspective-
+        # invariance, replay-rejection, determinism, fail-closed, monotonic-standing). Fast (~3s/300), so a
+        # generous per-push gate. Teeth proven: reverting the anchorRoleMismatch guard turns it RED.
+        run: npx tsx conformance/cross-run-corpus/bb-stateful-fuzzer.mts --cases 2000 --seed 20260701
+      - name: BB stateful/history fuzzer (extended sweep, scheduled only)
+        # Daily cron: a second seed + longer histories for a wider sequence net, off the per-push path.
+        if: github.event_name == 'schedule'
+        run: npx tsx conformance/cross-run-corpus/bb-stateful-fuzzer.mts --cases 10000 --seed 424242 --history-len 12

@@ -46,6 +46,11 @@ export interface Listing {
   id: string;
   /** Monotonically increasing per id (LP-3) */
   version: number;
+  /**
+   * Stable CF-4 logical address carried on the anchored record (§6.3.4(b)).
+   * On Demos this is metadata, never the Storage Program write-input name.
+   */
+  logical_address: string;
   /** The seller's identity reference (the seller's full IdentityBundle is presented at engagement, not embedded here) */
   seller: {
     identity: { primary: ClaimRef };

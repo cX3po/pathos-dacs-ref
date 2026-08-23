@@ -1,0 +1,116 @@
+{
+  "vectorId": "signed-artifact-b2-contenthash",
+  "title": "Signed artifact whose contentHash is the §B.2 canonical form (cross-impl confirmation for #278)",
+  "dacsVersion": "0.1",
+  "purpose": "Exercises the §B.2 canonical-form hash of a SIGNED artifact — the property #278 identifies as unexercised by any published vector. A conforming reader MUST reproduce b2ContentHash from the artifact with the per-kind excluded fields omitted; publishedStyleHash is recorded only to make the divergence explicit and is NOT a conformance target.",
+  "artifactKind": "AttestationBundleV1",
+  "excludedFields": [
+    "signatures",
+    "anchoredByRole"
+  ],
+  "excludedFieldsBasis": "CORE §B.2 (signature omitted) + DACS-5 §10.4.1 R5-1 (anchoredByRole excluded)",
+  "b2ContentHash": "57331dedbd518bb313d5053caf076d041e531e68b337845221e318217545e12d",
+  "publishedStyleHash": "230c24c0951c6d35db748afb37cad21043817d16aa9ea5d15f511cb77c33cd12",
+  "encoderAgreement": {
+    "jcsWholeArtifactHash": "230c24c0951c6d35db748afb37cad21043817d16aa9ea5d15f511cb77c33cd12",
+    "pythonJsonDumpsHash": "230c24c0951c6d35db748afb37cad21043817d16aa9ea5d15f511cb77c33cd12",
+    "agree": true,
+    "note": "Equal on THIS artifact, which is why the divergence below is scope-only. Encoder divergence between JCS and json.dumps is real in general (non-ASCII, numeric forms) but is a separate property that this vector deliberately does not claim to exercise."
+  },
+  "divergence": {
+    "axis": "scope — which fields are hashed",
+    "detail": "the published-style value hashes the whole artifact including `signatures`; the §B.2 value omits the per-kind excluded fields. This vector does NOT exercise an encoder-level difference between RFC 8785 JCS and json.dumps: the artifact is ASCII with no distinguishing numeric or string forms, so the two encoders agree on identical input here. Encoder divergence is real in general but is a separate property needing its own vector."
+  },
+  "perKindExclusion": {
+    "signatureOnlyExcludedHash": "db5f331d90afa8ccd2f0405371ee98793e42106e63e99634e2928f95e7db8173",
+    "differsFromB2": true,
+    "signaturesVerifyOverSignatureOnly": false,
+    "why": "omitting only `signatures` is not the §B.2 scope for AttestationBundleV1 — `anchoredByRole` is also excluded (§10.4.1 R5-1), so a single global rule computes the wrong hash. This is the executable case for the per-kind excluded-field table."
+  },
+  "signaturesCommitTo": "b2ContentHash",
+  "selfVerified": {
+    "signaturesVerify": true,
+    "hashesDiverge": true,
+    "scopeMatchesImplementation": true,
+    "signaturesVerifyOverB2": true,
+    "signaturesVerifyOverPublishedStyle": false,
+    "publishedStyleHashPythonParity": true
+  },
+  "provenance": {
+    "generator": "pathos-dacs-ref conformance/signed-artifact-b2-vector.mts",
+    "repo": "https://github.com/cX3po/pathos-dacs-ref",
+    "sourceHashes": {
+      "conformance/signed-artifact-b2-vector.mts": "f477d33917979de5f4f68855cc12b1edb44560dcdcaa5f7616cffbe2b4a74544",
+      "src/lib/emit-bundle-v1.ts": "bea4cee9edf95dc736f0cb4b4733cc2c896b753421b713dbebd1cf718ae2ddf1",
+      "src/lib/verify-bundle-v1.ts": "7a2d4cf6f86cc25709612ac776d5c7c8697cde050ece3a000e1eaa781cedb15b",
+      "src/lib/bundle-signed-scope-v1.ts": "9927ad1735d72f9f6e812fea670a20e5880719a3a88f85705287c4155c837bc0",
+      "src/lib/sign.ts": "42d4e911754010df9a5a8c49d9bf4e7d2135a6251da67ee2cde9ef603e706db2",
+      "src/jcs.ts": "935e33226e856677b8f8a83768cf81a97a8a3733830fb5f5eb9c0cb98e4a48bc",
+      "src/domain-sep.ts": "19c051ac0376bf7b9a8e1a0db93305424ea4a703aacb26d2bd2fca409c9dfa91"
+    },
+    "command": "npx tsx conformance/signed-artifact-b2-vector.mts",
+    "checkCommand": "npx tsx conformance/signed-artifact-b2-vector.mts --check",
+    "dependencies": {
+      "@noble/ed25519": "2.3.0",
+      "@noble/hashes": "1.8.0",
+      "canonicalize": "2.1.0",
+      "node": "v20.20.2",
+      "python3": "Python 3.12.3"
+    },
+    "lockfile": "package-lock.json:ec2ab29515140228e7f9430448940e510f021ec4f1c267247b41cc8b3c02d160",
+    "pinScope": "identifies inputs; not a hermetic build attestation — see --check",
+    "deterministic": "INPUTS are fixed: ed25519 fill-byte keys (0x11 buyer / 0x22 seller) and the timestamp 2026-01-01T00:00:00.000Z, so nothing here varies per run by construction. Byte stability is NOT asserted from the pins above — it is established only by a successful `--check` in the environment doing the checking. No git commit is pinned, because the commit containing this output does not exist when the output is produced."
+  },
+  "artifact": {
+    "bundleVersion": "1",
+    "jobId": "job-b2-278",
+    "outcome": "completed",
+    "anchoredByRole": "buyer",
+    "listingRef": {
+      "listingId": "lst-b2-278",
+      "version": 1,
+      "contentHash": "e8086b0aab204806795e0363e83c881a5f644bb4a4bc08285d51925457bfb8ab"
+    },
+    "parties": [
+      {
+        "role": "buyer",
+        "bundleHash": "b59c3655a16fd9a485e144625a60485743af48e37a6219abf28cac73088f1a7c",
+        "primaryClaim": "cci:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+      },
+      {
+        "role": "seller",
+        "bundleHash": "342ccc0109b196e6504e86755826c68cc9f0bf81f0b320066ebc675809ff6c3a",
+        "primaryClaim": "cci:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+      }
+    ],
+    "phaseSummary": [
+      {
+        "index": 0,
+        "kind": "vet-credentials",
+        "outcome": "ok"
+      },
+      {
+        "index": 1,
+        "kind": "settle",
+        "outcome": "ok"
+      }
+    ],
+    "vetRecords": [],
+    "settlementEvidence": [],
+    "recipeRegistryVersion": 1,
+    "railRegistryVersion": 1,
+    "finalisedAt": 1767225600000,
+    "signatures": [
+      {
+        "party": "cci:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "algorithm": "ed25519",
+        "value": "riMQ/4jZNr4hcxWy20CCLZzx1EO9lk5rj5fEENi/3eP7qbR8vpOPKj7S0FR/M+Fqtb2haQiMiwpJkRNKI9ZACg=="
+      },
+      {
+        "party": "cci:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+        "algorithm": "ed25519",
+        "value": "26UGRBwLVR80XWsptvbAVObF/oyjh4o3y3vEBttaC1Ch/Ytg/hh3XFgqi2YvLKzlZIC0mcwI+Ob8Zbi7b1WZCQ=="
+      }
+    ]
+  }
+}

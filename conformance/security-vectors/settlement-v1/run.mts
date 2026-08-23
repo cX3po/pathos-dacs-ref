@@ -174,8 +174,8 @@ type VCase = { name: string; expected: 'pass' | 'fail' | 'indeterminate' | 'erro
 const vcases: VCase[] = [
   { name: 'valid-payment', expected: 'pass', evidence: clone(validPayment) },
   { name: 'valid-delivery', expected: 'pass', evidence: clone(validDelivery) },
-  // missing-phaseIndex → fail (PC-2)
-  { name: 'missing-phaseIndex', expected: 'fail', evidence: (() => { const e = clone(validPayment) as Record<string, unknown>; delete e.phaseIndex; return e; })() },
+  // missing-phaseIndex → PASS (SB-1: phaseIndex is not an evidence field — recovered from the PC-2 anchor address; in-body copy is an open-world extra)
+  { name: 'missing-phaseIndex', expected: 'pass', evidence: (() => { const e = clone(validPayment) as Record<string, unknown>; delete e.phaseIndex; return e; })() },
   // success payment with no settlementFinality → fail (PC-6)
   { name: 'success-payment-missing-finality', expected: 'fail', evidence: (() => { const e = clone(validPayment) as Record<string, unknown>; delete e.settlementFinality; return e; })() },
   // delivery carrying settlementFinality → fail (PC-6)

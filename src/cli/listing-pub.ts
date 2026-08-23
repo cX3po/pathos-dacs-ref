@@ -11,13 +11,12 @@
  *   4. Verify `version` is monotonically increasing for the (id) tuple
  *      (LP-3 — but we can only check against the operator's local history; chain-side
  *      check happens at anchor time)
- *   5. Sign the JCS-canonical bytes with the seller's primary-claim key
- *      (separator: "dacs-listing:v1:")
- *   6. Anchor via Demos SR-2 (Storage Program write)
- *   7. Print the resulting `stor-` address + tx hash
+ *   5. Preserve any caller-supplied signature while computing contentHash over
+ *      the signature-omitted canonical form (CORE §B.2)
+ *   6. Anchor via Demos SR-2 under an opaque colon-free write-input name
+ *   7. Emit §6.3.5/§6.3.6 discovery artifacts and print the native locator
  *
- * v0.1 scaffold: validates + canonicalises + signs locally. Anchor step is STUB
- * (logs the would-be-anchored bytes; SDK call wired in v0.2).
+ * Cryptographic signing is intentionally outside this CLI's conformance lane.
  */
 
 import { readFileSync } from 'node:fs';
@@ -25,6 +24,13 @@ import { parseArgs } from 'node:util';
 import type { Listing, UnsignedListing } from '../types/index.js';
 import { jcsCanonical } from '../jcs.js';
 import { connectDemos, mnemonicFromEnv, anchor } from '../demos/index.js';
+import {
+  assertRegisteredClaimReference,
+  formatClaimReference,
+  listingLogicalAddress,
+  opaqueListingProgramName,
+} from '../dacs1/addressing.js';
+import { emitDiscoveryArtifacts, listingContentHash } from '../dacs1/discovery.js';
 
 const USAGE = `
 pathos-dacs-listing-pub — DACS-1 Listing publisher
@@ -36,8 +42,10 @@ Usage:
 Options:
   --listing-file <path>    Path to listing JSON conformant to §6.3.4 schema
   --mnemonic-env <name>    Env var holding the seller's Demos mnemonic (e.g. DEMOS_MNEMONIC)
-  --dry-run                Validate + canonicalise + sign, but skip the SR-2 anchor step
+  --dry-run                Validate + canonicalise, but skip the SR-2 anchor/discovery write
   --rpc <url>              Demos node RPC URL (default: https://demosnode.discus.sh/)
+  --publisher-origin <url> HTTPS origin that will host the emitted discovery artifacts
+  --discovery-dir <path>   Artifact output root (default: discovery)
   --help                   Show this message
 
 Exits non-zero on validation failure or size-cap exceeded.
@@ -50,6 +58,8 @@ interface CliArgs {
   mnemonicEnv?: string;
   dryRun: boolean;
   rpc: string;
+  publisherOrigin?: string;
+  discoveryDir: string;
 }
 
 function parseCliArgs(): CliArgs {
@@ -59,6 +69,8 @@ function parseCliArgs(): CliArgs {
       'mnemonic-env': { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
       'rpc': { type: 'string', default: 'https://demosnode.discus.sh/' },
+      'publisher-origin': { type: 'string' },
+      'discovery-dir': { type: 'string', default: 'discovery' },
       'help': { type: 'boolean', default: false },
     },
     strict: true,
@@ -72,6 +84,8 @@ function parseCliArgs(): CliArgs {
     mnemonicEnv: values['mnemonic-env'] as string | undefined,
     dryRun: values['dry-run'] as boolean,
     rpc: values['rpc'] as string,
+    publisherOrigin: (values['publisher-origin'] as string | undefined) ?? process.env.DACS_PUBLISHER_ORIGIN,
+    discoveryDir: values['discovery-dir'] as string,
   };
 }
 
@@ -89,6 +103,15 @@ function validateListing(listing: unknown): asserts listing is Listing {
   if (typeof l.seller !== 'object' || !l.seller) throw new Error('listing.seller required');
   if (typeof l.capability !== 'object' || !l.capability) throw new Error('listing.capability required');
   if (typeof l.price !== 'object' || !l.price) throw new Error('listing.price required');
+  const seller = l.seller as Record<string, unknown>;
+  const identity = seller['identity'];
+  if (!identity || typeof identity !== 'object' || Array.isArray(identity)) {
+    throw new Error('listing.seller.identity required');
+  }
+  const primary = (identity as Record<string, unknown>)['primary'];
+  if (!primary || typeof primary !== 'object' || Array.isArray(primary)) {
+    throw new Error('listing.seller.identity.primary required');
+  }
   if (!Array.isArray(l.requiredCapabilities)) throw new Error('listing.requiredCapabilities must be array');
   // §6.3.4 LP-3: SR-2 MUST be in requiredCapabilities (anchoring depends on it)
   if (!(l.requiredCapabilities as string[]).includes('sr-2-anchored-storage')) {
@@ -103,8 +126,21 @@ async function main(): Promise<void> {
   const raw = readFileSync(args.listingFile, 'utf-8');
   const listingObj: unknown = JSON.parse(raw);
   validateListing(listingObj);
-  const listing: Listing = listingObj;
+  const draft = listingObj as Listing;
+  const sellerPrimaryClaim = formatClaimReference(draft.seller.identity.primary);
+  assertRegisteredClaimReference(sellerPrimaryClaim);
+  const logicalAddress = listingLogicalAddress(sellerPrimaryClaim, draft.id, draft.version);
+  if (draft.signature !== undefined && draft.logical_address === undefined) {
+    throw new Error('a signed listing must already carry logical_address in its signed scope; add it and re-sign before minting');
+  }
+  if (draft.logical_address !== undefined && draft.logical_address !== logicalAddress) {
+    throw new Error(`listing.logical_address mismatch: expected ${logicalAddress}`);
+  }
+  const listing: Listing = { ...draft, logical_address: logicalAddress };
+  const storageProgramName = opaqueListingProgramName(logicalAddress);
   console.error(`✓ Loaded listing: id=${listing.id}, version=${listing.version}, capability=${listing.capability.key}`);
+  console.error(`✓ Logical address (CF-4 metadata): ${logicalAddress}`);
+  console.error(`✓ Opaque Storage Program name is colon-free`);
 
   // 2. Strip signature for canonicalisation
   const unsigned: UnsignedListing = { ...listing };
@@ -119,28 +155,34 @@ async function main(): Promise<void> {
   }
   console.error(`✓ JCS canonical bytes: ${canonical.length} (< 16 KB cap)`);
 
-  // 4. LP-2 scheme check — MUST run BEFORE dry-run exit (Codex re-review #1).
-  // A non-cci primary listing is invalid in v0.2 regardless of whether we
-  // actually anchor. Catch it here so dry-runs also enforce the constraint.
-  const sellerScheme = listing.seller.identity.primary.scheme;
-  if (sellerScheme !== 'cci') {
-    console.error(
-      `Error: listing.seller.identity.primary.scheme="${sellerScheme}" not supported in v0.2. ` +
-      `Only "cci"-scheme primaries are supported today; ERC-8004 and other schemes land in v0.3.`
-    );
-    process.exit(1);
-  }
+  const contentHash = listingContentHash(listing as unknown as Record<string, unknown>);
 
-  // 5. Dry-run path — exits AFTER scheme validation so the rejection happens consistently
+  // 4. Dry-run path — exits after CF-4, registered-scheme, hash-scope, and name checks.
   if (args.dryRun) {
-    console.error('✓ Dry run — Demos connection + anchor step skipped (scheme + canonical bytes already validated)');
-    console.log(JSON.stringify({ status: 'dry-run', canonicalBytes: canonical.length, schemeValidated: true }, null, 2));
+    console.error('✓ Dry run — Demos connection + anchor step skipped');
+    console.log(JSON.stringify({
+      status: 'dry-run',
+      canonicalBytes: canonical.length,
+      logical_address: logicalAddress,
+      storageProgramName,
+      contentHash,
+      schemeValidated: true,
+    }, null, 2));
     process.exit(0);
   }
 
-  // 6. Sign + Anchor via Demos SR-2
+  // 5. Anchor via Demos SR-2. Refuse the write if no hostable discovery origin was supplied:
+  // a go-forward §6.3.4(c) producer must emit the binding after the native locator exists.
   if (!args.mnemonicEnv) {
     console.error('Error: --mnemonic-env required (or use --dry-run)');
+    process.exit(3);
+  }
+  if (typeof listing.signature !== 'string' || listing.signature.length === 0) {
+    console.error('Error: live minting requires a caller-supplied listing signature that covers logical_address');
+    process.exit(3);
+  }
+  if (!args.publisherOrigin) {
+    console.error('Error: --publisher-origin (or DACS_PUBLISHER_ORIGIN) required for §6.3.4(c) discovery emission');
     process.exit(3);
   }
   const mn = mnemonicFromEnv(args.mnemonicEnv);
@@ -150,27 +192,26 @@ async function main(): Promise<void> {
   console.error(`✓ Connected to Demos: ${handle.rpc}`);
   console.error(`  Wallet address (CCI): ${handle.address}`);
 
-  // 7. LP-2 mismatch check — refuse to anchor for a different identity than the connected wallet.
-  const sellerCciId = listing.seller.identity.primary.identifier.toLowerCase();
-  const walletAddr = handle.address.toLowerCase();
-  if (sellerCciId !== walletAddr) {
-    console.error(
-      `Error: listing.seller.identity.primary (cci:${sellerCciId}) does not match connected wallet (${walletAddr}). ` +
-      `LP-2 forbids signing a listing for a different identity.`
-    );
-    process.exit(1);
-  }
-
-  // Anchor the JCS-canonical listing bytes to a Storage Program (SR-2)
-  // The listing IS the payload — published in canonical form so any reader can
-  // recompute its hash and verify it matches what they expect (LR-1).
-  console.error(`  Anchoring ${canonical.length} bytes to SR-2...`);
+  // The deployer address is a native-address write input; it is not the seller ClaimReference.
+  // Anchor the complete listing (including any supplied signature) while contentHash remains
+  // bound to the §B.2 signature-omitted canonical form computed above.
+  const anchoredBytes = jcsCanonical(listing);
+  console.error(`  Anchoring ${anchoredBytes.length} bytes to SR-2...`);
   const result = await anchor(
     handle,
-    `dacs1:listing:${listing.id}:v${listing.version}`,
-    new TextDecoder().decode(canonical), // SR-2 wants string or object; pass canonical string
+    storageProgramName,
+    new TextDecoder().decode(anchoredBytes),
     { acl: 'public' }
   );
+
+  const discoveryFiles = emitDiscoveryArtifacts({
+    listing: listing as unknown as Record<string, unknown>,
+    sellerPrimaryClaim,
+    nativeAddress: result.storageAddress,
+    publisherOrigin: args.publisherOrigin,
+    generatedAt: Date.now(),
+    outputDir: args.discoveryDir,
+  });
 
   console.error(`✓ Anchored:`);
   console.error(`    storageAddress: ${result.storageAddress}`);
@@ -182,9 +223,12 @@ async function main(): Promise<void> {
     listingId: listing.id,
     version: listing.version,
     canonicalBytes: canonical.length,
+    logical_address: logicalAddress,
+    contentHash,
     storageAddress: result.storageAddress,
     txHash: result.txHash,
     anchoredAt: result.anchoredAt,
+    discoveryFiles,
   }, null, 2));
   process.exit(0);
 }
