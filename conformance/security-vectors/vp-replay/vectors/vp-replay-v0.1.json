@@ -1,12 +1,27 @@
 {
   "set": "vp-replay-v0.1",
-  "spec": "DACS §7.3.2",
-  "hash": "1cebf46c4b1007d29989996eef23b1ac26de534ea052e43727e8e3aa89eb9c74",
+  "spec": "DACS §7.3.2 + CORE §B.8 (SN-1..4)",
+  "hash": "7d6c91ef23119ac6a243711d3e98604ca75a2f3def5f566ffed5dcf63664185e",
   "count": 13,
+  "snCoverage": {
+    "exercised": [
+      "SN-3"
+    ],
+    "notEnforcedHere": {
+      "SN-1": "Verifier generation and nonce provenance are not exercised: this stateless harness receives an expected nonce as input and has no generator or authenticated issuance record.",
+      "SN-2": "SN-2 entropy/native-format checks are issuer obligations. CORE explicitly does not require a verifier to re-check entropy or hex length on the presented value, and such a unilateral re-check is not a conformance divergence. These vectors therefore keep non-hex placeholders.",
+      "SN-4": "single-use consumption, bounded lifetime, and retain-until-terminal require verifier-side state and are not exercised by this stateless expected-nonce validator; see the dedicated sn4-single-use set."
+    },
+    "sn3Scope": "The three mismatch/omission cases exercise only the SN-3 comparison branch while assuming the explicit expected nonce is authenticated current-job issuance state. This harness has no jobId or issue-before-presentation proof.",
+    "note": "Each vector carries an `sn` tag for the rule it exercises, or the §7.3.2/§7.5.1 surface when not an SN rule. This stateless set exercises only the SN-3 comparison branch. SN-1 provenance and SN-4 state require separate stateful harnesses; SN-2 is issuer-side.",
+    "hashDivergence": "Semantic verdict inputs remain identical to DACS-Standard vp-replay-v0.1 (hash 1cebf46c4b1007d29989996eef23b1ac26de534ea052e43727e8e3aa89eb9c74), but this implementation adds and retags `sn` metadata. The resulting local set hash therefore differs and the two JSON corpora are not byte-identical.",
+    "spec": "CORE §B.8 SN-1..SN-4 (PR #143, closes D9/#133)"
+  },
   "vectors": [
     {
       "name": "valid-holder-binding",
       "expected": "pass",
+      "sn": "§7.3.2-step6",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -30,6 +45,7 @@
     {
       "name": "issuer-genuine-but-no-holder-proof",
       "expected": "fail",
+      "sn": "§7.3.2-step6",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -46,6 +62,7 @@
     {
       "name": "cross-session-nonce-replay",
       "expected": "fail",
+      "sn": "SN-3",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -69,6 +86,7 @@
     {
       "name": "non-holder-presenter",
       "expected": "fail",
+      "sn": "§7.3.2-step6",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -92,6 +110,7 @@
     {
       "name": "tampered-credential",
       "expected": "fail",
+      "sn": "§7.3.2-step1",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -115,6 +134,7 @@
     {
       "name": "malformed-presentation",
       "expected": "error",
+      "sn": "§7.5.1-error",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -125,6 +145,7 @@
     {
       "name": "issuer-unresolvable-indeterminate",
       "expected": "indeterminate",
+      "sn": "§7.5.1-indeterminate",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -148,6 +169,7 @@
     {
       "name": "empty-expected-nonce-indeterminate",
       "expected": "indeterminate",
+      "sn": "§7.5.1-indeterminate",
       "sessionNonce": "",
       "presentation": {
         "credential": {
@@ -171,6 +193,7 @@
     {
       "name": "challenge-omits-session-nonce",
       "expected": "fail",
+      "sn": "SN-3",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -193,6 +216,7 @@
     {
       "name": "empty-challenge-nonce",
       "expected": "fail",
+      "sn": "SN-3",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -216,6 +240,7 @@
     {
       "name": "malformed-holderproof-sig",
       "expected": "error",
+      "sn": "§7.5.1-error",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -239,6 +264,7 @@
     {
       "name": "malformed-subject-key",
       "expected": "error",
+      "sn": "§7.5.1-error",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
@@ -262,6 +288,7 @@
     {
       "name": "self-issued-with-holder-proof",
       "expected": "pass",
+      "sn": "§7.3.2-step6",
       "sessionNonce": "session-nonce-ABC",
       "presentation": {
         "credential": {
