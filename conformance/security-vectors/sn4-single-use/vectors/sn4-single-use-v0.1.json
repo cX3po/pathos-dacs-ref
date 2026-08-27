@@ -1,0 +1,282 @@
+{
+  "set": "sn4-single-use-v0.1",
+  "spec": "CORE §B.8 SN-4 single-use (consume/reject-reuse) — DACS-Standard#143 / §14.6",
+  "note": "Covers SN-4 consume-on-attempt/reject-reuse and bounded lifetime with explicit SN-3 issuance binding. Behaviour-keyed. accept=issued for this job, unexpired first use; reject=wrong-job issuance, expired challenge, replay, or later presentation failure; indeterminate=issued/consumed record unreadable; error=malformed. Every matching issued-nonce attempt records whether it newly consumed the challenge. Consumption is scoped to (jobId,nonce), but the same bytes under another job never authorize this presentation. Durable retention until terminal state and atomic persistence remain unproven implementation/harness obligations.",
+  "hash": "8d660954376b6ca57b4bb4cd099014f6d1fc0f63dc7bbe67f2bd09cdfaddea7f",
+  "count": 15,
+  "vectors": [
+    {
+      "name": "first-use",
+      "expected": "accept",
+      "expectedConsumedOnAttempt": true,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "reuse-same-job-rejected",
+      "expected": "reject",
+      "expectedConsumedOnAttempt": false,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [
+          [
+            "job-7f3a",
+            "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900"
+          ]
+        ],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "separately-issued-for-current-job-not-blocked-by-other-job-consumption",
+      "expected": "accept",
+      "expectedConsumedOnAttempt": true,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [
+          [
+            "job-OTHER",
+            "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900"
+          ]
+        ],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "nonce-issued-for-different-job-rejected",
+      "expected": "reject",
+      "expectedConsumedOnAttempt": false,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-OTHER",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "different-nonce-same-job-ok",
+      "expected": "accept",
+      "expectedConsumedOnAttempt": true,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [
+          [
+            "job-7f3a",
+            "b3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900"
+          ]
+        ],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "challenge-at-lifetime-boundary-accepted",
+      "expected": "accept",
+      "expectedConsumedOnAttempt": true,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 6000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "challenge-past-lifetime-rejected",
+      "expected": "reject",
+      "expectedConsumedOnAttempt": true,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 6001,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "later-presentation-failure-still-consumes",
+      "expected": "reject",
+      "expectedConsumedOnAttempt": true,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": false,
+        "consumedBefore": [],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "unreadable-record-indeterminate",
+      "expected": "indeterminate",
+      "expectedConsumedOnAttempt": false,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [],
+        "recordReadable": false
+      }
+    },
+    {
+      "name": "missing-nonce-error",
+      "expected": "error",
+      "expectedConsumedOnAttempt": false,
+      "input": {
+        "jobId": "job-7f3a",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "empty-jobid-error",
+      "expected": "error",
+      "expectedConsumedOnAttempt": false,
+      "input": {
+        "jobId": "",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "non-positive-lifetime-error",
+      "expected": "error",
+      "expectedConsumedOnAttempt": false,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 0,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [],
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "record-readable-nonboolean-error",
+      "expected": "error",
+      "expectedConsumedOnAttempt": false,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [],
+        "recordReadable": "false"
+      }
+    },
+    {
+      "name": "consumed-ledger-object-error",
+      "expected": "error",
+      "expectedConsumedOnAttempt": false,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": {},
+        "recordReadable": true
+      }
+    },
+    {
+      "name": "consumed-ledger-malformed-tuple-error",
+      "expected": "error",
+      "expectedConsumedOnAttempt": false,
+      "input": {
+        "jobId": "job-7f3a",
+        "nonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedForJobId": "job-7f3a",
+        "issuedNonce": "a3f1c8e9d2b40576a1c3e5f7091b2d4e6080a2c4e6f80911223344556677889900",
+        "issuedAtMs": 1000,
+        "observedAtMs": 2000,
+        "challengeLifetimeMs": 5000,
+        "presentationOtherwiseValid": true,
+        "consumedBefore": [
+          [
+            "job-7f3a"
+          ]
+        ],
+        "recordReadable": true
+      }
+    }
+  ]
+}
