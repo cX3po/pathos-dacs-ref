@@ -32,7 +32,6 @@ const REASON_MSG: Record<string, RegExp> = {
   'safe-integer-range': /safe-integer range/i,
   'unpaired-surrogate': /unpaired UTF-16 surrogate/i,
   'bigint-not-encodable': /BigInt is not JSON-encodable/, // specific msg, NOT the generic catch-all (tamper-path close)
-  'nfc-key-collision': /NFC key collision/i,
 };
 
 test('vector id sets match cases.ts exactly (no extras / omissions, both directions)', () => {
@@ -89,20 +88,23 @@ test('the SPECIFIC NFD vectors are NOT silently flattened to NFC (per-vector edi
 
   const nfdKey = byId.get('unicode-key-nfd')!;
   const key = Object.keys(nfdKey.input as Record<string, unknown>)[0]!;
-  assert.notEqual(key, key.normalize('NFC'), 'unicode-key-nfd key must remain genuinely NFD (key normalisation coverage lost)');
-  assert.equal(key.normalize('NFC'), 'café', 'unicode-key-nfd must NFC-normalise to café');
+  assert.notEqual(key, key.normalize('NFC'), 'unicode-key-nfd key must remain genuinely NFD (name-preservation coverage lost)');
+  assert.equal(key.normalize('NFC'), 'café', 'the NFD key must still NFC-fold to café, or it is not exercising the boundary');
 });
 
-test('the NFC key-collision reject case is a genuine collision before it is rejected', () => {
-  // Defend the reject case from silently degrading into a non-collision input: the builder must
-  // produce two DISTINCT raw keys whose NFC forms are equal (that is what makes it ambiguous).
-  const collision = rejectCases.find((c) => c.id === 'nfc-key-collision')!;
-  // Inspect the source key pair via cases.ts's \u-escaped constants (editor-proof), not literal glyphs:
-  // distinct raw strings (NFC precomposed vs NFD decomposed) that NFC-collide.
-  assert.notEqual(NFC_CAFE, NFD_CAFE, 'collision keys must be distinct raw strings (NFC vs NFD)');
-  assert.equal(NFC_CAFE.normalize('NFC'), NFD_CAFE.normalize('NFC'), 'collision keys must NFC-normalise to the same key');
-  assert.throws(() => jcsCanonical(collision.build()), /NFC key collision/i);
+test('the NFC/NFD member-name pair stays two DISTINCT names (no normalisation)', () => {
+  // Was: 'the NFC key-collision reject case is a genuine collision before it is rejected'.
+  // Member names are no longer NFC-normalised (CF-1 covers string VALUES only; RFC 8785
+  // preserves names as received), so these two names cannot collide and the input is valid.
+  // Guard what actually matters now: the two spellings are distinct raw strings that WOULD
+  // have collided under normalisation, and the canonical form keeps both.
+  assert.notEqual(NFC_CAFE, NFD_CAFE, 'pair must be distinct raw strings (NFC vs NFD)');
+  assert.equal(NFC_CAFE.normalize('NFC'), NFD_CAFE.normalize('NFC'), 'they must still NFC-collide, or the case is not exercising the boundary');
+  const pair = acceptCases.find((c) => c.id === 'nfc-nfd-key-pair-distinct')!;
+  const built = pair.build() as Record<string, unknown>;
+  assert.equal(Object.keys(built).length, 2, 'both member names must survive as separate members');
 });
+
 
 test('EXTERNAL anchor: number serialisation matches the ECMAScript / RFC 8785 §3.2.2.3 reference, not our own oracle', () => {
   // Fable review: every other check verifies against src/jcs.ts itself, so a number-formatting bug in

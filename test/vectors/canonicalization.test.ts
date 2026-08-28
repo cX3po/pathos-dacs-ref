@@ -56,21 +56,42 @@ test('CF-1 - decomposed and precomposed strings hash identically (NFC)', () => {
   assert.equal(jcsHashHex({ v: CAFE_PRE }), jcsHashHex({ v: CAFE_DEC }));
 });
 
-test('CF-1 - NFC applies to object keys too', () => {
+test('CF-1 does NOT apply to member names - NFC and NFD names hash differently', () => {
+  // CORE §B.2 CF-1 scopes normalisation to "every JSON string VALUE"; RFC 8785 preserves
+  // member names as received. Normalising names made these two collapse into one canonical
+  // form — the #270 divergence, classified upstream as a PATH-OS implementation defect.
   const a: Record<string, number> = {}; a[CAFE_PRE] = 1;
   const b: Record<string, number> = {}; b[CAFE_DEC] = 1;
-  assert.equal(jcsHashHex(a), jcsHashHex(b));
+  assert.notEqual(jcsHashHex(a), jcsHashHex(b));
 });
 
-test('CF-1 - NFC key collision is rejected (reproducibility)', () => {
+test('an NFC/NFD member-name pair canonicalises to two members, not a rejection', () => {
+  // Was: 'CF-1 - NFC key collision is rejected'. With names preserved they never collide.
   const o: Record<string, number> = {}; o[CAFE_PRE] = 1; o[CAFE_DEC] = 2;
   assert.equal(Object.keys(o).length, 2);
-  assert.throws(() => jcsCanonical(o), /NFC key collision/);
+  const bytes = jcsCanonical(o);
+  const text = new TextDecoder().decode(bytes);
+  assert.ok(text.includes(CAFE_PRE), 'precomposed name must survive verbatim');
+  assert.ok(text.includes(CAFE_DEC), 'decomposed name must survive verbatim');
 });
 
-test('CF-1 - undefined-valued key is omitted, so no false collision with its NFC twin', () => {
+test('member-name sort is raw UTF-16 code units, not normalised order', () => {
+  // RFC 8785 sorts names by their raw UTF-16 code units. Guard that we did not reintroduce
+  // a normalise-then-sort step, which would reorder non-ASCII names.
+  const o: Record<string, number> = { b: 1, 'ä': 2, a: 3 };
+  const text = new TextDecoder().decode(jcsCanonical(o));
+  const order = [...text.matchAll(/"((?:[^"\\]|\\.)*)":/g)].map((m) => m[1]);
+  assert.deepEqual(order, [...order].sort(), 'names must be in raw UTF-16 code-unit order');
+});
+
+test('an omitted-value member name leaves no ghost; its NFD twin survives verbatim', () => {
+  // Was framed as "no false collision with its NFC twin" — collisions are impossible now
+  // that member names are preserved. What still matters: the omitted precomposed name must
+  // not appear, and the surviving decomposed name must come through byte-for-byte.
   const o: Record<string, unknown> = {}; o[CAFE_PRE] = undefined; o[CAFE_DEC] = 1;
-  assert.equal(new TextDecoder().decode(jcsCanonical(o)), '{"café":1}');
+  const text = new TextDecoder().decode(jcsCanonical(o));
+  assert.equal(text, `{"${CAFE_DEC}":1}`, 'the decomposed name survives exactly as received');
+  assert.ok(!text.includes(CAFE_PRE), 'the omitted precomposed name must not appear');
 });
 
 test('7.2 - JSON number above 2^53-1 is rejected', () => {
@@ -118,11 +139,13 @@ test('JSON value-omission mirrored — sparse array holes become null', () => {
   assert.equal(new TextDecoder().decode(jcsCanonical({ s: sparse })), '{"s":[1,null,3]}');
 });
 
-test('toJSON returning undefined — property omitted, no false NFC collision with twin', () => {
+test('toJSON returning undefined omits the property; the twin name survives verbatim', () => {
   const o: Record<string, unknown> = {};
-  o['café'] = { toJSON() { return undefined; } };
-  o['café'] = 1;
-  assert.equal(new TextDecoder().decode(jcsCanonical(o)), '{"café":1}');
+  o[CAFE_PRE] = { toJSON() { return undefined; } };
+  o[CAFE_DEC] = 1;
+  const text = new TextDecoder().decode(jcsCanonical(o));
+  assert.equal(text, `{"${CAFE_DEC}":1}`);
+  assert.ok(!text.includes(CAFE_PRE), 'the toJSON-omitted precomposed name must not appear');
 });
 
 test('boxed primitives serialise as their primitive value (JSON.stringify parity)', () => {

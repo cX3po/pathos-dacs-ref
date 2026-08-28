@@ -64,9 +64,12 @@ const acceptVectors = existing.acceptVectors.map((v) => {
   return { id: `ca-${v.id}`, section: 'canonical-accept', description: v.description,
     input: v.input, canonicalUtf8Hex: v.canonicalUtf8Hex, expectedSha256: v.expectedSha256 };
 });
-assertEq(acceptVectors.length, 21, 'canonical-accept count');
+// 22, not 21: 'nfc-key-collision' moved reject -> accept as 'nfc-nfd-key-pair-distinct'.
+// Member names are no longer NFC-normalised (CF-1 covers string VALUES only), so an
+// NFC/NFD name pair cannot collide and is a valid two-member object. See #270.
+assertEq(acceptVectors.length, 22, 'canonical-accept count');
 
-// ── 2. canonical-reject (6) — both oracles must reject each constructor ─
+// ── 2. canonical-reject (5) — both oracles must reject each constructor ─
 const rejectVectors = rejectCases.map((c) => {
   let srcRejected = false, kitRejected = false;
   try { srcJcsCanonical(c.build()); } catch { srcRejected = true; }
@@ -76,7 +79,7 @@ const rejectVectors = rejectCases.map((c) => {
   return { id: `cr-${c.id}`, section: 'canonical-reject', description: c.description,
     constructorId: c.id, reason: c.reason };
 });
-assertEq(rejectVectors.length, 6, 'canonical-reject count (the six canonical reject constructors)');
+assertEq(rejectVectors.length, 5, 'canonical-reject count (was six; nfc-key-collision moved to accept — see the accept-count note above)');
 
 // ── 3. domain-sep-sign (12) ─────────────────────────────────────────────
 // Deterministic, publicly-derivable TEST keys (sha256 of a published label — NOT secrets).
@@ -233,7 +236,9 @@ const vectorsDoc = {
   name: 'pathos-dacs partner-kit conformance vectors',
   nonNormative: 'NON-NORMATIVE sanity vectors extracted from pathos-dacs-ref. Passing them is NOT a DACS certification; the normative source is the DACS specification (KyneSys Labs / Demos Network).',
   declaredTotal: 49,
-  sections: { 'canonical-accept': 21, 'canonical-reject': 6, 'domain-sep-sign': 12, 'drift-signed-scope': 10 },
+  // 22/5, not 21/6: nfc-key-collision moved reject -> accept (see the count guards above).
+  // The TOTAL is 49 either way, which is why declaredTotal alone did not catch the drift.
+  sections: { 'canonical-accept': 22, 'canonical-reject': 5, 'domain-sep-sign': 12, 'drift-signed-scope': 10 },
   testKeyNote: `privKeyHex values are deterministic PUBLIC test vectors: sha256("${TEST_KEY_LABEL_1}") and sha256("${TEST_KEY_LABEL_2}"). Not secrets. Never use outside these vectors.`,
   vectors,
 };

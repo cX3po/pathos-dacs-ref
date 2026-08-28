@@ -3,8 +3,8 @@
   "nonNormative": "NON-NORMATIVE sanity vectors extracted from pathos-dacs-ref. Passing them is NOT a DACS certification; the normative source is the DACS specification (KyneSys Labs / Demos Network).",
   "declaredTotal": 49,
   "sections": {
-    "canonical-accept": 21,
-    "canonical-reject": 6,
+    "canonical-accept": 22,
+    "canonical-reject": 5,
     "domain-sep-sign": 12,
     "drift-signed-scope": 10
   },
@@ -65,12 +65,23 @@
     {
       "id": "ca-unicode-key-nfd",
       "section": "canonical-accept",
-      "description": "object KEY in NFD form - MUST hash identically to the NFC key (keys are NFC-normalised too, gap V2)",
+      "description": "object KEY in NFD form - MUST NOT hash identically to the NFC key. CF-1 normalises string VALUES only; RFC 8785 preserves member names as received and sorts their raw UTF-16 code units, so NFC and NFD names are distinct members. Previously this carried sameHashAs: 'unicode-key-nfc', which encoded our own key-normalisation defect (#270).",
       "input": {
         "café": 1
       },
-      "canonicalUtf8Hex": "7b22636166c3a9223a317d",
-      "expectedSha256": "4ba6f859a6604763e30e1afc74dd00bf3b245be58d902b5d1ae0eaa119e8a141"
+      "canonicalUtf8Hex": "7b2263616665cc81223a317d",
+      "expectedSha256": "26a86d452316c9c5fbd357205471fe96854efae9c460b0497c3b512f66172d60"
+    },
+    {
+      "id": "ca-nfc-nfd-key-pair-distinct",
+      "section": "canonical-accept",
+      "description": "an object carrying BOTH the NFC and NFD spellings of the same word as member names is valid and canonicalises to TWO members, ordered by raw UTF-16 code units. This was a reject case ('nfc-key-collision') while we normalised member names — under CF-1 as written (string VALUES only) the two names never collide, so there is nothing to reject.",
+      "input": {
+        "café": 1,
+        "café": 2
+      },
+      "canonicalUtf8Hex": "7b2263616665cc81223a322c22636166c3a9223a317d",
+      "expectedSha256": "a2d154082182d12d601088ebd807c6aa696cd07ae4d8614ef552e6be956f9bef"
     },
     {
       "id": "ca-number-integer",
@@ -267,13 +278,6 @@
       "description": "BigInt is not JSON-encodable",
       "constructorId": "bigint",
       "reason": "bigint-not-encodable"
-    },
-    {
-      "id": "cr-nfc-key-collision",
-      "section": "canonical-reject",
-      "description": "two distinct keys that NFC-normalise to the same key (ambiguous canonical form)",
-      "constructorId": "nfc-key-collision",
-      "reason": "nfc-key-collision"
     },
     {
       "id": "ds-s1-bundle-roundtrip",

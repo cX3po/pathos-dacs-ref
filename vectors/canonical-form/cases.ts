@@ -52,9 +52,26 @@ export const acceptCases: AcceptCase[] = [
   { id: 'unicode-key-nfc', description: 'object KEY in NFC form', build: () => ({ [NFC_CAFE]: 1 }) },
   {
     id: 'unicode-key-nfd',
-    description: 'object KEY in NFD form - MUST hash identically to the NFC key (keys are NFC-normalised too, gap V2)',
+    description:
+      'object KEY in NFD form - MUST NOT hash identically to the NFC key. CF-1 normalises string ' +
+      'VALUES only; RFC 8785 preserves member names as received and sorts their raw UTF-16 code ' +
+      'units, so NFC and NFD names are distinct members. Previously this carried ' +
+      "sameHashAs: 'unicode-key-nfc', which encoded our own key-normalisation defect (#270).",
     build: () => ({ [NFD_CAFE]: 1 }),
-    sameHashAs: 'unicode-key-nfc',
+  },
+  {
+    id: 'nfc-nfd-key-pair-distinct',
+    description:
+      'an object carrying BOTH the NFC and NFD spellings of the same word as member names is ' +
+      'valid and canonicalises to TWO members, ordered by raw UTF-16 code units. This was a ' +
+      "reject case ('nfc-key-collision') while we normalised member names — under CF-1 as " +
+      'written (string VALUES only) the two names never collide, so there is nothing to reject.',
+    build: () => {
+      const o: Record<string, number> = {};
+      o[NFC_CAFE] = 1;
+      o[NFD_CAFE] = 2;
+      return o;
+    },
   },
   { id: 'number-integer', description: 'integer value', build: () => ({ n: 42 }) },
   {
@@ -119,15 +136,4 @@ export const rejectCases: RejectCase[] = [
   },
   { id: 'lone-surrogate', description: 'unpaired UTF-16 high surrogate has no valid UTF-8 encoding', build: () => ({ s: '\uD800' }), reason: 'unpaired-surrogate' },
   { id: 'bigint', description: 'BigInt is not JSON-encodable', build: () => ({ b: BigInt(1) }), reason: 'bigint-not-encodable' },
-  {
-    id: 'nfc-key-collision',
-    description: 'two distinct keys that NFC-normalise to the same key (ambiguous canonical form)',
-    build: () => {
-      const o: Record<string, number> = {};
-      o[NFC_CAFE] = 1;
-      o[NFD_CAFE] = 2;
-      return o;
-    },
-    reason: 'nfc-key-collision',
-  },
 ];
