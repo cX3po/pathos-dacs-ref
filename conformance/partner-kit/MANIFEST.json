@@ -7,21 +7,21 @@
     "attribution": "DACS — Demos Agent Commerce Standards — is specified upstream by KyneSys Labs / the Demos Network project. RFC 8785 (JCS) is an IETF specification. Reference signatures were generated via @noble/ed25519 (MIT); the in-repo canonicalization oracle uses the canonicalize npm package (Apache-2.0, not vendored here)."
   },
   "files": {
-    "jcs.mjs": "9f3ae4540c190bfb07020dcd1f69324947a0632b9587c8ba1d13f6127ad9bc6f",
+    "jcs.mjs": "b994e24625df82d2c5bb1c230e82d780295c20578aeead5c817008df3e580a28",
     "domain-sep.mjs": "666dc2044bc75b8e6d20098443ef31d8c7f672475eb0d51817f1f8a2cb673893",
     "sign.mjs": "5873bef2e3c0446f2b96c55d7a23713f2ae215c2dfa7e3273f011945cc48c303",
     "drift.mjs": "b675e8f1c9c4a8c961505a262f0878342969b38c7b2dd871be49d7d2a5179a0d",
     "run-conformance.mjs": "edb2fc75f2290dfd6c248c82ac8c2ea90499f42042ab42adc94482e62b593589",
     "vectors.json": "f7c6d0de62b399c746c263fc9ed1f8219f156580952da7fc67f763f8cb4424a3",
-    "README.md": "1ba75c95a40c8ffaa1d40d30a6d969a29c0e8e0a7ce31a708ab187d578d82489",
+    "README.md": "e84318cbed6f815ddb2814bac922f8189bc31ee3a9c3d2b629c27917108002c4",
     "LICENSE": "9fcf01a79374854a481894661ddf2a9c8a85437e2d87c03735aaf560981ee894",
-    "generate.mts": "c1891dc2b5aec452327de85fdbee964ba0df3264aa7885ea03414b16438fd2ee"
+    "generate.mts": "1008733800f9a3e0713cc0ab87f78bb5fb422f0b4dff455867d81e56ee91caea"
   },
   "provenance": {
     "repository": "pathos-dacs-ref",
     "branch": "fix/jcs-member-name-preservation",
-    "sourceCommit": "afd8cfe423da4b2b6464149b5881b65344a0d5c2",
-    "sourceTreeClean": true,
+    "sourceCommit": "c43f6371c7a557cd580073ae2e2943ed33c6522f",
+    "sourceTreeClean": false,
     "sourceFiles": {
       "src/jcs.ts": "6538a48da695c6a6eb80c95452da23c2b089b3b292e8565db8001587a4b3a5d4",
       "src/domain-sep.ts": "19c051ac0376bf7b9a8e1a0db93305424ea4a703aacb26d2bd2fca409c9dfa91",
@@ -29,11 +29,11 @@
       "src/lib/dacs-drift.ts": "c28bfdf05553c4cb7706155a52b4d9171cfe8a8bea677967438675336af90482",
       "src/lib/bundle-signed-scope-v1.ts": "9927ad1735d72f9f6e812fea670a20e5880719a3a88f85705287c4155c837bc0",
       "dacs-drift.mts": "efa8b43c93451d172a97bd3990d1e38d368dbe85df2af36b2a31b629738b1db5",
-      "vectors/canonical-form/canonical-form-vectors.json": "a5bfa913776d16a0466a5167389020c77ae4d5fd36e2d41d1a7bc6db68f09b07",
+      "vectors/canonical-form/canonical-form-vectors.json": "d6ce1bcc5fa01e9a636905518316d7adf37898437be6c0e9a0cd2d5349d43a2e",
       "vectors/canonical-form/cases.ts": "b379ba8497edf7028142e4ccdf14afe0794cc7a236dfbe9a63fc320baab9343e",
       "test/vectors/dacs-x-fixtures/attestation-bundle-0004.json": "aa12856c1356fd58c3ff23518db679a98985eeb791d0cd097d0c826081eb9ff7"
     },
-    "generatedAt": "2026-08-28T11:41:22.497Z",
+    "generatedAt": "2026-08-28T17:04:47.059Z",
     "generatorCommand": "npx tsx conformance/partner-kit/generate.mts"
   },
   "parityReceipt": {
@@ -131,7 +131,7 @@
   },
   "receipt": {
     "command": "node run-conformance.mjs --json  (cwd: conformance/partner-kit)",
-    "ranAt": "2026-08-28T11:41:22.538Z",
+    "ranAt": "2026-08-28T17:04:47.096Z",
     "exitCode": 0,
     "result": {
       "declared": 49,

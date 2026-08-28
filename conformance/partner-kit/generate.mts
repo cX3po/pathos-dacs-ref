@@ -51,7 +51,7 @@ function assertEq(actual: unknown, expected: unknown, label: string): void {
   }
 }
 
-// ── 1. canonical-accept (21) — re-verified against BOTH oracles ─────────
+// ── 1. canonical-accept (22) — re-verified against BOTH oracles ─────────
 const existing = JSON.parse(
   readFileSync(path.join(REPO_ROOT, 'vectors/canonical-form/canonical-form-vectors.json'), 'utf8'),
 ) as { acceptVectors: Array<{ id: string; description: string; input: unknown; canonicalUtf8Hex: string; expectedSha256: string }>; rejectVectors: Array<{ id: string; description: string; reason: string }> };

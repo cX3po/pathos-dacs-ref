@@ -28,8 +28,8 @@ const rejectVectors = rejectCases.map((c) => ({ id: c.id, description: c.descrip
 
 const out = {
   generatedBy: 'pathos-dacs-ref vectors/canonical-form/generate.mts',
-  oracle: 'src/jcs.ts (RFC 8785 JCS + DACS section B.2 pre-pass: NFC values+keys, safe-int, surrogate-reject, key-collision-reject)',
-  note: 'Accept vectors: sha256(JCS canonical form of `input`) MUST equal expectedSha256; canonicalUtf8Hex carries the exact canonical bytes (editor-proof portable form). Reject vectors carry no `input` (BigInt / lone surrogate / over-safe-int / NFC key-collision are not always faithfully JSON-serialisable) — construct via the cases.ts builders; a conforming canonicaliser MUST reject each for the stated reason.',
+  oracle: 'src/jcs.ts (RFC 8785 JCS + DACS section B.2 pre-pass: NFC on string VALUES only — member names are preserved as received and UTF-16 sorted per RFC 8785 — plus safe-int and surrogate-reject)',
+  note: 'Accept vectors: sha256(JCS canonical form of `input`) MUST equal expectedSha256; canonicalUtf8Hex carries the exact canonical bytes (editor-proof portable form). Reject vectors carry no `input` (BigInt / lone surrogate / over-safe-int are not always faithfully JSON-serialisable) — construct via the cases.ts builders; a conforming canonicaliser MUST reject each for the stated reason.',
   acceptVectors,
   rejectVectors,
 };

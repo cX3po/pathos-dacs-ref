@@ -9,12 +9,13 @@
  * generation time (see MANIFEST.json receipt).
  *
  * DACS §B.2 pre-canonical pass (identical rules to src/jcs.ts):
- *  - CF-1: NFC-normalise every string value AND object key.
+ *  - CF-1: NFC-normalise every string VALUE. Member names are left exactly as
+ *    received — CF-1's scope is string values, and RFC 8785 sorts names by raw
+ *    UTF-16 code units.
  *  - Reject unpaired UTF-16 surrogates (values and keys).
  *  - Reject any number with magnitude outside the IEEE-754 safe-integer range
  *    (±2^53−1) — includes 1e21, which vanilla RFC 8785 would accept.
  *  - Reject BigInt (not JSON-encodable).
- *  - Reject two distinct keys that NFC-normalise to the same key.
  */
 import { createHash } from 'node:crypto';
 

@@ -29,8 +29,8 @@ covers exactly:
 
 | Section | Vectors | Surface |
 |---|---|---|
-| `canonical-accept` | 21 | RFC 8785 JCS + DACS §B.2 pre-pass: canonical bytes AND sha256 must match byte-for-byte |
-| `canonical-reject` | 6 | The six canonical reject constructors (2^53 boundary, large magnitude, 1e21 DACS-tightening, lone surrogate, BigInt, NFC key collision) — a conforming canonicaliser MUST reject each |
+| `canonical-accept` | 22 | RFC 8785 JCS + DACS §B.2 pre-pass: canonical bytes AND sha256 must match byte-for-byte |
+| `canonical-reject` | 5 | The five canonical reject constructors (2^53 boundary, large magnitude, 1e21 DACS-tightening, lone surrogate, BigInt) — a conforming canonicaliser MUST reject each. NFC key collision was removed: member names are no longer normalised, so an NFC/NFD name pair cannot collide and is now a canonical-accept case |
 | `domain-sep-sign` | 12 | §B.7 closed-registry domain separation: sign/verify roundtrips (reference-generated signatures must reproduce), closure rules (unknown separator fails; read-only legacy separators verify but never sign), composite `signed_bytes` layout |
 | `drift-signed-scope` | 10 | DACS-5 §10.4.1/R5-1 bundle signed-scope hash + DACS-4 evidenceHash drift semantics, incl. fail-closed manifest handling |
 
