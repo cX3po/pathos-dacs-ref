@@ -20,8 +20,8 @@
   "provenance": {
     "repository": "pathos-dacs-ref",
     "branch": "fix/jcs-member-name-preservation",
-    "sourceCommit": "c43f6371c7a557cd580073ae2e2943ed33c6522f",
-    "sourceTreeClean": false,
+    "sourceCommit": "e379710337d433241811079e751f4f06828379d0",
+    "sourceTreeClean": true,
     "sourceFiles": {
       "src/jcs.ts": "6538a48da695c6a6eb80c95452da23c2b089b3b292e8565db8001587a4b3a5d4",
       "src/domain-sep.ts": "19c051ac0376bf7b9a8e1a0db93305424ea4a703aacb26d2bd2fca409c9dfa91",
@@ -33,7 +33,7 @@
       "vectors/canonical-form/cases.ts": "b379ba8497edf7028142e4ccdf14afe0794cc7a236dfbe9a63fc320baab9343e",
       "test/vectors/dacs-x-fixtures/attestation-bundle-0004.json": "aa12856c1356fd58c3ff23518db679a98985eeb791d0cd097d0c826081eb9ff7"
     },
-    "generatedAt": "2026-08-28T17:04:47.059Z",
+    "generatedAt": "2026-08-28T17:05:34.013Z",
     "generatorCommand": "npx tsx conformance/partner-kit/generate.mts"
   },
   "parityReceipt": {
@@ -131,7 +131,7 @@
   },
   "receipt": {
     "command": "node run-conformance.mjs --json  (cwd: conformance/partner-kit)",
-    "ranAt": "2026-08-28T17:04:47.096Z",
+    "ranAt": "2026-08-28T17:05:34.052Z",
     "exitCode": 0,
     "result": {
       "declared": 49,
