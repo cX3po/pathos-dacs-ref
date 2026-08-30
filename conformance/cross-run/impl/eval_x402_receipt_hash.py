@@ -193,14 +193,23 @@ UNDERSPECIFICATION / AMBIGUITY NOTES (flagged, not papered over)
      implementations with different tables will disagree on v1 vectors.
      This is a real upstream finding.
 
-(U2) CF-1 says "every JSON string value". JSON object *member names* are
-     also JSON strings, but they are names, not values. The spec does not say
-     whether member names are NFC-normalised before JCS sorting/serialisation.
-     This evaluator normalises BOTH names and values (and normalises names
-     BEFORE sorting), because leaving names un-normalised would defeat the
-     stated purpose of CF-1 — reproducibility "regardless of the input's
-     precomposed/decomposed form". Every vector in this set has ASCII member
-     names, so the set does not disambiguate. Flagged.
+(U2) RESOLVED 2026-08-28 — this note previously recorded an open ambiguity and
+     chose the wrong side of it. It said the spec "does not say" whether member
+     names are NFC-normalised, and this evaluator normalised BOTH names and
+     values on the reasoning that leaving names alone would defeat CF-1's
+     reproducibility purpose.
+
+     The ambiguity is now settled and the answer is the other one. CF-1's scope
+     is "every JSON string VALUE"; RFC 8785 §3.2.3 preserves member names as
+     received and sorts them by raw UTF-16 code units. Upstream DACS-Standard
+     PR #345 states this explicitly in scripts/jcs.py ("string values are
+     NFC-normalised; object member names are serialised and UTF-16-sorted"),
+     and it was one of the two divergences upstream's #270 triage attributed to
+     PATH-OS. This evaluator no longer normalises member names.
+
+     No vector in this set changes: as the original note observed, every member
+     name here is ASCII, so the set never disambiguated. The change matters for
+     correctness and cross-implementation agreement, not for these results.
 
 (U3) X402-2 does not restate CORE §B.2's numeric safe-integer constraint for
      the settlement response, and RFC 8785 gives no canonical form for
@@ -376,24 +385,21 @@ def jcs(value):
 # ===========================================================================
 
 def nfc_normalise(value):
-    """Recursively NFC-normalise every JSON string.
+    """Recursively NFC-normalise every JSON string VALUE.
 
-    Member names are normalised as well as values -- see note (U2).
-    Normalising names can collide two previously-distinct names; that is a
-    malformed document (RFC 8785 §3.1 forbids duplicate names).
+    Member names are deliberately NOT normalised -- see note (U2), which records
+    why this changed. CF-1's scope is string values; RFC 8785 preserves member
+    names as received and sorts them by raw UTF-16 code units. Because names are
+    used verbatim, two distinct names can no longer be folded into one, so the
+    duplicate-after-normalisation check that used to live here is unreachable and
+    has been removed rather than left as dead reassurance.
     """
     if isinstance(value, str):
         return unicodedata.normalize("NFC", value)
     if isinstance(value, list):
         return [nfc_normalise(v) for v in value]
     if isinstance(value, dict):
-        out = {}
-        for k, v in value.items():
-            nk = unicodedata.normalize("NFC", k)
-            if nk in out:
-                raise Malformed("duplicate member name after NFC normalisation")
-            out[nk] = nfc_normalise(v)
-        return out
+        return {k: nfc_normalise(v) for k, v in value.items()}
     return value
 
 

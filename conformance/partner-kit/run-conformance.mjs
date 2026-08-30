@@ -35,7 +35,7 @@ const hex = (u8) => Buffer.from(u8).toString('hex');
 const unhex = (h) => new Uint8Array(Buffer.from(h, 'hex'));
 const utf8 = (s) => new TextEncoder().encode(s);
 
-// ── The 6 canonical reject constructors (§B.2 foot-guns) ────────────────
+// ── The 5 canonical reject constructors (§B.2 foot-guns) ────────────────
 // Ported from vectors/canonical-form/cases.ts rejectCases — these inputs are not always
 // faithfully JSON-serialisable (BigInt, lone surrogate, precise unsafe integers), so they
 // are CONSTRUCTED here rather than carried as data. A conforming canonicaliser MUST
@@ -48,7 +48,9 @@ const REJECT_CONSTRUCTORS = {
   'number-exponent-over-range': () => ({ n: 1e21 }),
   'lone-surrogate': () => ({ s: '\uD800' }),
   'bigint': () => ({ b: BigInt(1) }),
-  'nfc-key-collision': () => { const o = {}; o[NFC_CAFE] = 1; o[NFD_CAFE] = 2; return o; },
+  // 'nfc-key-collision' REMOVED: member names are no longer NFC-normalised (CF-1 covers
+  // string VALUES only; RFC 8785 preserves names as received), so an NFC/NFD name pair
+  // cannot collide. That input is now a canonical-ACCEPT case, nfc-nfd-key-pair-distinct.
 };
 
 let SEP_MAPS = {};

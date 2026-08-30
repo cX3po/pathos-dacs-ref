@@ -9,12 +9,13 @@
  * generation time (see MANIFEST.json receipt).
  *
  * DACS §B.2 pre-canonical pass (identical rules to src/jcs.ts):
- *  - CF-1: NFC-normalise every string value AND object key.
+ *  - CF-1: NFC-normalise every string VALUE. Member names are left exactly as
+ *    received — CF-1's scope is string values, and RFC 8785 sorts names by raw
+ *    UTF-16 code units.
  *  - Reject unpaired UTF-16 surrogates (values and keys).
  *  - Reject any number with magnitude outside the IEEE-754 safe-integer range
  *    (±2^53−1) — includes 1e21, which vanilla RFC 8785 would accept.
  *  - Reject BigInt (not JSON-encodable).
- *  - Reject two distinct keys that NFC-normalise to the same key.
  */
 import { createHash } from 'node:crypto';
 
@@ -24,15 +25,24 @@ const OMIT = Symbol('jcs-omit');
 
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
-function nfcSafe(s) {
-  const nfc = s.normalize('NFC');
-  if (LONE_SURROGATE.test(nfc)) {
+/** Reject unpaired surrogates. Applies to values AND member names — a lone surrogate has no
+ *  valid UTF-8 encoding either way. */
+function surrogateSafe(s) {
+  if (LONE_SURROGATE.test(s)) {
     throw new Error(
       'JCS: string/key contains an unpaired UTF-16 surrogate (§7.2) — not a valid ' +
         'Unicode scalar sequence; no reproducible canonical form'
     );
   }
-  return nfc;
+  return s;
+}
+
+/** NFC-normalise a string VALUE (CF-1). Deliberately NOT applied to member names: CORE §B.2
+ *  CF-1 scopes normalisation to "every JSON string VALUE", and RFC 8785 preserves member
+ *  names as received, sorting their raw UTF-16 code units. Normalising names folded NFC and
+ *  NFD spellings into one canonical form — the #270 divergence. */
+function nfcSafe(s) {
+  return surrogateSafe(s.normalize('NFC'));
 }
 
 function prepareForCanonical(value, toJsonHops = 0) {
@@ -70,15 +80,14 @@ function prepareForCanonical(value, toJsonHops = 0) {
   if (value && typeof value === 'object') {
     const out = Object.create(null);
     for (const [k, v] of Object.entries(value)) {
-      const nk = nfcSafe(k);
+      // Member names are validated but NOT normalised. Sorting is RFC 8785's
+      // Object.keys().sort() — raw UTF-16 code units — which is what names require.
+      const nk = surrogateSafe(k);
       const pv = prepareForCanonical(v);
       if (pv === OMIT) continue;
-      if (Object.prototype.hasOwnProperty.call(out, nk)) {
-        throw new Error(
-          `JCS: NFC key collision on "${nk}" (§7.2 CF-1) — two distinct keys normalise ` +
-            `to the same key; rejected so the canonical form stays reproducible`
-        );
-      }
+      // No collision is possible now: names are verbatim and Object.entries cannot yield
+      // the same own name twice. The old NFC-collision guard existed only because
+      // normalisation could fold two distinct names together.
       out[nk] = pv;
     }
     return out;

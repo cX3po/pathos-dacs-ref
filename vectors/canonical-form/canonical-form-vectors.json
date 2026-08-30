@@ -1,7 +1,7 @@
 {
   "generatedBy": "pathos-dacs-ref vectors/canonical-form/generate.mts",
-  "oracle": "src/jcs.ts (RFC 8785 JCS + DACS section B.2 pre-pass: NFC values+keys, safe-int, surrogate-reject, key-collision-reject)",
-  "note": "Accept vectors: sha256(JCS canonical form of `input`) MUST equal expectedSha256; canonicalUtf8Hex carries the exact canonical bytes (editor-proof portable form). Reject vectors carry no `input` (BigInt / lone surrogate / over-safe-int / NFC key-collision are not always faithfully JSON-serialisable) — construct via the cases.ts builders; a conforming canonicaliser MUST reject each for the stated reason.",
+  "oracle": "src/jcs.ts (RFC 8785 JCS + DACS section B.2 pre-pass: NFC on string VALUES only — member names are preserved as received and UTF-16 sorted per RFC 8785 — plus safe-int and surrogate-reject)",
+  "note": "Accept vectors: sha256(JCS canonical form of `input`) MUST equal expectedSha256; canonicalUtf8Hex carries the exact canonical bytes (editor-proof portable form). Reject vectors carry no `input` (BigInt / lone surrogate / over-safe-int are not always faithfully JSON-serialisable) — construct via the cases.ts builders; a conforming canonicaliser MUST reject each for the stated reason.",
   "acceptVectors": [
     {
       "id": "ascii-basic",
@@ -54,13 +54,22 @@
     },
     {
       "id": "unicode-key-nfd",
-      "description": "object KEY in NFD form - MUST hash identically to the NFC key (keys are NFC-normalised too, gap V2)",
+      "description": "object KEY in NFD form - MUST NOT hash identically to the NFC key. CF-1 normalises string VALUES only; RFC 8785 preserves member names as received and sorts their raw UTF-16 code units, so NFC and NFD names are distinct members. Previously this carried sameHashAs: 'unicode-key-nfc', which encoded our own key-normalisation defect (#270).",
       "input": {
         "café": 1
       },
-      "canonicalUtf8Hex": "7b22636166c3a9223a317d",
-      "expectedSha256": "4ba6f859a6604763e30e1afc74dd00bf3b245be58d902b5d1ae0eaa119e8a141",
-      "sameHashAs": "unicode-key-nfc"
+      "canonicalUtf8Hex": "7b2263616665cc81223a317d",
+      "expectedSha256": "26a86d452316c9c5fbd357205471fe96854efae9c460b0497c3b512f66172d60"
+    },
+    {
+      "id": "nfc-nfd-key-pair-distinct",
+      "description": "an object carrying BOTH the NFC and NFD spellings of the same word as member names is valid and canonicalises to TWO members, ordered by raw UTF-16 code units. This was a reject case ('nfc-key-collision') while we normalised member names — under CF-1 as written (string VALUES only) the two names never collide, so there is nothing to reject.",
+      "input": {
+        "café": 1,
+        "café": 2
+      },
+      "canonicalUtf8Hex": "7b2263616665cc81223a322c22636166c3a9223a317d",
+      "expectedSha256": "a2d154082182d12d601088ebd807c6aa696cd07ae4d8614ef552e6be956f9bef"
     },
     {
       "id": "number-integer",
@@ -234,11 +243,6 @@
       "id": "bigint",
       "description": "BigInt is not JSON-encodable",
       "reason": "bigint-not-encodable"
-    },
-    {
-      "id": "nfc-key-collision",
-      "description": "two distinct keys that NFC-normalise to the same key (ambiguous canonical form)",
-      "reason": "nfc-key-collision"
     }
   ]
 }

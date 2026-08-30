@@ -1,4 +1,8 @@
 node_modules/
+# ...and the bare name, without a trailing slash. A trailing-slash pattern matches a
+# DIRECTORY only, so a `node_modules` SYMLINK (created to run tests in a worktree) was
+# not ignored and got swept in twice by `git add -A`, shipping a broken absolute path.
+node_modules
 dist/
 *.log
 .DS_Store

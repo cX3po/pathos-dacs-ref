@@ -7,33 +7,33 @@
     "attribution": "DACS — Demos Agent Commerce Standards — is specified upstream by KyneSys Labs / the Demos Network project. RFC 8785 (JCS) is an IETF specification. Reference signatures were generated via @noble/ed25519 (MIT); the in-repo canonicalization oracle uses the canonicalize npm package (Apache-2.0, not vendored here)."
   },
   "files": {
-    "jcs.mjs": "49737c8c9f5fef9ec910509e25edc9e9308a9567a8584cbf2505630c6978c18d",
+    "jcs.mjs": "b994e24625df82d2c5bb1c230e82d780295c20578aeead5c817008df3e580a28",
     "domain-sep.mjs": "666dc2044bc75b8e6d20098443ef31d8c7f672475eb0d51817f1f8a2cb673893",
     "sign.mjs": "5873bef2e3c0446f2b96c55d7a23713f2ae215c2dfa7e3273f011945cc48c303",
     "drift.mjs": "b675e8f1c9c4a8c961505a262f0878342969b38c7b2dd871be49d7d2a5179a0d",
-    "run-conformance.mjs": "edb2fc75f2290dfd6c248c82ac8c2ea90499f42042ab42adc94482e62b593589",
-    "vectors.json": "a8fb331a5286a4653704e8c2af5a2bf8aee1853a9b8a48364c7c0d524f140bc7",
-    "README.md": "1ba75c95a40c8ffaa1d40d30a6d969a29c0e8e0a7ce31a708ab187d578d82489",
+    "run-conformance.mjs": "3d09cd212bf7ae3027d92a811a9fdcaee2f1be0b496b1b04bed50ed0687eb065",
+    "vectors.json": "f7c6d0de62b399c746c263fc9ed1f8219f156580952da7fc67f763f8cb4424a3",
+    "README.md": "e84318cbed6f815ddb2814bac922f8189bc31ee3a9c3d2b629c27917108002c4",
     "LICENSE": "9fcf01a79374854a481894661ddf2a9c8a85437e2d87c03735aaf560981ee894",
-    "generate.mts": "e5844f1d91628ab44e10d43c31393483a827cc7d1328501218606a898b09ff2d"
+    "generate.mts": "1008733800f9a3e0713cc0ab87f78bb5fb422f0b4dff455867d81e56ee91caea"
   },
   "provenance": {
     "repository": "pathos-dacs-ref",
-    "branch": "fable/dacs-conformance-partner-kit-20260710",
-    "sourceCommit": "1340ea0ba22002f211a3733c722c7c30bfcf59ee",
+    "branch": "fix/jcs-member-name-preservation",
+    "sourceCommit": "640efbd1be2ecf0edf17a129e4cf9dfe19e2e09a",
     "sourceTreeClean": true,
     "sourceFiles": {
-      "src/jcs.ts": "935e33226e856677b8f8a83768cf81a97a8a3733830fb5f5eb9c0cb98e4a48bc",
-      "src/domain-sep.ts": "5c1962ec93c657166bc898f69bb93546be5a4ce15707ddbc8941e13405997cf9",
+      "src/jcs.ts": "6538a48da695c6a6eb80c95452da23c2b089b3b292e8565db8001587a4b3a5d4",
+      "src/domain-sep.ts": "19c051ac0376bf7b9a8e1a0db93305424ea4a703aacb26d2bd2fca409c9dfa91",
       "src/lib/sign.ts": "42d4e911754010df9a5a8c49d9bf4e7d2135a6251da67ee2cde9ef603e706db2",
       "src/lib/dacs-drift.ts": "c28bfdf05553c4cb7706155a52b4d9171cfe8a8bea677967438675336af90482",
       "src/lib/bundle-signed-scope-v1.ts": "9927ad1735d72f9f6e812fea670a20e5880719a3a88f85705287c4155c837bc0",
       "dacs-drift.mts": "efa8b43c93451d172a97bd3990d1e38d368dbe85df2af36b2a31b629738b1db5",
-      "vectors/canonical-form/canonical-form-vectors.json": "6de09ed33ea1a27e61b4f2b0d2de3512e5795abc21992940fd8e57d032918d63",
-      "vectors/canonical-form/cases.ts": "cb285b9aefecf244326a2a881340e2fc265c647e97943236add6efb5f7ff37a1",
+      "vectors/canonical-form/canonical-form-vectors.json": "d6ce1bcc5fa01e9a636905518316d7adf37898437be6c0e9a0cd2d5349d43a2e",
+      "vectors/canonical-form/cases.ts": "b379ba8497edf7028142e4ccdf14afe0794cc7a236dfbe9a63fc320baab9343e",
       "test/vectors/dacs-x-fixtures/attestation-bundle-0004.json": "aa12856c1356fd58c3ff23518db679a98985eeb791d0cd097d0c826081eb9ff7"
     },
-    "generatedAt": "2026-07-10T23:54:47.402Z",
+    "generatedAt": "2026-08-28T21:05:07.178Z",
     "generatorCommand": "npx tsx conformance/partner-kit/generate.mts"
   },
   "parityReceipt": {
@@ -131,7 +131,7 @@
   },
   "receipt": {
     "command": "node run-conformance.mjs --json  (cwd: conformance/partner-kit)",
-    "ranAt": "2026-07-10T23:54:47.441Z",
+    "ranAt": "2026-08-28T21:05:07.216Z",
     "exitCode": 0,
     "result": {
       "declared": 49,

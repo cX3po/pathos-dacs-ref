@@ -98,17 +98,32 @@ implementations with different tables would diverge and both could claim
 conformance. **§9.5.7 should either inline the mapping, cite a registry anchor,
 or state that an unregistered v1 network is `error`.**
 
-### A2 — CF-1 is silent on object *member names* *(latent hash-divergence risk)*
+### A2 — CF-1 and object *member names* — **RESOLVED 2026-08-28, and we had it backwards**
 CF-1 says *"every JSON string **value**"*. JSON member names are strings but are
 not values. RFC 8785 performs no normalisation of its own, so if one
 implementation NFC-normalises names and another does not, a receipt with a
 non-ASCII extension key hashes to two different values — a silent
 cross-implementation split in exactly the "commitment" field the rail depends
-on. I normalise names as well as values (and before sorting), reasoning that
-leaving them raw defeats CF-1's stated purpose. **Every vector in this set has
-ASCII member names, so the set does not test this at all** — the one non-ASCII
-payload (vector 4) puts the decomposed text in a *value*. A vector with a
-decomposed extension **key** would be worth adding.
+on.
+
+The risk described above was real and it fired. This evaluator originally
+normalised names as well as values, reasoning that leaving them raw defeats
+CF-1's stated purpose. That was the wrong side of the ambiguity. The
+cross-implementation run this file documents surfaced the split as a genuine
+divergence (upstream issue #270), and DACS-Standard PR #345 has since made the
+rule explicit in `spec/CORE.md`:
+
+> CF-1 applies only to values: object member names MUST remain exactly as
+> received and MUST be sorted by their unescaped UTF-16 code units under
+> RFC 8785 §3.2.3. Producers and verifiers MUST NOT NFC-normalise member names
+> during canonicalisation.
+
+The evaluator now leaves member names as received. The original observation
+still stands and is worth keeping: **every vector in this set has ASCII member
+names, so the set does not test this at all** — the one non-ASCII payload
+(vector 4) puts the decomposed text in a *value*. A vector with a decomposed
+extension **key** would still be worth adding, and would now have a settled
+expected answer to assert against, which it did not before.
 
 ### A3 — `error` vs `fail` is never stated in §9.5.7 *(process gap)*
 X402-4 lists five rejection conditions under one verb ("MUST be rejected") that
