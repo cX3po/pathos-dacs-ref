@@ -1,9 +1,11 @@
 /** Pure included-only native DEM settlement policy and amount conversion. */
 
 import { emitSettlementEvidenceV1 } from '../../lib/emit-settlement-evidence-v1.js';
+import { utcDateOrThrow } from '../../live/pay-policy.js';
 import type { SettlementEvidenceV1Payment } from '../../types/settle.js';
 import type {
   DemosNativeClient,
+  PayDemAuthorizationAbortContext,
   PayDemSettlementRecoveryContext,
   SettleResult,
 } from './sdk-pay-dem-types.js';
@@ -12,6 +14,7 @@ export type {
   DemosNativeClient,
   DemosTransferResult,
   PayDemPreparedTransfer,
+  PayDemAuthorizationAbortContext,
   PayDemSettleParams,
   PayDemSettlementRecoveryContext,
   SettleResult,
@@ -61,9 +64,18 @@ export interface PayDemCoreParams {
   network?: string;
   /** Optional redundant binding; when supplied it must equal the decimal conversion. */
   amountOs?: bigint;
+  /** RPC endpoint used by an optional operator-policy authorization hook. */
+  rpcUrl?: string;
 }
 
 export interface PayDemCoreHooks {
+  authorizeTransfer?: (ctx: {
+    amountOs: bigint;
+    rpcUrl: string;
+  }) => Promise<
+    | { verdict: 'PROCEED'; nowIso: string }
+    | { verdict: 'BLOCK'; reason: string; rule: string }
+  >;
   /**
    * Records the immutable recovery intent before the injected transfer capability
    * is invoked. The demosdk client has a second, signed-preparation hook because
@@ -83,7 +95,7 @@ export type PayDemSettleOutcome =
       blockNumber: number;
       finality: { model: 'bft-final' };
     })
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; recovery?: Readonly<PayDemAuthorizationAbortContext> };
 
 function requireCapturedInputs(params: PayDemCoreParams, client: DemosNativeClient) {
   const recipient = params.recipient;
@@ -124,6 +136,7 @@ export async function settlePayDemCore(
   // Everything controlled by the caller is captured before this function's first await.
   const captured = requireCapturedInputs(params, client);
   const journal = hooks.journalPreparedTransfer?.bind(hooks);
+  const authorize = hooks.authorizeTransfer?.bind(hooks);
   const recovery = Object.freeze({
     railId: PAY_DEM_RAIL_ID,
     jobId: captured.jobId,
@@ -135,10 +148,57 @@ export async function settlePayDemCore(
     amountOs: captured.amountOs.toString(),
   }) satisfies Readonly<PayDemSettlementRecoveryContext>;
 
+  if (!authorize) {
+    const reason = 'payment policy authorization is unavailable';
+    return {
+      ok: false,
+      reason,
+      recovery: Object.freeze({
+        ...recovery,
+        abort: Object.freeze({ rule: 'network', reason }),
+      }),
+    };
+  }
+
+  const authorization = await authorize({
+      amountOs: captured.amountOs,
+      rpcUrl: params.rpcUrl ?? client.rpcUrl ?? '',
+  });
+  if (authorization?.verdict !== 'PROCEED') {
+    const blocked = authorization?.verdict === 'BLOCK' &&
+      typeof authorization.reason === 'string' && authorization.reason.length > 0 &&
+      typeof authorization.rule === 'string' && authorization.rule.length > 0;
+    const reason = blocked ? authorization.reason : 'payment policy authorization is unavailable';
+    const rule = blocked ? authorization.rule : 'network';
+    return {
+      ok: false,
+      reason,
+      recovery: Object.freeze({
+        ...recovery,
+        abort: Object.freeze({ rule, reason }),
+      }),
+    };
+  }
+
+  try {
+    utcDateOrThrow(authorization.nowIso);
+  } catch {
+    const reason = 'payment policy authorization is unavailable';
+    return {
+      ok: false,
+      reason,
+      recovery: Object.freeze({
+        ...recovery,
+        abort: Object.freeze({ rule: 'network', reason }),
+      }),
+    };
+  }
+
   if (journal) await journal(recovery);
   const result = await captured.transfer({
     to: captured.recipient,
     amountOs: captured.amountOs,
+    authorizationNowIso: authorization.nowIso,
     recovery,
   });
 

@@ -27,6 +27,9 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { generateKeypair, sign } from '../lib/sign.js';
 import { bytesToHex } from '../lib/verify-bundle.js';
 import { DOMAIN_SEPARATORS } from '../domain-sep.js';
@@ -40,7 +43,23 @@ import type { FetchResult } from '../demos/storage.js';
 import { anchorNames } from './anchor-naming.js';
 import { listingLogicalAddress } from '../dacs1/addressing.js';
 import { buildDiscoveryArtifacts, resolveListingFromPublishedBinding } from '../dacs1/discovery.js';
-import { createPayDemJsonlJournal } from './pay-dem-journal.js';
+import {
+  createPayDemJsonlJournal,
+  createPayDemOutcomeJournal,
+  acquirePayDemJournalLock,
+  DEFAULT_PAY_DEM_JOURNAL,
+  payKillSwitchPresent,
+  readPayDemJournalOrEmpty,
+  resolvePayDemJournalPath,
+} from './pay-dem-journal.js';
+import { createPayDemAuthorizationGate } from './pay-dem-authorization.js';
+import {
+  authorizeTransfer,
+  loadPayPolicy,
+  spentTodayFromJournal,
+  type PayPolicy,
+  type TransferAuthorization,
+} from './pay-policy.js';
 
 const LIVE = process.env.LIVE === '1';
 const RPC = process.env.DEMOS_RPC ?? 'https://demosnode.discus.sh/';
@@ -60,6 +79,53 @@ const SPEND_CAP_DEM = Number(process.env.GATEWAY_SPEND_CAP_DEM ?? '50');
 // the interpreter as a script argument (not PATH-searched), so set it to a real path unless it sits in cwd.
 const AXIOM_PY = process.env.AXIOM_PY ?? 'python3';
 const ORGAN_CLI = process.env.ORGAN_CLI ?? 'organ_answer.py';
+
+async function exitPayPolicyBlocked(reason: string): Promise<never> {
+  await new Promise<void>((resolve, reject) => {
+    process.stderr.write(`\nLIVE spend BLOCKED by payment policy: ${reason}\n`, (error) => {
+      if (error) reject(error); else resolve();
+    });
+  });
+  process.exit(2);
+}
+
+const loadedPayPolicy = LIVE
+  ? loadPayPolicy(process.env, (path) => readFileSync(path, 'utf8'))
+  : undefined;
+if (loadedPayPolicy !== undefined && 'verdict' in loadedPayPolicy) {
+  await exitPayPolicyBlocked(loadedPayPolicy.reason);
+}
+const livePayPolicy: PayPolicy | undefined = loadedPayPolicy === undefined || 'verdict' in loadedPayPolicy
+  ? undefined
+  : loadedPayPolicy;
+const expandHome = (path: string) => path === '~' ? homedir() : path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;
+
+let payDemJournal: ReturnType<typeof createPayDemJsonlJournal> | undefined;
+let payDemOutcomeJournal: ReturnType<typeof createPayDemOutcomeJournal> | undefined;
+let payDemJournalPath: string | undefined;
+
+// Apply the complete native-payment policy before connectLive can load or use credentials.
+if (LIVE) {
+  if (livePayPolicy === undefined) throw new Error('payment policy was not loaded for a live session');
+  try {
+    payDemJournalPath = resolvePayDemJournalPath(process.env.DACS_PAYDEM_JOURNAL ?? DEFAULT_PAY_DEM_JOURNAL);
+    const nowIso = new Date().toISOString();
+    const preflightAuth = authorizeTransfer(livePayPolicy, {
+      amountOs: PRICE_OS,
+      rpcUrl: RPC,
+      spentTodayOs: spentTodayFromJournal(readPayDemJournalOrEmpty(payDemJournalPath), nowIso),
+      killSwitchPresent: payKillSwitchPresent(expandHome(livePayPolicy.killSwitchFile)),
+      nowIso,
+    });
+    if (preflightAuth.verdict !== 'PROCEED') {
+      await exitPayPolicyBlocked(preflightAuth.reason);
+    }
+    payDemJournal = createPayDemJsonlJournal(payDemJournalPath);
+    payDemOutcomeJournal = createPayDemOutcomeJournal(payDemJournalPath);
+  } catch (error) {
+    await exitPayPolicyBlocked(error instanceof Error ? error.message : String(error));
+  }
+}
 
 const hex = (b: Uint8Array) => bytesToHex(b);
 /** JCS canonical form as a UTF-8 string (jcsCanonical returns bytes). */
@@ -108,7 +174,9 @@ const handles = LIVE ? await connectLive() : null;
 // run whose parameters match a dry-run you actually passed (Codex note, 2026-07-09).
 const paramHash = jcsHashHex({ v: 'organ-gateway-params:1', organ: ORGAN, query: QUERY, priceDem: PRICE_DEM, capDem: SPEND_CAP_DEM });
 
-let payDemJournal: ReturnType<typeof createPayDemJsonlJournal> | undefined;
+let payDemAuthorize: ((ctx: { amountOs: bigint; rpcUrl: string }) => Promise<TransferAuthorization>) | undefined;
+let payDemBeforeBroadcast: ((ctx: Readonly<{ authorizationNowIso: string }>) => Promise<void>) | undefined;
+let payDemJournalOutcome: ReturnType<typeof createPayDemOutcomeJournal> | undefined;
 // PREFLIGHT (LIVE only) — a live session anchors ~7 SR-2 writes + 1 pay-dem transfer, all DEM.
 // The fail-closed gate refuses to spend unless: the estimate is under the cap, the buyer wallet
 // is funded, an explicit operator go is set, and the run is bound to a verified dry-run hash.
@@ -117,7 +185,23 @@ if (LIVE && handles) {
   const { preflight } = await import('./spend-preflight.js');
   // The pay-dem journal is resolved here, before DACS-1, so a refused path stops the run
   // before any DEM moves or any SR-2 anchor is written.
-  payDemJournal = createPayDemJsonlJournal(process.env.DACS_PAYDEM_JOURNAL);
+  if (payDemJournalPath === undefined || payDemOutcomeJournal === undefined) {
+    throw new Error('payment journal was not initialized before live connection');
+  }
+  const durableOutcomeJournal = payDemOutcomeJournal;
+  if (livePayPolicy === undefined) throw new Error('payment policy was not loaded for a live session');
+  const payDemGate = createPayDemAuthorizationGate({
+    policy: livePayPolicy,
+    journalPath: payDemJournalPath,
+    acquireLock: acquirePayDemJournalLock,
+    readJournal: readPayDemJournalOrEmpty,
+    killSwitchPresent: payKillSwitchPresent,
+    resolveKillSwitchPath: expandHome,
+    durableOutcomeJournal,
+  });
+  payDemAuthorize = payDemGate.authorize;
+  payDemJournalOutcome = payDemGate.journalOutcome;
+  payDemBeforeBroadcast = payDemGate.beforeBroadcast;
   const suppliedHash = process.env.GATEWAY_DRYRUN_HASH ?? null;
   // Match-gate: the operator's dry-run hash MUST equal this run's recomputed paramHash. A mismatch
   // (price/query/cap/organ changed since the dry-run) fails closed BEFORE the balance query.
@@ -261,6 +345,9 @@ if (LIVE && handles) {
     buyer: handles.buyer, sellerAddress: handles.seller.address,
     amountOs: PRICE_OS, amountDemCanonical: PRICE_DEM, jobId, phaseIndex: SETTLE_PHASE_INDEX,
     journal: payDemJournal ?? createPayDemJsonlJournal(process.env.DACS_PAYDEM_JOURNAL),
+    authorizeTransfer: payDemAuthorize ?? (async () => ({ verdict: 'BLOCK', rule: 'network', reason: 'payment policy authorization is unavailable' })),
+    journalTransferOutcome: payDemJournalOutcome ?? (async () => { throw new Error('payment policy accounting journal is unavailable'); }),
+    beforeBroadcast: payDemBeforeBroadcast,
   });
   if (!pay.ok) throw new Error(`pay-dem settlement aborted: ${pay.reason}`);
   payEvidence = pay.evidence;

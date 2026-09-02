@@ -1,0 +1,9 @@
+{
+  "network": "testnet",
+  "rpcHosts": [
+    "demosnode.discus.sh"
+  ],
+  "perTransactionCapDem": "5",
+  "dailyCapDem": "25",
+  "killSwitchFile": "~/.pathos-dacs-ref/PAY_KILL"
+}

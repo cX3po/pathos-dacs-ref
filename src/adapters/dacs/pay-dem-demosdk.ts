@@ -15,6 +15,7 @@ import type {
   PayDemPreparedTransfer,
   PayDemSettlementRecoveryContext,
 } from './sdk-pay-dem-types.js';
+import { utcDateOrThrow } from '../../live/pay-policy.js';
 
 export interface DemosBroadcastWaitPayload {
   broadcast?: {
@@ -88,6 +89,12 @@ const DEFAULT_SDK_FUNCTIONS: DemosSdkFunctions = {
 
 export interface DemosNativeClientOptions {
   journalPreparedTransfer?: (prepared: Readonly<PayDemPreparedTransfer>) => Promise<void>;
+  journalTransferOutcome?: (outcome: Readonly<{
+    timestamp: string;
+    amountOs: string;
+    outcome: string;
+  }>) => Promise<void>;
+  beforeBroadcast?: (ctx: Readonly<{ authorizationNowIso: string }>) => Promise<void>;
   sdk?: DemosSdkFunctions;
 }
 
@@ -105,13 +112,21 @@ export function createDemosNativeClient(
   const demos = handle.demos;
   const payer = handle.address;
   const journal = opts.journalPreparedTransfer;
+  const journalOutcome = opts.journalTransferOutcome;
+  const beforeBroadcast = opts.beforeBroadcast;
   const sdk = opts.sdk ?? DEFAULT_SDK_FUNCTIONS;
   return {
     address: payer,
-    async transfer({ to, amountOs, recovery }): Promise<DemosTransferResult> {
+    rpcUrl: handle.rpc,
+    async transfer({ to, amountOs, authorizationNowIso, recovery }): Promise<DemosTransferResult> {
       let txHash = '';
       let lastSeenState: string | undefined;
+      let broadcastAttempted = false;
       try {
+        if (authorizationNowIso === undefined) {
+          throw new Error('payment policy authorization timestamp is unavailable');
+        }
+        const authorizedUtcDate = utcDateOrThrow(authorizationNowIso);
         const tx = await sdk.pay(to, amountOs, demos);
         const signed = await sdk.sign(tx, demos);
         const signedRecord = signed as { hash?: unknown; content?: { nonce?: unknown } };
@@ -134,6 +149,20 @@ export function createDemosNativeClient(
         }
 
         const validity = await sdk.confirm(signed, demos);
+        if (utcDateOrThrow(new Date().toISOString()) !== authorizedUtcDate) {
+          throw new Error('payment policy authorization expired at UTC day boundary');
+        }
+        if (!journalOutcome) throw new Error('payment policy accounting journal is unavailable');
+        await journalOutcome({
+          timestamp: authorizationNowIso,
+          amountOs: amountOs.toString(),
+          outcome: 'broadcast-attempted',
+        });
+        if (utcDateOrThrow(new Date().toISOString()) !== authorizedUtcDate) {
+          throw new Error('payment policy authorization expired at UTC day boundary');
+        }
+        await beforeBroadcast?.({ authorizationNowIso });
+        broadcastAttempted = true;
         const payload = await sdk.broadcastAndWait(validity, demos);
         lastSeenState = payload.status?.state;
         return parseBroadcastWaitResult(payload, txHash);
@@ -145,6 +174,21 @@ export function createDemosNativeClient(
           message: errorMessage(error),
           ...(lastSeenState === undefined ? {} : { state: lastSeenState }),
         };
+      } finally {
+        if (journalOutcome && !broadcastAttempted) {
+          let abortTimestamp: string;
+          try {
+            utcDateOrThrow(authorizationNowIso);
+            abortTimestamp = authorizationNowIso;
+          } catch {
+            abortTimestamp = new Date().toISOString();
+          }
+          await journalOutcome({
+            timestamp: abortTimestamp,
+            amountOs: amountOs.toString(),
+            outcome: 'aborted-before-broadcast',
+          });
+        }
       }
     },
   };
@@ -166,6 +210,12 @@ export async function settlePayDem(opts: {
   network?: string;
   journal?: PayDemJournal;
   sdk?: DemosSdkFunctions;
+  authorizeTransfer: (ctx: { amountOs: bigint; rpcUrl: string }) => Promise<
+    | { verdict: 'PROCEED'; nowIso: string }
+    | { verdict: 'BLOCK'; reason: string; rule: string }
+  >;
+  journalTransferOutcome?: DemosNativeClientOptions['journalTransferOutcome'];
+  beforeBroadcast?: DemosNativeClientOptions['beforeBroadcast'];
 }): Promise<PayDemSettleOutcome> {
   const journalPreparedTransfer = typeof opts.journal === 'function'
     ? opts.journal
@@ -181,6 +231,8 @@ export async function settlePayDem(opts: {
       };
   const client = createDemosNativeClient(opts.buyer, {
     journalPreparedTransfer: signedPreparationJournal,
+    journalTransferOutcome: opts.journalTransferOutcome,
+    beforeBroadcast: opts.beforeBroadcast,
     sdk: opts.sdk,
   });
   return settlePayDemCore({
@@ -191,7 +243,9 @@ export async function settlePayDem(opts: {
     phaseIndex: opts.phaseIndex,
     network: opts.network,
     amountOs: opts.amountOs,
+    rpcUrl: opts.buyer.rpc,
   }, client, {
+    authorizeTransfer: opts.authorizeTransfer,
     async journalPreparedTransfer(recovery) {
       capturedRecovery = recovery;
     },
