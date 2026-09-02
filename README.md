@@ -95,6 +95,12 @@ AttestationRef.contentHash → cross-check counterparty bundle → emit verdict
 
 The verifier CLI is what makes DACS receipts non-vacuous from outside the KyneSys org: anyone can run `pathos-dacs-verify --bundle-anchor stor-...` against any Demos chain and reach the same pass/fail/indeterminate verdict the original parties' agents reach.
 
+### Run ledger (journal + reconciliation)
+
+Live DACS writes use a durable wallet journal and settlement idempotency log so an operator can recover interrupted work without reusing a nonce or risking a duplicate payment. The ledger directory comes from `DACS_RUN_LEDGER_DIR`, defaulting to `~/.pathos-dacs-ref/run-ledger`, and is required to live outside every Git checkout.
+
+Run `npm run run-ledger -- status` for a readable, secret-free summary. Run `npm run run-ledger -- reconcile` as an operator gate; it exits 3 while any write is non-terminal or any settlement intent remains open. The vendored journal contracts and semantics are pinned to `DACS-Agent-commerce/dacs-sdk` commit `12c5ad3` until the package is published.
+
 ## §7.5.1 invariant
 
 The single most important rule in this codebase:
