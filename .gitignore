@@ -11,6 +11,8 @@ dist/
 *.local
 config/dacs-agents.json
 .tmp/
+.pathos-dacs-ref/
+.sdk-ref/
 
 # Editor
 .vscode/
