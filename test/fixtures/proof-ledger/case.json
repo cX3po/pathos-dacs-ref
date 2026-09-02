@@ -1,0 +1,16 @@
+{
+  "id": "CASE-47",
+  "stage": "approved",
+  "intent": "excluded case intent",
+  "history": [
+    {
+      "from": "review",
+      "to": "approved",
+      "by": "policy-engine",
+      "gate": "release",
+      "passed": true,
+      "ts": "2026-09-02T12:00:00.000Z",
+      "gate_output": { "excluded": true }
+    }
+  ]
+}

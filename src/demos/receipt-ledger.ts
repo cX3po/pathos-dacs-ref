@@ -84,25 +84,64 @@ export async function deriveLedgerAddress(
   return { storageAddress, nonce };
 }
 
-/**
- * Read the current ledger from chain (READ-ONLY, safe). Returns its entries, or an empty ledger
- * if it doesn't exist yet.
- */
-/** Parse an already-fetched anchor into a LedgerData (PURE — no network). Empty ledger if absent. */
-function parseLedger(fetched: FetchResult | null, name: string): LedgerData {
-  if (!fetched || fetched.data == null) {
+/** Parse an already-fetched anchor into LedgerData without converting malformed data to absence. */
+function parseLedger(
+  fetched: FetchResult | null,
+  name: string,
+  knownAddress?: string,
+): LedgerData {
+  if (fetched === null) {
+    if (knownAddress !== undefined) {
+      throw new Error(`receipt-ledger: ledger ${knownAddress} is not readable`);
+    }
     return { ledgerVersion: '1', name, entries: [] };
   }
+  if (typeof fetched.data !== 'object' || fetched.data === null || Array.isArray(fetched.data)) {
+    throw new Error('receipt-ledger: fetched ledger data must be a JSON object');
+  }
   const data = fetched.data as Partial<LedgerData>;
+  if (data.ledgerVersion !== '1') {
+    throw new Error('receipt-ledger: fetched ledger ledgerVersion must be "1"');
+  }
+  if (!Array.isArray(data.entries)) {
+    throw new Error('receipt-ledger: fetched ledger entries must be an array');
+  }
   return {
     ledgerVersion: '1',
     name: data.name ?? name,
-    entries: Array.isArray(data.entries) ? data.entries : [],
+    entries: data.entries,
   };
 }
 
 export async function readLedger(rpc: string, storageAddress: string, name = ''): Promise<LedgerData> {
-  return parseLedger(await fetchAnchored(rpc, storageAddress), name);
+  return parseLedger(await fetchAnchored(rpc, storageAddress), name, storageAddress);
+}
+
+const UNSAFE_DETAIL_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** Copy only the public receipt-ledger schema; never retain caller/fetched extra own properties. */
+function pickEntry(source: ReceiptEntry, detailKeys?: readonly string[]): ReceiptEntry {
+  const picked: ReceiptEntry = {
+    kind: source.kind,
+    ref: source.ref,
+    contentHash: source.contentHash,
+    ...(source.outcome === undefined ? {} : { outcome: source.outcome }),
+    at: source.at,
+  };
+  if (source.detail !== undefined) {
+    const detail: Record<string, unknown> = {};
+    const keys = detailKeys ?? Object.keys(source.detail);
+    for (const key of keys) {
+      if (
+        !UNSAFE_DETAIL_KEYS.has(key)
+        && Object.prototype.hasOwnProperty.call(source.detail, key)
+      ) {
+        detail[key] = source.detail[key];
+      }
+    }
+    picked.detail = detail;
+  }
+  return picked;
 }
 
 /**
@@ -126,9 +165,23 @@ export async function planAppend(
   rpc: string,
   ledgerName: string,
   entry: ReceiptEntry,
-  options: { salt?: string; acl?: 'public' | 'private'; knownAddress?: string } = {}
+  options: {
+    salt?: string;
+    acl?: 'public' | 'private';
+    knownAddress?: string;
+    /** Read an immutable prior version, but create this append under `ledgerName`. */
+    baseAddress?: string;
+    /** Test seam; production callers use the fail-closed SR-2 fetcher. */
+    fetchAnchoredImpl?: typeof fetchAnchored;
+    /** When supplied, retain only these safe own keys from each entry's detail object. */
+    detailKeys?: readonly string[];
+  } = {}
 ): Promise<AppendPlan> {
   const { address } = handle;
+  const fetchImpl = options.fetchAnchoredImpl ?? fetchAnchored;
+  if (options.knownAddress && options.baseAddress) {
+    throw new Error('receipt-ledger: knownAddress and baseAddress are mutually exclusive');
+  }
 
   // Resolve the locator + decide create-vs-write from ONE read, reusing that same fetch for the
   // ledger contents (no second read → no clobber risk, no op/payload race). (Codex HIGH 2026-06-05)
@@ -142,7 +195,7 @@ export async function planAppend(
     // refuse — a fallback create would fork a new program at a different address, and a blind
     // write would clobber prior entries with an empty base.
     storageAddress = options.knownAddress;
-    fetched = await fetchAnchored(rpc, storageAddress);
+    fetched = await fetchImpl(rpc, storageAddress);
     if (fetched == null) {
       throw new Error(
         `receipt-ledger: knownAddress ${storageAddress} is not readable — refusing to plan an append ` +
@@ -155,17 +208,41 @@ export async function planAppend(
     const derived = await deriveLedgerAddress(handle, ledgerName, options.salt ?? '');
     storageAddress = derived.storageAddress;
     nonce = derived.nonce;
-    fetched = await fetchAnchored(rpc, storageAddress);
+    fetched = await fetchImpl(rpc, storageAddress);
     op = fetched != null ? 'write' : 'create';
   }
 
-  // Contents come from the SAME fetch used to decide op — never re-read.
-  const current = parseLedger(fetched, ledgerName);
+  // A versioned append creates a new program but copies the complete prior immutable ledger.
+  // The prior version must be readable: absence is never interpreted as an empty ledger.
+  let baseFetched: FetchResult | null = fetched;
+  if (options.baseAddress) {
+    if (op !== 'create') {
+      throw new Error(
+        `receipt-ledger: version destination ${storageAddress} already exists — refusing to overwrite it`,
+      );
+    }
+    baseFetched = await fetchImpl(rpc, options.baseAddress);
+    if (baseFetched == null) {
+      throw new Error(
+        `receipt-ledger: baseAddress ${options.baseAddress} is not readable — refusing to fork an empty ledger`,
+      );
+    }
+  }
+
+  // Contents come from the fetches used to decide the operation/base.
+  const current = parseLedger(
+    baseFetched,
+    ledgerName,
+    options.baseAddress ?? options.knownAddress,
+  );
   const exists = op === 'write';
   const next: LedgerData = {
     ledgerVersion: '1',
     name: ledgerName,
-    entries: [...current.entries, entry],
+    entries: [
+      ...current.entries.map((currentEntry) => pickEntry(currentEntry, options.detailKeys)),
+      pickEntry(entry, options.detailKeys),
+    ],
   };
 
   const withinSizeLimit = StorageProgram.validateSize(next, ENCODING);
