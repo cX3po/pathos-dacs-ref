@@ -84,10 +84,12 @@ export const LEGACY_READ_SEPARATORS = {
  * (`dacs-attestation-ref`, `dacs-cbp-commit`, `dacs-rule-ref`, `dacs-payment-auth`,
  * `dacs-delivery-receipt`, `dacs-session-record`, `dacs-sealed-envelope-open`). None of them
  * has a clear v0.1 §B.7 registry entry, so per SIG-4 they move to the `dacs-x-` extension prefix.
- * (None of these are currently produced/verified by any signer in this repo — they are reserved
- * surfaces — so the move is registry-hygiene only with no signed-artifact impact.)
+ * AGENT_IDENTITY is emitted and verified by src/adapters/demos/identity.ts; the others remain
+ * reserved surfaces, so their move is registry hygiene with no signed-artifact impact.
  */
 export const DACS_X_EXTENSION_SEPARATORS = {
+  // CCI adapter signatures bind agent payloads to this application-level purpose.
+  AGENT_IDENTITY: 'dacs-x-agent-identity:v1:',
   ATTESTATION_REF: 'dacs-x-attestation-ref:v1:',
   CONSENSUS_PROXY_COMMIT: 'dacs-x-cbp-commit:v1:',
   RULE_REF_COMMIT: 'dacs-x-rule-ref:v1:',
