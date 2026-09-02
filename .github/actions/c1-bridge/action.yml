@@ -90,10 +90,24 @@ runs:
         fi
         cd "$workspace"
         if [ ! -s "$report" ]; then fail "the bridge finished without writing $report"; fi
-        sha="$(sha256sum "$report" | cut -d' ' -f1)"
-        ok="$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(r.ok ? "OK" : "PARTIAL")' "$report")"
-        divergences="$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(String(r.divergences.length))' "$report")"
-        pins="$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const p=r.pins||{}; process.stdout.write(`implementation ${p.implementationCommit||"?"} · Standard ${p.standardResolved||"?"} · SDK ${p.sdkCommit||"?"}`)' "$report")"
+        # upload-artifact glob-expands its path; hash and upload one glob-free copy.
+        case "$report" in *[\*\?\[]*) fail "report-path must not contain glob metacharacters: $report" ;; esac
+        safe="${RUNNER_TEMP:-$(mktemp -d)}/c1-bridge-report.json"
+        cp -f "$report" "$safe" || fail "could not copy $report to $safe"
+        report="$safe"
+        sha="$(sha256sum "$report" | cut -d' ' -f1)" || fail "could not hash $report"
+        summary_json="$(node -e '
+          const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+          if (typeof r.ok !== "boolean" || !Array.isArray(r.divergences) || typeof r.pins !== "object" || r.pins === null) {
+            throw new Error("not a C1 bridge report: ok, divergences[] and pins are required");
+          }
+          const p = r.pins;
+          process.stdout.write(JSON.stringify({ status: r.ok ? "OK" : "PARTIAL", divergences: r.divergences.length,
+            pins: `implementation ${p.implementationCommit || "?"} · Standard ${p.standardResolved || "?"} · SDK ${p.sdkCommit || "?"}` }));
+        ' "$report" 2> "$stderr_log")" || fail "the report is not a C1 bridge report: $report" "$stderr_log"
+        ok="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).status)' "$summary_json")"
+        divergences="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).divergences))' "$summary_json")"
+        pins="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).pins)' "$summary_json")"
         {
           echo "## DACS C1 conformance bridge — $ok"
           echo
@@ -106,8 +120,7 @@ runs:
         echo "status=$ok" >> "$GITHUB_OUTPUT"
 
     - name: Upload the report unchanged
-      # The uploaded path is the absolute file that was hashed, never the raw input (a glob
-      # in the input would otherwise upload other files while if-no-files-found stays quiet).
+      # The uploaded path is the glob-free copy that was hashed, never the raw input.
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}

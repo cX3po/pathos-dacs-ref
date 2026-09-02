@@ -136,10 +136,10 @@ function readSteps(text: string): Step[] {
     if (!current) continue;
     current.raw += `${line}\n`;
     const keyIndent = stepIndent + 2;
-    const field = new RegExp(`^\\s{${keyIndent}}(?:- )?(name|uses|run|with|env|continue-on-error):\\s*(.*)$`).exec(line.replace(/^(\s*)- /, (m, sp: string) => `${sp}  `));
+    const field = new RegExp(`^\\s{${keyIndent}}(?:- )?(name|uses|run|with|env|continue-on-error|if):\\s*(.*)$`).exec(line.replace(/^(\s*)- /, (m, sp: string) => `${sp}  `));
     if (!field) continue;
     const [, key, value] = field;
-    if (key === "continue-on-error") current.top.push(`${key}: ${value}`);
+    if (key === "continue-on-error" || key === "if") current.top.push(`${key}: ${value}`);
     if (key === "name") current.name = value!.trim();
     if (key === "uses") current.uses = value!.trim();
     if (key === "run") {
@@ -182,11 +182,16 @@ test("C1 bridge action: inputs reach shell only through env, the bridge really r
   for (const [key, value] of Object.entries(expectedEnv)) assert.equal(run.env.get(key), value, `env ${key} carries the input`);
   const cmds = commandLines(run.run);
   assert.ok(cmds.some((l) => l.startsWith("if ! npx tsx conformance/c1-bridge.mts")), "the bridge command is executed and its failure is checked");
-  assert.ok(cmds.some((l) => l.includes('[ ! -s "$report" ]')), "an empty or missing report is a failure");
-  assert.ok(cmds.some((l) => l.startsWith('sha="$(sha256sum "$report"')), "the report file is hashed");
+  assert.ok(cmds.some((l) => l === 'if [ ! -s "$report" ]; then fail "the bridge finished without writing $report"; fi'), "an empty or missing report is a failure");
+  assert.ok(cmds.some((l) => l.startsWith('case "$report" in *[\\*\\?\\[]*) fail ')), "glob metacharacters in the report path are a failure");
+  assert.ok(cmds.some((l) => l.startsWith('safe="${RUNNER_TEMP:-')) && cmds.some((l) => l === 'report="$safe"'), "a glob-free copy is what gets hashed");
+  assert.ok(cmds.some((l) => l.startsWith('sha="$(sha256sum "$report" | cut -d\' \' -f1)" || fail ')), "the report file is hashed inside fail()");
+  assert.ok(cmds.some((l) => l.includes('typeof r.ok !== "boolean" || !Array.isArray(r.divergences)')), "a stub JSON is not a report");
   assert.ok(cmds.some((l) => l === 'echo "report-path=$report" >> "$GITHUB_OUTPUT"'), "the hashed absolute path is the output");
   assert.ok(cmds.some((l) => l === "exit 1"), "failure exits 1");
-  assert.ok(cmds.every((l) => !l.includes("::error::") || l.includes("fail") || l.startsWith('echo "::error::$1"')), "every error path goes through fail()");
+  assert.ok(cmds.every((l) => !l.includes("::error::") || l.startsWith('echo "::error::$1"')), "every error path goes through fail()");
+  assert.doesNotMatch(actionText(), /^[ \t]*continue-on-error\s*:/m);
+  assert.doesNotMatch(actionText(), /^[ \t]*if\s*:/m, "no step may be skipped with if:");
   const upload = steps.find((s) => s.uses.startsWith("actions/upload-artifact@"));
   assert.ok(upload, "upload step present");
   assert.equal(upload.withKeys.get("path"), "${{ steps.run.outputs.report-path }}");
@@ -205,7 +210,10 @@ test("C1 bridge workflow: token gate runs before the private checkout, refs pin 
   assert.ok(standard >= 0, "Standard checkout present");
   const gateStep = steps[gate]!;
   assert.equal(gateStep.env.get("DACS_SDK_TOKEN"), "${{ secrets.DACS_SDK_TOKEN }}", "token reaches the gate through env");
-  assert.match(gateStep.run, /\[ -z "\$DACS_SDK_TOKEN" \]/);
+  const gateCmds = commandLines(gateStep.run);
+  assert.ok(gateCmds.some((l) => l === 'if [ -z "$DACS_SDK_TOKEN" ]; then'), "the token gate is an executed command");
+  assert.ok(gateCmds.some((l) => l === "exit 1"), "the token gate exits 1");
+  assert.ok(gateCmds.some((l) => l.includes('>> "$GITHUB_STEP_SUMMARY"')), "the token gate writes the reason to the summary");
   for (const step of steps) assert.doesNotMatch(step.run, /\$\{\{\s*(inputs|secrets)\./, `${step.name}: expression in run:`);
   assert.equal(steps[standard]!.withKeys.get("ref"), `\${{ inputs.standard_ref || '${STANDARD_PIN}' }}`);
   assert.equal(steps[standard]!.withKeys.get("fetch-depth"), "0");
@@ -216,6 +224,8 @@ test("C1 bridge workflow: token gate runs before the private checkout, refs pin 
   const bridge = steps.find((s) => s.uses === "./.github/actions/c1-bridge");
   assert.ok(bridge, "workflow uses the composite action");
   assert.equal(bridge.withKeys.get("standard-ref"), "${{ inputs.standard_ref || '' }}");
-  for (const step of steps) assert.deepEqual(step.top, [], `${step.name}: continue-on-error is not allowed`);
+  for (const step of steps) assert.deepEqual(step.top, [], `${step.name}: continue-on-error / if are not allowed`);
+  assert.doesNotMatch(text, /^[ \t]*continue-on-error\s*:/m, "no continue-on-error at any level");
+  assert.doesNotMatch(text, /^[ \t]*if\s*:/m, "no step or job may be skipped with if:");
   assert.match(text, /^permissions:\n  contents: read$/m);
 });
