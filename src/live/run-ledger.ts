@@ -323,21 +323,17 @@ function readLock(path: string): LockOwner | undefined {
 }
 
 function tryCreateLock(path: string, owner: LockOwner): boolean {
-  const temporary = `${path}.${process.pid}.${owner.token}.tmp`;
-  let claimFd: number | undefined;
-  let ownerFd: number | undefined;
+  // The owner bytes go straight into the wx-created inode: a temp+rename onto the live
+  // name would replace whatever inode a concurrent reclaimer had just installed there.
+  let fd: number | undefined;
   let claimed = false;
   try {
-    claimFd = openSync(path, 'wx', FILE_MODE);
+    fd = openSync(path, 'wx', FILE_MODE);
     claimed = true;
-    closeSync(claimFd);
-    claimFd = undefined;
-    ownerFd = openSync(temporary, 'wx', FILE_MODE);
-    writeFileSync(ownerFd, JSON.stringify(owner), 'utf8');
-    fsyncSync(ownerFd);
-    closeSync(ownerFd);
-    ownerFd = undefined;
-    renameSync(temporary, path);
+    writeFileSync(fd, JSON.stringify(owner), 'utf8');
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = undefined;
     syncDirectory(dirname(path));
     return true;
   } catch (error) {
@@ -349,9 +345,7 @@ function tryCreateLock(path: string, owner: LockOwner): boolean {
     }
     throw error;
   } finally {
-    if (claimFd !== undefined) closeSync(claimFd);
-    if (ownerFd !== undefined) closeSync(ownerFd);
-    rmSync(temporary, { force: true });
+    if (fd !== undefined) closeSync(fd);
   }
 }
 
@@ -437,12 +431,25 @@ export function createFsDemosWriteJournal(opts: {
           const quarantine = `${lockPath}.${randomUUID()}.reclaim`;
           try {
             renameSync(lockPath, quarantine);
-            rmSync(quarantine, { force: true });
-            syncDirectory(dirname(lockPath));
           } catch (error) {
             const code = (error as NodeJS.ErrnoException).code;
             if (code !== 'ENOENT' && code !== 'EEXIST') throw error;
+            continue; // another contender moved it first
           }
+          // Re-validate the inode we actually took: the stale observation above may predate a
+          // winner's fresh lock landing on the live name. A live owner is put back by link(2),
+          // which never replaces an existing live lock.
+          const taken = readLock(quarantine);
+          const stillStale = taken
+            ? taken.hostname === hostname() && !processIsAlive(taken.pid)
+            : (() => { try { return Date.now() - statSync(quarantine).mtimeMs >= lockStaleMs; } catch { return true; } })();
+          if (!stillStale) {
+            try { linkSync(quarantine, lockPath); } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+            }
+          }
+          rmSync(quarantine, { force: true });
+          syncDirectory(dirname(lockPath));
           continue;
         }
         if (Date.now() >= deadline) {
