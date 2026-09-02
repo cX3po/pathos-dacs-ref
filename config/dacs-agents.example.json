@@ -3,9 +3,9 @@
   "network": "testnet",
   "rpc": "https://demosnode.discus.sh/",
   "agents": {
-    "cairn": {
+    "test-buyer": {
       "role": "buyer-reviewer",
-      "mnemonicEnv": "DACS_CAIRN_MNEMONIC",
+      "mnemonicEnv": "DACS_TEST_BUYER_MNEMONIC",
       "claimRef": "demos:0x0000000000000000000000000000000000000000000000000000000000000001",
       "notes": "Example address; fill in the operator address after first run."
     },

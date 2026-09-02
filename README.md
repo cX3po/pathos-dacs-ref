@@ -82,7 +82,7 @@ We close §11.3's gap (the verifier CLI is this repo's `src/cli/verify.ts`). We 
 
 ### Agent identities (CCI)
 
-[`src/adapters/demos/identity.ts`](src/adapters/demos/identity.ts) is the only module allowed to import `@kynesyslabs/demosdk/identity`; all other code uses its typed adapter surface. Start from [`config/dacs-agents.example.json`](config/dacs-agents.example.json) and keep the local `config/dacs-agents.json` gitignored. Agent credentials are read only from the named environment variables. The adapter accepts testnet configuration only; use faucet DEM only.
+[`src/adapters/demos/identity.ts`](src/adapters/demos/identity.ts) is the only module allowed to import `@kynesyslabs/demosdk/identity`; all other code uses its typed adapter surface. Start from [`config/dacs-agents.example.json`](config/dacs-agents.example.json) and keep the local `config/dacs-agents.json` gitignored. Agent credentials are read only from the named environment variables. The adapter accepts testnet configuration only; use faucet DEM only. Identities conform to the SDK's own CCI claim representation (`demos:<address>` claim references, signed and verified through the SDK's primary-claim functions); this repo defines no identity format of its own. The only addition is the `dacs-x-agent-identity:v1:` SIG-4 *extension* separator for adapter payloads. The config file is an example local-agent layout, not a schema anyone else needs to adopt.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Short version:
 

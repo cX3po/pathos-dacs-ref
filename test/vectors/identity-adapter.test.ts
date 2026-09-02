@@ -37,9 +37,9 @@ function minimalConfig(agentOverrides: Record<string, unknown> = {}): unknown {
     network: 'testnet',
     rpc: 'https://demosnode.discus.sh/',
     agents: {
-      cairn: {
+      'test-buyer': {
         role: 'buyer-reviewer',
-        mnemonicEnv: 'DACS_CAIRN_MNEMONIC',
+        mnemonicEnv: 'DACS_TEST_BUYER_MNEMONIC',
         claimRef: null,
         notes: 'Test configuration.',
         ...agentOverrides,
@@ -53,11 +53,11 @@ test('example agent config loads and resolves without exposing a credential', ()
   assert.equal(config.schemaVersion, 1);
   assert.equal(config.network, 'testnet');
   assert.equal(config.rpc, 'https://demosnode.discus.sh/');
-  assert.deepEqual(Object.keys(config.agents).sort(), ['cairn', 'test-seller']);
-  assert.deepEqual(resolveAgent(config, 'cairn', {}), {
-    name: 'cairn',
+  assert.deepEqual(Object.keys(config.agents).sort(), ['test-buyer', 'test-seller']);
+  assert.deepEqual(resolveAgent(config, 'test-buyer', {}), {
+    name: 'test-buyer',
     role: 'buyer-reviewer',
-    mnemonicEnv: 'DACS_CAIRN_MNEMONIC',
+    mnemonicEnv: 'DACS_TEST_BUYER_MNEMONIC',
     hasSecret: false,
   });
 });
@@ -96,7 +96,7 @@ test('inline seed words are rejected without echoing their value', () => {
       () => loadAgentsConfig(path),
       (error: unknown) => {
         assert.ok(error instanceof Error);
-        assert.match(error.message, /Agent "cairn"/);
+        assert.match(error.message, /Agent "test-buyer"/);
         assert.match(error.message, /field "mnemonic"/);
         assert.equal(error.message.includes(inlineWords), false);
         return true;
