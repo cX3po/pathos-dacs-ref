@@ -5,9 +5,11 @@ toward golden only when **at least two independent implementations converge** on
 Every set in that directory is candidate tier, and at the time of this run no run file
 had ever been filed by anyone.
 
-This directory holds our runs. The sets covered here were **authored by the Standard
-steward, not by us** — that is the point. Running our implementation over sets we wrote
-ourselves would be self-convergence and would prove nothing.
+This directory holds our runs. The source sets covered here were **authored by the
+Standard steward, not by us** — that is the point. The delivery-or-remedy blind-set
+generator also carries one explicitly identified review-regression vector derived from
+the steward's release base. Running our implementation only over sets we wrote ourselves
+would be self-convergence and would prove nothing.
 
 ## Method — how the independence was enforced
 
@@ -39,8 +41,8 @@ than assumed — worth considering for future sets (opaque case ids).
 | `sb3-eip3009-nonce-v0.1` | 14 | 14/14 | 14/14 |
 | `x402-receipt-hash-v0.1` | 12 | 11/12 | 12/12 |
 | `transcript-suite-mlkem768-v0.1` | 30 | 30/30 | 30/30 |
-| `dacsx-dispute-artifacts-v0.1` | 76 | 76/76 | 76/76 |
-| **total** | **165** | **164/165** | **165/165** |
+| `dacsx-dispute-artifacts-v0.1` | 77 | 77/77 | 77/77 |
+| **total** | **166** | **165/166** | **166/166** |
 
 The transcript run also reproduces the upstream deterministic envelope field by
 field. Its source is `kynesyslabs/sdks` PR #130 at commit

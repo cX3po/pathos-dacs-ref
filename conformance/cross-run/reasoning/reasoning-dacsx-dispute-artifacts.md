@@ -6,6 +6,9 @@ This is an independent, verdict-level implementation of the candidate text in
 `.crossrun-input/candidate.md`. It uses the two DACS-Standard PR #372 fixture
 packs pinned under `upstream/dacs-standard-372-e5384514-delivery-remedy/`; it
 does not use or reconstruct the upstream generator or verifier.
+The blind-set generator adds one review-regression vector,
+`evaluation-seq-not-zero`, as a single-field patch over the steward's release
+base; its expected `rejected / DRAA-6` pair comes directly from DRAA-6.
 
 The verifier follows section 9 in this order: discriminator parsing; required
 shape and canonical encodings; content-hash recomputation, Ed25519 signatures,
@@ -15,6 +18,21 @@ roles, references, and agreement bindings; authenticated-source resolution;
 the status labels in `externalEvidence`. Those labels are treated as supplied
 authenticated resolution outcomes. They do not bypass locally checkable event
 sets, finality records, hashes, signatures, or native summaries.
+
+The candidate requires an exact signed, phase-bound delivery
+`SettlementEvidence` through DRP-7 and DRE-2, but it does not pin the delivery
+dependency's signing domain (and contains no `dacs-evidence` domain). The
+verifier therefore cannot independently authenticate that carried delivery
+signature under a candidate-defined domain. It does recompute the unsigned
+delivery content hash and bind it to every evaluation, decision, terminal, and
+native mapping reference, so a delivery-body substitution is rejected.
+
+The fixture pack carries public keys but no Ed25519 seeds or private keys.
+Tests that mutate signed funding or terminal bodies use an explicit signature
+skip seam to reach DRF-3, DRF-6, and DRT-4. The seam requires both the private
+`_skip_signatures_for_tests=True` argument and `fixtureOnly: true`; ordinary
+evaluation and the blind runner never enable it, and non-fixture material is
+refused.
 
 The candidate defines DRV-1 through DRV-5 but no numbered success rule. This
 implementation therefore reports a successful protocol result as
@@ -56,7 +74,8 @@ limits byte-level checking.
   bodies are absent); DRJ-8 keeps mismatches fatal despite signatures; DRJ-9
   verifies the orchestrator-domain signature.
 - DRF-1 binds overlay, job, and fund index; DRF-2 compares token and amount;
-  DRF-3 requires a non-empty, unambiguous pinned-chain event set; DRF-4 uses
+  DRF-3 requires a non-empty, tuple-deduplicated, unambiguous pinned-chain
+  event set; DRF-4 uses
   the supplied finalized funding state abstraction; DRF-5 checks zero
   preterminal provider payout; DRF-6 requires both `finalized` in the funding
   record and verified external finality; DRF-7 verifies the orchestrator
@@ -138,9 +157,9 @@ three pass DRF-3, DRF-6, and DRT-4 and remain `verified`.
 
 ## Convergence
 
-Exact verdict tokens converge at **60/60 protocol** and **16/16 deployment**.
+Exact verdict tokens converge at **61/61 protocol** and **16/16 deployment**.
 Treating only `verified` as acceptance, accept-vs-reject converges at
-**60/60 protocol** (and 16/16 deployment). Rule-pair comparison has 18 protocol
+**61/61 protocol** (and 16/16 deployment). Rule-pair comparison has 18 protocol
 differences and 4 deployment differences; all are vocabulary/precedence or a
 missing upstream rule field, not verdict differences.
 
@@ -208,6 +227,7 @@ missing upstream rule field, not verdict differences.
 | `noncanonical-job-id` | `error / DRAA-1` | `error / DRAA-1` | no |
 | `malformed-native-bytes32` | `error / DRV-3` | `error / DRV-2` | yes |
 | `unsupported-profile-discriminator` | `error / DRV-3` | `error / DRV-1` | yes |
+| `evaluation-seq-not-zero` | `rejected / DRAA-6` | `rejected / DRAA-6` | no |
 | `synthetic-all-rules-control` | `verified / DRC` | `verified / —` | yes |
 | `drc-1-preterminal-payout` | `rejected / DRC-1` | `rejected / DRC-1` | no |
 | `drc-2-mutable-fees` | `rejected / DRC-2` | `rejected / DRC-2` | no |

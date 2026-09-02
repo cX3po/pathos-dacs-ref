@@ -1,8 +1,8 @@
 {
   "set": "dacsx-dispute-artifacts-v0.1",
   "spec": "Delivery-or-remedy candidate sections 2-10",
-  "count": 76,
-  "protocolCount": 60,
+  "count": 77,
+  "protocolCount": 61,
   "deploymentCount": 16,
   "fixtures": {
     "release": {
@@ -7856,6 +7856,21 @@
             "candidateProfile"
           ],
           "value": "delivery-or-remedy-v2"
+        }
+      ]
+    },
+    {
+      "name": "evaluation-seq-not-zero",
+      "base": "release",
+      "patch": [
+        {
+          "op": "replace",
+          "path": [
+            "artifacts",
+            "evaluation",
+            "evaluationSeq"
+          ],
+          "value": 1
         }
       ]
     },

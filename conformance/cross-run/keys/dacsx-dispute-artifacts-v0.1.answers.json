@@ -3,6 +3,7 @@
     "suite": "protocol",
     "expected": "verified",
     "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
     "rules": [
       "DRV-7"
     ],
@@ -12,6 +13,7 @@
     "suite": "protocol",
     "expected": "verified",
     "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
     "rules": [
       "DRV-7"
     ],
@@ -21,6 +23,7 @@
     "suite": "protocol",
     "expected": "verified",
     "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
     "rules": [
       "DRV-7"
     ],
@@ -30,6 +33,7 @@
     "suite": "protocol",
     "expected": "verified",
     "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
     "rules": [
       "DRV-7"
     ],
@@ -39,6 +43,7 @@
     "suite": "protocol",
     "expected": "verified",
     "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
     "rules": [
       "DRV-7"
     ],
@@ -48,6 +53,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRP-1",
+    "crossRunExpectedRule": "DRP-1",
     "rules": [
       "DRP-1"
     ],
@@ -57,6 +63,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRP-2",
+    "crossRunExpectedRule": "DRP-2",
     "rules": [
       "DRP-2"
     ],
@@ -66,6 +73,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRP-3",
+    "crossRunExpectedRule": "DRP-3",
     "rules": [
       "DRP-3"
     ],
@@ -75,6 +83,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRP-4",
+    "crossRunExpectedRule": "DRP-4",
     "rules": [
       "DRP-4"
     ],
@@ -84,6 +93,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRP-5",
+    "crossRunExpectedRule": "DRP-5",
     "rules": [
       "DRP-5"
     ],
@@ -93,6 +103,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRA-11",
+    "crossRunExpectedRule": "DRA-11",
     "rules": [
       "DRA-11"
     ],
@@ -102,6 +113,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRA-13",
+    "crossRunExpectedRule": "DRA-13",
     "rules": [
       "DRA-13"
     ],
@@ -111,6 +123,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRP-9",
+    "crossRunExpectedRule": "DRP-9",
     "rules": [
       "DRP-9"
     ],
@@ -120,6 +133,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-1",
+    "crossRunExpectedRule": "DREB-1",
     "rules": [
       "DREB-1"
     ],
@@ -129,6 +143,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-1",
+    "crossRunExpectedRule": "DREB-1",
     "rules": [
       "DREB-1"
     ],
@@ -138,6 +153,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-3",
+    "crossRunExpectedRule": "DREB-3",
     "rules": [
       "DREB-3"
     ],
@@ -147,6 +163,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-3",
+    "crossRunExpectedRule": "DREB-3",
     "rules": [
       "DREB-3"
     ],
@@ -156,6 +173,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-4",
+    "crossRunExpectedRule": "DREB-4",
     "rules": [
       "DREB-4"
     ],
@@ -165,6 +183,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-4",
+    "crossRunExpectedRule": "DREB-4",
     "rules": [
       "DREB-4"
     ],
@@ -174,6 +193,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-4",
+    "crossRunExpectedRule": "DREB-4",
     "rules": [
       "DREB-4"
     ],
@@ -183,6 +203,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-5",
+    "crossRunExpectedRule": "DREB-5",
     "rules": [
       "DREB-5"
     ],
@@ -192,6 +213,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-4",
+    "crossRunExpectedRule": "DREB-4",
     "rules": [
       "DREB-4"
     ],
@@ -201,6 +223,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-5",
+    "crossRunExpectedRule": "DREB-5",
     "rules": [
       "DREB-5"
     ],
@@ -210,6 +233,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-2",
+    "crossRunExpectedRule": "DREB-2",
     "rules": [
       "DREB-2"
     ],
@@ -219,6 +243,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRA-6",
+    "crossRunExpectedRule": "DRA-3",
     "rules": [
       "DRA-6"
     ],
@@ -228,6 +253,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRA-7",
+    "crossRunExpectedRule": "DRA-7",
     "rules": [
       "DRA-7"
     ],
@@ -237,6 +263,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRA-5",
+    "crossRunExpectedRule": "DRA-5",
     "rules": [
       "DRA-5"
     ],
@@ -246,6 +273,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-9",
+    "crossRunExpectedRule": "DREB-9",
     "rules": [
       "DREB-9"
     ],
@@ -255,6 +283,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRA-9",
+    "crossRunExpectedRule": "DRA-9",
     "rules": [
       "DRA-9"
     ],
@@ -264,6 +293,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-14",
+    "crossRunExpectedRule": "DRA-14",
     "rules": [
       "DREB-14"
     ],
@@ -273,6 +303,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-13",
+    "crossRunExpectedRule": "DRA-14",
     "rules": [
       "DREB-13"
     ],
@@ -282,6 +313,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-12",
+    "crossRunExpectedRule": "DREB-12",
     "rules": [
       "DREB-12"
     ],
@@ -291,6 +323,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRD-8",
+    "crossRunExpectedRule": "DRD-8",
     "rules": [
       "DRD-8"
     ],
@@ -300,6 +333,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRD-8",
+    "crossRunExpectedRule": "DRD-8",
     "rules": [
       "DRD-8"
     ],
@@ -309,6 +343,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRD-8",
+    "crossRunExpectedRule": "DRD-8",
     "rules": [
       "DRD-8"
     ],
@@ -318,6 +353,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRE-1",
+    "crossRunExpectedRule": "DRE-1",
     "rules": [
       "DRE-1"
     ],
@@ -327,6 +363,7 @@
     "suite": "protocol",
     "expected": "verified",
     "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
     "rules": [
       "DRV-7"
     ],
@@ -336,6 +373,7 @@
     "suite": "protocol",
     "expected": "verified",
     "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
     "rules": [
       "DRV-7"
     ],
@@ -345,6 +383,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DREB-21",
+    "crossRunExpectedRule": "DREB-21",
     "rules": [
       "DREB-21"
     ],
@@ -354,6 +393,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRD-2",
+    "crossRunExpectedRule": "DRD-2",
     "rules": [
       "DRD-2"
     ],
@@ -363,6 +403,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRD-2",
+    "crossRunExpectedRule": "DRD-2",
     "rules": [
       "DRD-2"
     ],
@@ -372,6 +413,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRT-5",
+    "crossRunExpectedRule": "DRT-5",
     "rules": [
       "DRT-5"
     ],
@@ -381,6 +423,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRT-5",
+    "crossRunExpectedRule": "DRT-5",
     "rules": [
       "DRT-5"
     ],
@@ -390,6 +433,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRT-6",
+    "crossRunExpectedRule": "DRT-6",
     "rules": [
       "DRT-6"
     ],
@@ -399,6 +443,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRL-7",
+    "crossRunExpectedRule": "DRL-7",
     "rules": [
       "DRL-7"
     ],
@@ -408,6 +453,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRT-7",
+    "crossRunExpectedRule": "DRT-7",
     "rules": [
       "DRT-7"
     ],
@@ -417,6 +463,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRD-7",
+    "crossRunExpectedRule": "DRD-7",
     "rules": [
       "DRD-7"
     ],
@@ -426,6 +473,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRT-12",
+    "crossRunExpectedRule": "DRT-12",
     "rules": [
       "DRT-12"
     ],
@@ -435,6 +483,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRT-13",
+    "crossRunExpectedRule": "DRT-13",
     "rules": [
       "DRT-13"
     ],
@@ -444,6 +493,7 @@
     "suite": "protocol",
     "expected": "indeterminate",
     "expectedRule": "DRV-2",
+    "crossRunExpectedRule": "DRV-1",
     "rules": [
       "DRV-2"
     ],
@@ -453,6 +503,7 @@
     "suite": "protocol",
     "expected": "indeterminate",
     "expectedRule": "DRV-2",
+    "crossRunExpectedRule": "DRJ-7",
     "rules": [
       "DRV-2"
     ],
@@ -462,6 +513,7 @@
     "suite": "protocol",
     "expected": "indeterminate",
     "expectedRule": "DRV-2",
+    "crossRunExpectedRule": "DRT-8",
     "rules": [
       "DRV-2"
     ],
@@ -471,6 +523,7 @@
     "suite": "protocol",
     "expected": "indeterminate",
     "expectedRule": "DRD-10",
+    "crossRunExpectedRule": "DRD-10",
     "rules": [
       "DRD-10"
     ],
@@ -480,6 +533,7 @@
     "suite": "protocol",
     "expected": "indeterminate",
     "expectedRule": "DRD-10",
+    "crossRunExpectedRule": "DRD-10",
     "rules": [
       "DRD-10"
     ],
@@ -489,6 +543,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRV-6",
+    "crossRunExpectedRule": "DRD-11",
     "rules": [
       "DRV-6"
     ],
@@ -498,6 +553,7 @@
     "suite": "protocol",
     "expected": "indeterminate",
     "expectedRule": "DRD-10",
+    "crossRunExpectedRule": "DRD-4",
     "rules": [
       "DRD-10"
     ],
@@ -507,6 +563,7 @@
     "suite": "protocol",
     "expected": "rejected",
     "expectedRule": "DRV-6",
+    "crossRunExpectedRule": "DRJ-7",
     "rules": [
       "DRV-6"
     ],
@@ -516,6 +573,7 @@
     "suite": "protocol",
     "expected": "error",
     "expectedRule": "DRAA-1",
+    "crossRunExpectedRule": "DRAA-1",
     "rules": [
       "DRAA-1"
     ],
@@ -525,6 +583,7 @@
     "suite": "protocol",
     "expected": "error",
     "expectedRule": "DRV-2",
+    "crossRunExpectedRule": "DRV-3",
     "rules": [
       "DRV-2"
     ],
@@ -534,14 +593,26 @@
     "suite": "protocol",
     "expected": "error",
     "expectedRule": "DRV-1",
+    "crossRunExpectedRule": "DRV-3",
     "rules": [
       "DRV-1"
     ],
     "note": "unsupported profiles fail before action"
   },
+  "evaluation-seq-not-zero": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRAA-6",
+    "crossRunExpectedRule": "DRAA-6",
+    "rules": [
+      "DRAA-6"
+    ],
+    "note": "the first evaluation sequence must be zero"
+  },
   "synthetic-all-rules-control": {
     "suite": "deployment",
     "expected": "verified",
+    "crossRunExpectedRule": "DRC",
     "registrationEligible": false,
     "expectedFailedRules": [],
     "note": "all DRC rules pass, but fixtureOnly keeps registration ineligible"
@@ -549,6 +620,7 @@
   "drc-1-preterminal-payout": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-1",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-1"
@@ -558,6 +630,7 @@
   "drc-2-mutable-fees": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-2",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-2"
@@ -567,6 +640,7 @@
   "drc-3-blocked-expiry-recovery": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-3",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-3"
@@ -576,6 +650,7 @@
   "drc-4-emergency-withdrawal": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-4",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-4"
@@ -585,6 +660,7 @@
   "drc-5-logic-replacement": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-5",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-5"
@@ -594,6 +670,7 @@
   "drc-6-live-upgrade-authority": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-6",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-6"
@@ -603,6 +680,7 @@
   "drc-7-mutable-blocking-hook": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-7",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-7"
@@ -612,6 +690,7 @@
   "drc-8-fee-on-transfer-token": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-8",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-8"
@@ -621,6 +700,7 @@
   "drc-9-ambiguous-events": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-9",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-9"
@@ -630,6 +710,7 @@
   "drc-10-bytecode-mismatch": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-10",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-10"
@@ -639,6 +720,7 @@
   "drc-11-conflicting-evidence": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-11",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-11"
@@ -648,6 +730,7 @@
   "drc-12-unauthenticated-ordering": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-12",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-12"
@@ -657,6 +740,7 @@
   "source-to-bytecode-evidence-unavailable": {
     "suite": "deployment",
     "expected": "indeterminate",
+    "crossRunExpectedRule": "DRC-10",
     "registrationEligible": false,
     "expectedFailedRules": [],
     "note": "missing source-to-bytecode evidence is not guessed"
@@ -664,6 +748,7 @@
   "current-reference-142e669-ineligible": {
     "suite": "deployment",
     "expected": "rejected",
+    "crossRunExpectedRule": "DRC-1",
     "registrationEligible": false,
     "expectedFailedRules": [
       "DRC-1",
@@ -679,6 +764,7 @@
   "malformed-deployment-manifest": {
     "suite": "deployment",
     "expected": "error",
+    "crossRunExpectedRule": "DRC-1",
     "registrationEligible": false,
     "expectedFailedRules": [],
     "note": "malformed capability input fails before eligibility"

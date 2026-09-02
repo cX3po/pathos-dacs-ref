@@ -30,6 +30,10 @@ class DeliveryRemedyArtifactTests(unittest.TestCase):
         return next(copy.deepcopy(vector) for vector in self.blind["vectors"]
                     if vector["name"] == name)
 
+    def rebind_mutated_funding(self, value):
+        value["artifacts"]["terminal"]["fundingEvidenceRef"]["contentHash"] = (
+            suite._content_hash(value["artifacts"]["funding"]))
+
     def test_patch_application_add_remove_replace_and_deep_copy(self):
         base = {"items": ["a", "c"], "nested": {"value": 1}}
         got = suite.apply_patch(base, [
@@ -65,20 +69,46 @@ class DeliveryRemedyArtifactTests(unittest.TestCase):
     def test_pending_funding_finality_is_not_verified(self):
         value = copy.deepcopy(self.blind["fixtures"]["release"])
         value["artifacts"]["funding"]["finality"]["status"] = "pending"
-        got = suite.evaluate_protocol(value)
-        self.assertNotEqual("verified", got["result"])
+        self.rebind_mutated_funding(value)
+        got = suite.evaluate_protocol(value, _skip_signatures_for_tests=True)
+        self.assertEqual(("indeterminate", "DRF-6"), (got["result"], got["rule"]))
 
     def test_empty_funding_event_set_is_not_verified(self):
         value = copy.deepcopy(self.blind["fixtures"]["release"])
         value["artifacts"]["funding"]["fundingEventRefs"] = []
-        got = suite.evaluate_protocol(value)
-        self.assertNotEqual("verified", got["result"])
+        self.rebind_mutated_funding(value)
+        got = suite.evaluate_protocol(value, _skip_signatures_for_tests=True)
+        self.assertEqual(("rejected", "DRF-3"), (got["result"], got["rule"]))
+
+    def test_duplicate_funding_event_set_is_rejected(self):
+        value = copy.deepcopy(self.blind["fixtures"]["release"])
+        value["artifacts"]["funding"]["fundingEventRefs"].append(copy.deepcopy(
+            value["artifacts"]["funding"]["fundingEventRefs"][0]))
+        self.rebind_mutated_funding(value)
+        got = suite.evaluate_protocol(value, _skip_signatures_for_tests=True)
+        self.assertEqual(("rejected", "DRF-3"), (got["result"], got["rule"]))
 
     def test_empty_terminal_event_set_is_not_verified(self):
         value = copy.deepcopy(self.blind["fixtures"]["release"])
         value["artifacts"]["terminal"]["terminalEventRefs"] = []
+        got = suite.evaluate_protocol(value, _skip_signatures_for_tests=True)
+        self.assertEqual(("rejected", "DRT-4"), (got["result"], got["rule"]))
+
+    def test_signature_test_seam_refuses_non_fixture_material(self):
+        value = copy.deepcopy(self.blind["fixtures"]["release"])
+        value["fixtureOnly"] = False
+        got = suite.evaluate_protocol(value, _skip_signatures_for_tests=True)
+        self.assertEqual(("error", "DRV-3"), (got["result"], got["rule"]))
+
+    def test_delivery_body_substitution_is_hash_bound(self):
+        value = copy.deepcopy(self.blind["fixtures"]["release"])
+        value["artifacts"]["delivery"]["outcome"] = "substituted"
         got = suite.evaluate_protocol(value)
-        self.assertNotEqual("verified", got["result"])
+        self.assertEqual(("rejected", "DREB-2"), (got["result"], got["rule"]))
+
+    def test_evaluation_sequence_must_start_at_zero(self):
+        got = suite.evaluate(self.vector("evaluation-seq-not-zero"))
+        self.assertEqual(("rejected", "DRAA-6"), (got["result"], got["rule"]))
 
     def test_shipped_lifecycles_exercise_events_and_funding_finality(self):
         for base_name in ("release", "rejected-refund", "pre-submission-rejected-refund"):
@@ -95,13 +125,16 @@ class DeliveryRemedyArtifactTests(unittest.TestCase):
         self.assertEqual("verified", got["result"])
         self.assertFalse(got["registrationEligible"])
 
-    def test_each_blind_vector_accept_reject_decision_matches_key(self):
+    def test_each_blind_vector_exact_result_and_rule_matches_key(self):
         self.assertEqual(self.blind["count"], len(self.blind["vectors"]))
         for vector in self.blind["vectors"]:
             with self.subTest(vector=vector["name"]):
-                got = suite.evaluate(vector)["result"]
-                want = self.answers[vector["name"]]["expected"]
-                self.assertEqual(want == "verified", got == "verified")
+                got = suite.evaluate(vector)
+                want = self.answers[vector["name"]]
+                self.assertEqual(
+                    (want["expected"], want["crossRunExpectedRule"]),
+                    (got["result"], got["rule"]),
+                )
 
 
 if __name__ == "__main__":

@@ -363,6 +363,12 @@
       "detail": "unsupported candidate profile discriminator"
     },
     {
+      "name": "evaluation-seq-not-zero",
+      "result": "rejected",
+      "rule": "DRAA-6",
+      "detail": "first evaluation sequence is not zero"
+    },
+    {
       "name": "synthetic-all-rules-control",
       "result": "verified",
       "rule": "DRC",

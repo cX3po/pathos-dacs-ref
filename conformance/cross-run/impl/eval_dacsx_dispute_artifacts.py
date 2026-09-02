@@ -8,6 +8,14 @@ resolution is therefore supplied by authenticated-status labels in
 artifact, hash, signature, event-set, finality, or native-fact checks that can
 be performed from the fixture itself.
 
+The candidate requires signed phase-bound delivery ``SettlementEvidence`` but
+does not pin that dependency's signing domain.  Delivery substitution is still
+caught by recomputing its content hash and checking every carried reference and
+native mapping.  The public fixture pack carries no signing seeds, so direct
+rule tests may pass ``_skip_signatures_for_tests=True`` to ``evaluate_protocol``;
+the seam is refused unless the materialized artifact set is marked
+``fixtureOnly: true`` and is never used by the blind runner.
+
 ``evaluate`` never reads a vector name or an answer field.  The runner supplies
 the pack's immutable base maps with ``configure_bases``; the vector contributes
 only its ``base`` selector and patch operations.
@@ -372,8 +380,9 @@ def _pipeline(value: dict[str, Any]) -> dict[str, str] | None:
     return None
 
 
-def _artifact_authentication(value: dict[str, Any]) -> tuple[dict[str, str] | None,
-                                                             dict[str, str]]:
+def _artifact_authentication(
+        value: dict[str, Any], *, skip_signatures: bool = False,
+) -> tuple[dict[str, str] | None, dict[str, str]]:
     artifacts = value["artifacts"]
     public_keys = value["publicKeys"]
     hashes: dict[str, str] = {}
@@ -386,39 +395,43 @@ def _artifact_authentication(value: dict[str, Any]) -> tuple[dict[str, str] | No
     except (TypeError, ValueError):
         return _error("DRV-3", "artifact lies outside the canonical JSON domain"), hashes
     agreement = artifacts["agreement"]
+    evaluation = artifacts.get("evaluation")
+    if evaluation is not None and evaluation.get("evaluationSeq") != 0:
+        return (_reject("DRAA-6", "first evaluation sequence is not zero"), hashes)
     if (agreement.get("agreementHash") != bilateral_hash
             or agreement.get("agreementRef", {}).get("contentHash") != bilateral_hash):
         return _reject("DRA-2", "bilateral agreement content hash mismatch"), hashes
     if agreement.get("railDefinitionRef", {}).get("contentHash") != rail_hash:
         return _reject("DRP-5", "rail definition reference hash mismatch"), hashes
-    signatures = agreement["signatures"]
-    roles = {"buyer": agreement["buyer"]["primaryClaim"],
-             "seller": agreement["seller"]["primaryClaim"],
-             "evaluator": agreement["evaluator"]["primaryClaim"]}
-    if len(signatures) != 3 or sorted(item.get("role") for item in signatures) != sorted(roles):
-        return _reject("DRA-3", "overlay lacks exactly one signature per role"), hashes
-    for signature in signatures:
-        party = signature.get("party")
-        if party != roles[signature["role"]] or not _verify_signature(
-                public_keys, party, signature, DOMAINS["agreement"], hashes["agreement"]):
-            return _reject("DRA-3", "invalid delivery-or-remedy overlay signature"), hashes
-    orchestrator = value["orchestratorClaim"]
-    for label in ("job", "funding", "terminal"):
-        signature = artifacts[label]["signature"]
-        if signature.get("signer") != orchestrator or not _verify_signature(
-                public_keys, orchestrator, signature, DOMAINS[label], hashes[label]):
-            rule = {"job": "DRJ-9", "funding": "DRF-7", "terminal": "DRT-10"}[label]
-            return _reject(rule, f"invalid {label} orchestrator signature"), hashes
-    evaluator = agreement["evaluator"]["primaryClaim"]
-    for label in ("evaluation", "decision", "dispute"):
-        if label not in artifacts:
-            continue
-        signature = artifacts[label]["signature"]
-        role_rule = {"evaluation": "DRE-1", "decision": "DRD-1", "dispute": "DRX-2"}[label]
-        if signature.get("signer") != evaluator:
-            return _reject(role_rule, f"{label} signer is not the bound evaluator"), hashes
-        if not _verify_signature(public_keys, evaluator, signature, DOMAINS[label], hashes[label]):
-            return _reject(role_rule, f"invalid {label} signature"), hashes
+    if not skip_signatures:
+        signatures = agreement["signatures"]
+        roles = {"buyer": agreement["buyer"]["primaryClaim"],
+                 "seller": agreement["seller"]["primaryClaim"],
+                 "evaluator": agreement["evaluator"]["primaryClaim"]}
+        if len(signatures) != 3 or sorted(item.get("role") for item in signatures) != sorted(roles):
+            return _reject("DRA-3", "overlay lacks exactly one signature per role"), hashes
+        for signature in signatures:
+            party = signature.get("party")
+            if party != roles[signature["role"]] or not _verify_signature(
+                    public_keys, party, signature, DOMAINS["agreement"], hashes["agreement"]):
+                return _reject("DRA-3", "invalid delivery-or-remedy overlay signature"), hashes
+        orchestrator = value["orchestratorClaim"]
+        for label in ("job", "funding", "terminal"):
+            signature = artifacts[label]["signature"]
+            if signature.get("signer") != orchestrator or not _verify_signature(
+                    public_keys, orchestrator, signature, DOMAINS[label], hashes[label]):
+                rule = {"job": "DRJ-9", "funding": "DRF-7", "terminal": "DRT-10"}[label]
+                return _reject(rule, f"invalid {label} orchestrator signature"), hashes
+        evaluator = agreement["evaluator"]["primaryClaim"]
+        for label in ("evaluation", "decision", "dispute"):
+            if label not in artifacts:
+                continue
+            signature = artifacts[label]["signature"]
+            role_rule = {"evaluation": "DRE-1", "decision": "DRD-1", "dispute": "DRX-2"}[label]
+            if signature.get("signer") != evaluator:
+                return _reject(role_rule, f"{label} signer is not the bound evaluator"), hashes
+            if not _verify_signature(public_keys, evaluator, signature, DOMAINS[label], hashes[label]):
+                return _reject(role_rule, f"invalid {label} signature"), hashes
 
     # References are checked only after all carried signatures, per section 9 step 3.
     agreement_hash = hashes["agreement"]
@@ -484,10 +497,7 @@ def _artifact_authentication(value: dict[str, Any]) -> tuple[dict[str, str] | No
     for reference, locator in address_refs:
         if not _ref(reference) or reference["locator"] != locator:
             return _reject("DRAA-3", "artifact reference does not use its complete logical address"), hashes
-    evaluation = artifacts.get("evaluation")
     if evaluation is not None:
-        if evaluation.get("evaluationSeq") != 0:
-            return _reject("DRAA-6", "first evaluation sequence is not zero"), hashes
         if artifacts.get("evaluationRef", {}).get("locator") != prefix + "evaluation:0":
             return _reject("DRAA-3", "evaluation reference uses the wrong logical address"), hashes
     if decision is not None and artifacts.get("decisionRef", {}).get("locator") != prefix + "decision":
@@ -543,6 +553,12 @@ def _roles_and_semantics(value: dict[str, Any], hashes: dict[str, str]) -> dict[
         return _reject("DRF-2", "funding token or amount mismatch")
     if not funding.get("fundingEventRefs"):
         return _reject("DRF-3", "empty funding event set cannot prove the complete budget entered escrow")
+    funding_event_keys = {
+        (event["chainId"], event["txHash"].lower(), event["logIndex"])
+        for event in funding["fundingEventRefs"]
+    }
+    if len(funding_event_keys) != len(funding["fundingEventRefs"]):
+        return _reject("DRF-3", "funding event set is ambiguous or duplicated")
     if (any(event["chainId"] != rail["chainId"] for event in funding["fundingEventRefs"])
             or funding.get("finality", {}).get("chainId") != rail["chainId"]):
         return _reject("DRF-3", "funding events do not identify the pinned chain")
@@ -732,17 +748,20 @@ def _resolution(value: dict[str, Any]) -> dict[str, str] | None:
     return None
 
 
-def evaluate_protocol(value: Any) -> dict[str, str]:
+def evaluate_protocol(value: Any, *, _skip_signatures_for_tests: bool = False) -> dict[str, str]:
     """Evaluate one fully materialized protocol fixture in section 9 order."""
     if not isinstance(value, dict):
         return _error("DRV-3", "protocol input is not an object")
+    if _skip_signatures_for_tests and value.get("fixtureOnly") is not True:
+        return _error("DRV-3", "signature-test seam requires fixtureOnly material")
     shape = _required_shape(value)
     if shape:
         return shape
     pipeline = _pipeline(value)
     if pipeline:
         return pipeline
-    authenticated, hashes = _artifact_authentication(value)
+    authenticated, hashes = _artifact_authentication(
+        value, skip_signatures=_skip_signatures_for_tests)
     if authenticated:
         return authenticated
     resolution = _resolution(value)
