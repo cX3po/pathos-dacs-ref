@@ -55,7 +55,7 @@ Settlement handlers remain separately scoped. The bundle finalizer consumes and 
 | §10.4.3 Consumer queries both party-specific addresses; unilateral ⇒ `aborted-by-self` | verifier logic | `src/lib/verify-bundle.ts` (verifyTwoSidedAnchoring) | ✅ distinguishes RPC error from absence |
 | §10.4.1 FAB/EBFAB discriminator, fault and signature domains | types + verifier dispatch | `src/types/bundle.ts`, `src/lib/verify-bundle-v1.ts` | ✅ additive; legacy reads preserved |
 | §10.4.2 BundleBinding publication seam + role addresses | finalizer | `src/adapters/dacs/bundle-finalizer.ts`, `src/lib/bundle-binding-v1.ts` | ✅ in-memory tested; live publication wiring pending |
-| §10.4.3 SEB-1..SEB-6 exact settlement-evidence set | finalizer + cold verifier | `src/adapters/dacs/bundle-finalizer.ts` | ✅ ordinary payment/delivery results; ST-8 supersession graph out of scope |
+| §10.4.3 SEB-1..SEB-6 exact settlement-evidence set | shared emission/cold function | `src/adapters/dacs/bundle-finalizer.ts` | emission and cold verification refetch evidence, bind receipt anchor fields, verify signatures, and compare the exact ordered set; ST-8 supersession graphs are not implemented |
 | §10.5.1 Reputation derivation (per-primary-claim, failed-substrate excluded) | — | — | ❌ v0.3 |
 | §10.7 ERC-8004 publication surface | — | — | ❌ v0.3 (optional in spec) |
 | Domain separator `"dacs5-bundle:v1:"` | constant | `src/domain-sep.ts` | ✅ |

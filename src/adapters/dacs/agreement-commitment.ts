@@ -1,5 +1,7 @@
+/** SR2-4: cold `pass` means the injected receipt provider attested finalization and every offline-checkable field agrees; it does not mean substrate-proven finality. */
 import { DOMAIN_SEPARATORS, ADDITIVE_DOMAIN_SEPARATORS, type DomainSeparator } from '../../domain-sep.js';
-import { jcsHashHex } from '../../jcs.js';
+import { sha256 } from '@noble/hashes/sha2';
+import { jcsCanonical, jcsHashHex } from '../../jcs.js';
 import { claimKey } from '../../lib/verify-bundle-v1.js';
 import type {
   AgreementDocumentV1,
@@ -63,7 +65,7 @@ export interface AgreementCommitmentDependencies {
 export interface CommittedAgreement {
   agreement: AgreementDocumentV1;
   agreementHash: string;
-  agreementRef: { anchor: { substrate: 'demos'; locator: string }; contentHash: string; type: string; producedAt: string };
+  agreementRef: { anchor: { substrate: 'demos'; locator: string }; contentHash: string; unsignedContentHash: string; type: string; producedAt: string };
   commitment: FinalityCommitmentRecord;
   commitmentHash: string;
   receipt: AnchorReceipt;
@@ -85,7 +87,7 @@ export interface AgreementCommitmentExpectation {
 export interface AgreementCommitmentReadDependencies {
   fetchAnchored(address: string): Promise<unknown>;
   receiptProvider(request: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult }): Promise<AnchorReceipt>;
-  verifySignature?: (request: { domain: DomainSeparator; hash: string; signer: Claim; algorithm: string; value: string }) => Promise<boolean> | boolean;
+  verifySignature(request: { domain: DomainSeparator; hash: string; signer: Claim; algorithm: string; value: string }): Promise<boolean> | boolean;
 }
 
 function object(value: unknown): JsonObject {
@@ -118,7 +120,12 @@ function listingReference(listing: JsonObject, supplied?: AgreementCommitmentInp
   const version = listing.listingVersion ?? listing.version;
   const unsigned = { ...listing };
   delete unsigned.signature;
-  const contentHash = typeof listing.contentHash === 'string' ? listing.contentHash : jcsHashHex(unsigned);
+  delete unsigned.contentHash;
+  const recomputedContentHash = jcsHashHex(unsigned);
+  if (listing.contentHash !== undefined && listing.contentHash !== recomputedContentHash) {
+    throw new AgreementCommitmentError('listing-ref', 'listing contentHash does not match its signed scope (§8.5.2)');
+  }
+  const contentHash = recomputedContentHash;
   const actual = { listingId, version, contentHash };
   if (typeof listingId !== 'string' || !Number.isSafeInteger(version) || !/^[0-9a-f]{64}$/.test(contentHash)) {
     throw new AgreementCommitmentError('listing-ref', 'listing cannot produce a complete pinned listing reference');
@@ -217,12 +224,22 @@ function validateAgreement(listing: JsonObject, agreement: Omit<AgreementDocumen
   if ((payPhases.length > 0) !== (agreement.terms.rail !== undefined)) throw new AgreementCommitmentError('rail', 'rail presence does not match pipeline');
   if (agreement.terms.rail) {
     const rail = agreement.terms.rail;
-    const alternatives = payPhases.flatMap((p) => p.kind === 'pay-alternative' ? (object(p.parameters).alternatives as unknown[] ?? []) : []);
-    const accepted = Array.isArray(listing.acceptedRails) ? listing.acceptedRails : [];
+    const alternativePhases = payPhases.filter((p) => p.kind === 'pay-alternative');
     const canonical = jcsHashHex(rail);
-    const matchesAlternative = alternatives.some((x) => jcsHashHex(x) === canonical);
-    const matchesAccepted = accepted.some((x) => typeof x === 'string' ? x === rail.railId : jcsHashHex(x) === canonical);
-    if (!(matchesAlternative || matchesAccepted)) throw new AgreementCommitmentError('rail', 'agreement rail is not an accepted complete reference');
+    if (alternativePhases.length > 0) {
+      const alternatives = alternativePhases.flatMap((p) => {
+        const values = object(p.parameters).alternatives;
+        return Array.isArray(values) ? values : [];
+      });
+      if (alternatives.filter((x) => jcsHashHex(x) === canonical).length !== 1) {
+        throw new AgreementCommitmentError('rail', 'agreement rail must canonically match exactly one signed alternative (APR-3)');
+      }
+    } else {
+      const accepted = Array.isArray(listing.acceptedRails) ? listing.acceptedRails : [];
+      if (!accepted.some((x) => typeof x === 'string' ? x === rail.railId : jcsHashHex(x) === canonical)) {
+        throw new AgreementCommitmentError('rail', 'agreement rail is not an accepted complete reference');
+      }
+    }
   }
   if (jcsHashHex(agreement.terms.deliverable) !== jcsHashHex(expectedDeliverable(listing))) throw new AgreementCommitmentError('deliverable', 'agreement deliverable does not match listing');
   const sealed = negotiation[0]!.kind;
@@ -233,6 +250,19 @@ function validateAgreement(listing: JsonObject, agreement: Omit<AgreementDocumen
     const mode = negotiation[0]!.parameters === undefined ? undefined : object(negotiation[0]!.parameters).auctionMode;
     if (mode !== undefined && mode !== 'demand') throw new AgreementCommitmentError('unresolvable-auctionMode', 'demand auctionMode is invalid');
   }
+  if (sealed === 'negotiate-sealed-envelope' || sealed === 'negotiate-sealed-envelope-procurement') {
+    const sellerRecord = listing.seller === undefined ? undefined : object(listing.seller);
+    const identity = sellerRecord?.identity === undefined ? undefined : object(sellerRecord.identity);
+    const publisher = (sellerRecord?.primaryClaim ?? identity?.primary ?? listing.publisher) as Claim | undefined;
+    if (publisher !== undefined) {
+      const publisherRole = agreement.parties.find((party) => claimKey(party.primaryClaim) === claimKey(publisher))?.role;
+      const expectedRole = sealed === 'negotiate-sealed-envelope' ? 'seller' : 'buyer';
+      if (publisherRole !== expectedRole) throw new AgreementCommitmentError('sealed-envelope-role-direction', 'agreement buyer/seller direction contradicts auctionMode (SE-8)');
+    }
+  }
+  if ((agreement.terms as unknown as JsonObject).priorPaymentDispositionRef !== undefined) {
+    throw new NotSupportedError('priorPaymentDispositionRef replacement disposition is not supported (APR-5/APR-6)');
+  }
   const deadlineSec = object(listing.terms).deadlineSecAfterCommit;
   if (deadlineSec !== undefined && (!Number.isSafeInteger(deadlineSec) || agreement.terms.deadline > committedAt + Number(deadlineSec) * 1000)) {
     throw new AgreementCommitmentError('deadline', provisional ? 'provisional agreement deadline exceeds listing window' : 'receipt-relative agreement deadline exceeds listing window');
@@ -241,12 +271,26 @@ function validateAgreement(listing: JsonObject, agreement: Omit<AgreementDocumen
   if (notAfter !== undefined && (typeof notAfter !== 'number' || notAfter < committedAt)) throw new AgreementCommitmentError('expired', 'listing expired before commitment finality');
 }
 
-function receiptBinding(receipt: AnchorReceipt, expected: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult }): number {
+function receiptBinding(receipt: AnchorReceipt, expected: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult; storedContent?: unknown }): number {
   const a = expected.anchor;
   if (receipt.receiptVersion !== '1' || receipt.observationDisposition !== 'established') throw new AgreementCommitmentError('receipt', 'receipt is not an established CORE receipt');
   if (receipt.logicalAddress !== expected.logicalAddress || receipt.contentHash !== expected.contentHash ||
       (a && (receipt.nativeAddress !== a.nativeAddress || receipt.writer !== a.writer || receipt.transactionRef.kind !== a.transactionRef.kind || receipt.transactionRef.value !== a.transactionRef.value || receipt.nonce !== a.nonce))) {
     throw new AgreementCommitmentError('receipt-binding', 'receipt does not bind the submitted logical/native address, hash, transaction, writer, and nonce');
+  }
+  if (receipt.evidence.kind !== 'stored-bytes-base64url') {
+    throw new AgreementCommitmentError('evidence-unverifiable', 'receipt evidence does not carry recoverable stored bytes (SR2-4)');
+  }
+  if (!/^[A-Za-z0-9_-]*$/.test(receipt.evidence.value) || receipt.evidence.value.includes('=')) {
+    throw new AgreementCommitmentError('receipt-evidence', 'receipt evidence stored bytes are not valid unpadded Base64URL');
+  }
+  const storedBytes = new Uint8Array(Buffer.from(receipt.evidence.value, 'base64url'));
+  if (Buffer.from(storedBytes).toString('base64url') !== receipt.evidence.value) {
+    throw new AgreementCommitmentError('receipt-evidence', 'receipt evidence stored bytes are not valid unpadded Base64URL');
+  }
+  const evidenceHash = Buffer.from(sha256(storedBytes)).toString('hex');
+  if (evidenceHash !== expected.contentHash || (expected.storedContent !== undefined && !Buffer.from(storedBytes).equals(Buffer.from(jcsCanonical(expected.storedContent))))) {
+    throw new AgreementCommitmentError('receipt-evidence', 'receipt evidence bytes do not match the stored contentHash (SR2-4)');
   }
   const {
     state: lifecycle,
@@ -309,17 +353,18 @@ export async function commitAgreement(input: AgreementCommitmentInput, deps: Agr
   const fetchedCommitment = fetchedObject(await deps.fetchAnchored(commitmentAnchor.nativeAddress));
   if (jcsHashHex(fetchedCommitment) !== commitmentHash) throw new AgreementCommitmentError('cold-read', 'commitment did not independently resolve');
   const receipt = await deps.receiptProvider({ logicalAddress: commitmentLogical, contentHash: commitmentHash, anchor: commitmentAnchor });
-  const committedAt = receiptBinding(receipt, { logicalAddress: commitmentLogical, contentHash: commitmentHash, anchor: commitmentAnchor });
+  const committedAt = receiptBinding(receipt, { logicalAddress: commitmentLogical, contentHash: commitmentHash, anchor: commitmentAnchor, storedContent: fetchedCommitment });
   validateAgreement(input.listing, unsigned, committedAt, false);
   return {
     agreement, agreementHash,
-    agreementRef: { anchor: { substrate: 'demos', locator: agreementAnchor?.nativeAddress ?? agreementLogical }, contentHash: agreementHash, type: 'dacs-3-agreement', producedAt: new Date(now).toISOString() },
+    agreementRef: { anchor: { substrate: 'demos', locator: agreementAnchor?.nativeAddress ?? agreementLogical }, contentHash: jcsHashHex(agreement), unsignedContentHash: agreementHash, type: 'dacs-3-agreement', producedAt: new Date(now).toISOString() },
     commitment, commitmentHash, receipt, committedAt,
     addresses: { ...(agreementAnchor ? { agreement: { logical: agreementLogical, native: agreementAnchor.nativeAddress } } : {}), commitment: { logical: commitmentLogical, native: commitmentAnchor.nativeAddress } },
   };
 }
 
 export async function verifyAgreementCommitmentCold(expected: AgreementCommitmentExpectation, deps: AgreementCommitmentReadDependencies): Promise<{ outcome: 'pass' | 'fail' | 'indeterminate'; detail: string }> {
+  if (typeof deps.verifySignature !== 'function') throw new AgreementCommitmentError('verifier-required', 'verifySignature is required for cold commitment verification (CA-6/CA-7)');
   try {
     let fetched: JsonObject;
     try { fetched = fetchedObject(await deps.fetchAnchored(expected.addresses.commitment.native)); }
@@ -328,13 +373,17 @@ export async function verifyAgreementCommitmentCold(expected: AgreementCommitmen
     if (expected.commitment.finalityCommitmentVersion !== '1' || 'dacsVersion' in expected.commitment) return { outcome: 'fail', detail: 'unsupported or ambiguous commitment discriminator' };
     if (expected.commitment.jobId !== expected.jobId || expected.commitment.agreementHash !== expected.agreementHash) return { outcome: 'fail', detail: 'commitment job/agreement binding mismatch' };
     if (hashWithout(expected.agreement as unknown as JsonObject, 'signatures') !== expected.agreementHash) return { outcome: 'fail', detail: 'agreement hash mismatch' };
-    if (deps.verifySignature) {
-      const scopeHash = hashWithout(expected.commitment as unknown as JsonObject, 'signature');
-      const valid = await deps.verifySignature({ domain: ADDITIVE_DOMAIN_SEPARATORS.FINALITY_COMMITMENT, hash: scopeHash, ...expected.commitment.signature });
-      if (!valid) return { outcome: 'fail', detail: 'commitment orchestrator signature invalid' };
-      for (const sig of expected.agreement.signatures) {
-        if (!await deps.verifySignature({ domain: DOMAIN_SEPARATORS.AGREEMENT, hash: expected.agreementHash, signer: sig.party, algorithm: sig.algorithm, value: sig.value })) return { outcome: 'fail', detail: 'agreement party signature invalid' };
-      }
+    const scopeHash = hashWithout(expected.commitment as unknown as JsonObject, 'signature');
+    const valid = await deps.verifySignature({ domain: ADDITIVE_DOMAIN_SEPARATORS.FINALITY_COMMITMENT, hash: scopeHash, ...expected.commitment.signature });
+    if (!valid) return { outcome: 'fail', detail: 'commitment orchestrator signature invalid' };
+    const buyer = expected.agreement.parties.find((party) => party.role === 'buyer');
+    const seller = expected.agreement.parties.find((party) => party.role === 'seller');
+    if (!buyer || !seller) return { outcome: 'fail', detail: 'agreement requires buyer and seller parties' };
+    for (const [role, party] of [['buyer', buyer], ['seller', seller]] as const) {
+      const signatures = expected.agreement.signatures.filter((sig) => claimKey(sig.party) === claimKey(party.primaryClaim));
+      if (signatures.length !== 1) return { outcome: 'fail', detail: `agreement requires exactly one ${role} signature` };
+      const sig = signatures[0]!;
+      if (!await deps.verifySignature({ domain: DOMAIN_SEPARATORS.AGREEMENT, hash: expected.agreementHash, signer: sig.party, algorithm: sig.algorithm, value: sig.value })) return { outcome: 'fail', detail: `agreement ${role} signature invalid` };
     }
     let receipt: AnchorReceipt;
     try { receipt = await deps.receiptProvider({ logicalAddress: expected.addresses.commitment.logical, contentHash: expected.commitmentHash }); }
@@ -348,7 +397,7 @@ export async function verifyAgreementCommitmentCold(expected: AgreementCommitmen
       writer: prior.writer,
       ...(prior.nonce !== undefined ? { nonce: prior.nonce } : {}),
     } : undefined;
-    try { committedAt = receiptBinding(receipt, { logicalAddress: expected.addresses.commitment.logical, contentHash: expected.commitmentHash, anchor: expectedAnchor }); }
+    try { committedAt = receiptBinding(receipt, { logicalAddress: expected.addresses.commitment.logical, contentHash: expected.commitmentHash, anchor: expectedAnchor, storedContent: fetched }); }
     catch (error) {
       if (error instanceof AgreementCommitmentError && error.code === 'finality') return { outcome: 'indeterminate', detail: error.message };
       return { outcome: 'fail', detail: error instanceof Error ? error.message : 'invalid receipt' };

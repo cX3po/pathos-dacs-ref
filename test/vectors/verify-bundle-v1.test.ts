@@ -334,6 +334,22 @@ test('§10.4 — malformed hashes and claims are rejected structurally', () => {
   assert.equal(verifyBundleV1(signBy(u4, [realKey(0x51), realKey(0x52)])).structurallyValid, false);
 });
 
+test('§10.4 — current bundle discriminators reject unsupported versions by field name', () => {
+  const fault = baseUnsigned();
+  delete (fault as { bundleVersion?: unknown }).bundleVersion;
+  (fault as unknown as { faultBundleVersion: string }).faultBundleVersion = '2';
+  const faultVerdict = verifyBundleV1(signBy(fault, [realKey(0x51), realKey(0x52)]));
+  assert.equal(faultVerdict.decision, 'reject');
+  assert.ok(faultVerdict.reasons.includes('faultBundleVersion must be "1"'));
+
+  const evidenceBound = baseUnsigned();
+  delete (evidenceBound as { bundleVersion?: unknown }).bundleVersion;
+  (evidenceBound as unknown as { evidenceBoundFaultBundleVersion: string }).evidenceBoundFaultBundleVersion = '2';
+  const evidenceBoundVerdict = verifyBundleV1(signBy(evidenceBound, [realKey(0x51), realKey(0x52)]));
+  assert.equal(evidenceBoundVerdict.decision, 'reject');
+  assert.ok(evidenceBoundVerdict.reasons.includes('evidenceBoundFaultBundleVersion must be "1"'));
+});
+
 test('§10.4 R4-B — anchoredByRole is required and must match a listed party role', () => {
   const u = baseUnsigned();
   delete (u as { anchoredByRole?: unknown }).anchoredByRole; // missing → reject

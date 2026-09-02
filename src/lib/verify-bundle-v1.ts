@@ -175,9 +175,17 @@ function structuralErrors(b: unknown): string[] {
   const e: string[] = [];
   const x = b as Record<string, unknown>;
   const intGe0 = (n: unknown) => typeof n === 'number' && Number.isInteger(n) && n >= 0;
-  const discriminators = [x.bundleVersion === '1', x.faultBundleVersion === '1', x.evidenceBoundFaultBundleVersion === '1'].filter(Boolean).length;
-  if (discriminators !== 1) e.push('exactly one supported bundle discriminator must equal "1"');
-  if (x.bundleVersion === undefined && x.faultBundleVersion === undefined && x.evidenceBoundFaultBundleVersion === undefined) e.push('bundle discriminator missing');
+  const discriminatorFields = Object.keys(x).filter((field) => field === 'bundleVersion' || field.endsWith('BundleVersion'));
+  const supportedDiscriminatorFields = new Set(['bundleVersion', 'faultBundleVersion', 'evidenceBoundFaultBundleVersion']);
+  const discriminators = discriminatorFields.filter((field) => x[field] === '1').length;
+  const presentDiscriminators = discriminatorFields.length;
+  const soleDiscriminator = discriminatorFields[0];
+  if (presentDiscriminators !== 1 || discriminators !== 1 || !soleDiscriminator || !supportedDiscriminatorFields.has(soleDiscriminator)) {
+    if (presentDiscriminators === 1 && soleDiscriminator === 'faultBundleVersion') e.push('faultBundleVersion must be "1"');
+    else if (presentDiscriminators === 1 && soleDiscriminator === 'evidenceBoundFaultBundleVersion') e.push('evidenceBoundFaultBundleVersion must be "1"');
+    else if (presentDiscriminators === 1 && soleDiscriminator === 'bundleVersion') e.push('bundleVersion must be "1"');
+    else e.push('exactly one supported bundle discriminator must equal "1"');
+  }
   if (typeof x.jobId !== 'string' || !x.jobId) e.push('jobId missing');
   if (typeof x.outcome !== 'string' || !KNOWN_OUTCOMES.has(x.outcome)) e.push(`unknown outcome "${String(x.outcome)}" (§10.4)`);
   // §10.4 (R4-B): anchoredByRole is required, a known role, and must match a listed party's role.
@@ -249,7 +257,7 @@ function structuralErrors(b: unknown): string[] {
  */
 export function verifyBundleV1(
   bundle: AttestationBundleV1 | CurrentAttestationBundle,
-  opts: { requireSignatures?: boolean } = {},
+  opts: { requireSignatures?: boolean; resolvePublicKey?: (claim: BundleSignature['party']) => Uint8Array | null } = {},
 ): BundleV1Verdict {
   const requireSignatures = opts.requireSignatures ?? true;
   const reasons: string[] = [];
@@ -304,7 +312,7 @@ export function verifyBundleV1(
     // Encoding validity is independent of key resolution — reject a malformed value even for a DID signer.
     const sig = currentStrictEncoding && s.value.includes('=') ? null : decodeEd25519Sig(s.value);
     if (!sig) return { party, decision: 'fail', reason: 'signature value is not a valid 64-byte base64/base64url ed25519 signature' };
-    const kb = keyBytes(s.party);
+    const kb = keyBytes(s.party) ?? opts.resolvePublicKey?.(s.party) ?? null;
     if (!kb) return { party, decision: 'unverifiable', reason: 'claim identifier is not a 32-byte ed25519 key (e.g. placeholder DID)' };
     let ok = false;
     try { ok = verify(domain, sig, enc.encode(bundleHash), kb); } catch { ok = false; }

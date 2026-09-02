@@ -1,12 +1,14 @@
 import { DOMAIN_SEPARATORS, ADDITIVE_DOMAIN_SEPARATORS, type DomainSeparator } from '../../domain-sep.js';
-import { jcsHashHex } from '../../jcs.js';
+import { jcsCanonical, jcsHashHex } from '../../jcs.js';
 import { deriveBundleLogicalAddress, type BundleBindingV1 } from '../../lib/bundle-binding-v1.js';
 import { bundleSignedScopeHashV1 } from '../../lib/bundle-signed-scope-v1.js';
 import { verify } from '../../lib/sign.js';
+import { sha256 } from '@noble/hashes/sha2';
 import { claimKey, decodeEd25519Sig, verifyBundleV1 } from '../../lib/verify-bundle-v1.js';
 import { verifySettlementEvidenceV1 } from '../../lib/verify-settlement-evidence-v1.js';
 import type {
   AnchorReceipt,
+  AgreementDocumentV1,
   BundleOutcome,
   BundleParty,
   BundlePhaseEntry,
@@ -14,6 +16,7 @@ import type {
   CurrentAttestationBundle,
   EvidenceBoundFaultAttestationBundle,
   FaultAttestationBundle,
+  FinalityCommitmentRecord,
 } from '../../types/bundle.js';
 import type { ClaimRef } from '../../types/identity.js';
 import type { AttestationRef } from '../../types/verify-result.js';
@@ -40,6 +43,14 @@ export interface ExecutedPhase {
   evidenceRef?: AttestationRef;
   orchestrator: Claim;
   evidenceLogicalAddress?: string;
+  evidenceAnchor?: AgreementAnchorResult;
+}
+
+export interface ResolvedCommitment {
+  commitment: FinalityCommitmentRecord;
+  agreement: AgreementDocumentV1;
+  receipt: AnchorReceipt;
+  anchor?: AgreementAnchorResult;
 }
 
 export interface CompletedSessionEvidence {
@@ -66,10 +77,11 @@ export interface BundleFinalizerDependencies {
   signers: { buyer: AdapterSigner; seller: AdapterSigner; orchestrator?: AdapterSigner };
   anchor(request: { logicalAddress: string; content: unknown; contentHash: string }): Promise<AgreementAnchorResult>;
   fetchAnchored(address: string): Promise<unknown>;
-  receiptProvider(request: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult }): Promise<AnchorReceipt>;
+  fetchReceipt(request: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult }): Promise<AnchorReceipt>;
+  fetchCommitment?: (ref: AttestationRef) => Promise<ResolvedCommitment>;
   publishBundleBinding?: (binding: BundleBindingV1) => Promise<void>;
   verifySignature?: (request: { domain: DomainSeparator; hash: string; signer: Claim; algorithm: string; value: string }) => Promise<boolean> | boolean;
-  projectPaymentRail?: (rail: JsonObject) => string;
+  projectPaymentRail(rail: JsonObject): string;
   now?: () => number;
 }
 
@@ -83,9 +95,10 @@ export interface FinalizedBundleExpectation {
   bundles: FinalizedBundleSet['bundles'];
   scopeHash: string;
   phases?: ExecutedPhase[];
+  session?: CompletedSessionEvidence;
 }
 
-export type BundleFinalizerReadDependencies = Pick<BundleFinalizerDependencies, 'fetchAnchored' | 'receiptProvider' | 'verifySignature'>;
+export type BundleFinalizerReadDependencies = Partial<Pick<BundleFinalizerDependencies, 'fetchReceipt' | 'fetchCommitment'>> & Pick<BundleFinalizerDependencies, 'fetchAnchored' | 'verifySignature' | 'projectPaymentRail'>;
 
 const SETTLEMENT = new Set([
   'pay-evm-erc20', 'pay-solana-spl', 'pay-cross-chain-htlc', 'pay-cross-chain-liquidity-tank',
@@ -128,18 +141,18 @@ async function signatureValid(deps: Pick<BundleFinalizerDependencies, 'verifySig
   return !!sig && !!key && verify(domain, sig, new TextEncoder().encode(hash), key);
 }
 
-function effectivePipeline(input: CompletedSessionEvidence, deps: BundleFinalizerDependencies): JsonObject[] {
+function effectivePipeline(input: CompletedSessionEvidence, deps: Pick<BundleFinalizerDependencies, 'projectPaymentRail'>, agreement?: AgreementDocumentV1): JsonObject[] {
   if (!Array.isArray(input.listing.pipeline) || input.listing.pipeline.length === 0) throw new BundleFinalizationError('pipeline', 'listing pipeline must be non-empty');
   return input.listing.pipeline.map((raw) => {
     const phase = object(raw);
     if (phase.kind !== 'pay-alternative') return phase;
-    const agreementRail = input.agreement && object(object(input.agreement.terms).rail);
+    const agreementRail = agreement && object(object(agreement.terms).rail);
     if (!agreementRail) throw new BundleFinalizationError('apr', 'pay-alternative requires the authenticated agreement rail');
     const alternatives = object(phase.parameters).alternatives;
     if (!Array.isArray(alternatives) || alternatives.filter((x) => jcsHashHex(x) === jcsHashHex(agreementRail)).length !== 1) {
       throw new BundleFinalizationError('apr', 'agreement rail does not select exactly one signed alternative');
     }
-    const projected = deps.projectPaymentRail?.(agreementRail) ?? String(agreementRail.railId);
+    const projected = deps.projectPaymentRail(agreementRail);
     if (!projected.startsWith('pay-') || projected === 'pay-alternative') throw new BundleFinalizationError('apr', 'selected rail cannot be projected to a concrete payment handler');
     return { kind: projected, parameters: { rail: agreementRail.railId } };
   });
@@ -159,17 +172,36 @@ function validateTrace(input: CompletedSessionEvidence, pipeline: JsonObject[]):
     const last = phases.at(-1);
     if (!last || last.outcome !== 'fail' || (last.errorClass !== 'permanent' && !(last.errorClass === 'transient' && last.retryExhausted))) throw new BundleFinalizationError('phase-outcome', 'failed-perm requires a terminal permanent or retry-exhausted transient failure');
   }
+  if (input.outcome === 'failed-counterparty' || input.outcome === 'failed-substrate') {
+    const last = phases.at(-1);
+    const required = input.outcome === 'failed-counterparty' ? 'counterparty' : 'substrate';
+    if (!last || last.outcome !== 'fail' || last.errorClass !== required) throw new BundleFinalizationError('phase-outcome', `${input.outcome} requires one terminal ${required} failure`);
+  }
+  if (input.outcome === 'aborted-by-self' || input.outcome === 'aborted-by-other') {
+    if (phases.length >= pipeline.length || phases.some((phase) => phase.outcome === 'fail')) throw new BundleFinalizationError('phase-outcome', 'aborted trace must be a proper successful prefix ending before the next phase');
+  }
   return phases.map((p) => ({ index: p.index, kind: p.kind, outcome: p.outcome,
     ...(p.errorClass ? { errorClass: p.errorClass } : {}), ...(p.retryExhausted ? { retryExhausted: true as const } : {}),
     ...(p.txRefs ? { txRefs: p.txRefs } : {}), ...(p.evidenceRef ? { attestationRef: p.evidenceRef } : {}) }));
 }
 
-function validateReceipt(receipt: AnchorReceipt, expected: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult }, completed: boolean): void {
+function validateReceipt(receipt: AnchorReceipt, expected: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult; storedContent: unknown }, completed: boolean): void {
   if (receipt.receiptVersion !== '1' || receipt.observationDisposition !== 'established') throw new BundleFinalizationError('receipt', 'receipt is not established');
   if (receipt.logicalAddress !== expected.logicalAddress || receipt.contentHash !== expected.contentHash) throw new BundleFinalizationError('receipt-binding', 'receipt logical address/content hash mismatch');
   if (expected.anchor && (receipt.nativeAddress !== expected.anchor.nativeAddress || receipt.writer !== expected.anchor.writer ||
       receipt.transactionRef.kind !== expected.anchor.transactionRef.kind || receipt.transactionRef.value !== expected.anchor.transactionRef.value || receipt.nonce !== expected.anchor.nonce)) {
     throw new BundleFinalizationError('receipt-binding', 'receipt native address/transaction/writer/nonce mismatch');
+  }
+  if (receipt.evidence.kind !== 'stored-bytes-base64url') {
+    throw new BundleFinalizationError('evidence-unverifiable', 'receipt evidence does not carry recoverable stored bytes (SR2-4)');
+  }
+  if (!/^[A-Za-z0-9_-]*$/.test(receipt.evidence.value) || receipt.evidence.value.includes('=')) {
+    throw new BundleFinalizationError('receipt-evidence', 'receipt evidence stored bytes are not valid unpadded Base64URL');
+  }
+  const storedBytes = Buffer.from(receipt.evidence.value, 'base64url');
+  if (storedBytes.toString('base64url') !== receipt.evidence.value || Buffer.from(sha256(storedBytes)).toString('hex') !== expected.contentHash ||
+      !storedBytes.equals(Buffer.from(jcsCanonical(expected.storedContent)))) {
+    throw new BundleFinalizationError('receipt-evidence', 'receipt evidence bytes do not match the stored contentHash (SR2-4)');
   }
   const {
     state: lifecycle,
@@ -198,11 +230,61 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     if (claimKey(signature.signer) !== claimKey(phase.orchestrator)) throw new BundleFinalizationError('seb-authorship', `evidence signer is not phase ${phase.index}'s authenticated orchestrator`);
     const unsigned = { ...evidence }; delete unsigned.signature;
     if (!await signatureValid(deps, DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, jcsHashHex(unsigned), signature)) throw new BundleFinalizationError('seb-signature', `evidence signature invalid for phase ${phase.index}`);
-    const receipt = await deps.receiptProvider({ logicalAddress: phase.evidenceLogicalAddress ?? ref.anchor.locator, contentHash: ref.contentHash.replace(/^sha256:/, '') });
-    validateReceipt(receipt, { logicalAddress: phase.evidenceLogicalAddress ?? ref.anchor.locator, contentHash: ref.contentHash.replace(/^sha256:/, '') }, input.outcome === 'completed');
-    if (receipt.writer !== (typeof phase.orchestrator === 'string' ? phase.orchestrator : phase.orchestrator.identifier)) throw new BundleFinalizationError('seb-authorship', `evidence writer is not phase ${phase.index}'s authenticated orchestrator`);
+    const railId = phase.kind.startsWith('pay-') ? phase.kind : undefined;
+    const logicalAddress = railId === undefined ? phase.evidenceLogicalAddress : `dacs4:payment:${input.jobId}:${railId}:${phase.index}`;
+    if (!logicalAddress || (phase.evidenceLogicalAddress !== undefined && phase.evidenceLogicalAddress !== logicalAddress)) throw new BundleFinalizationError('receipt-binding', `caller evidence logical address contradicts PC-2 for phase ${phase.index}`);
+    if (!phase.evidenceAnchor) throw new BundleFinalizationError('evidence-anchor', `evidence anchor metadata missing for phase ${phase.index}`);
+    if (phase.evidenceAnchor.logicalAddress !== logicalAddress || phase.evidenceAnchor.nativeAddress !== ref.anchor.locator) throw new BundleFinalizationError('receipt-binding', `evidence anchor address mismatch for phase ${phase.index}`);
+    const receipt = await deps.fetchReceipt({ logicalAddress, contentHash: ref.contentHash.replace(/^sha256:/, ''), anchor: phase.evidenceAnchor });
+    validateReceipt(receipt, { logicalAddress, contentHash: ref.contentHash.replace(/^sha256:/, ''), anchor: phase.evidenceAnchor, storedContent: evidence }, input.outcome === 'completed');
+    const writerKey = claimKey(receipt.writer), orchestratorKey = claimKey(phase.orchestrator);
+    const sameWriter = writerKey !== null && orchestratorKey !== null
+      ? writerKey === orchestratorKey
+      : typeof phase.orchestrator === 'string' && receipt.writer === phase.orchestrator;
+    if (!sameWriter) throw new BundleFinalizationError('seb-authorship', `evidence writer is not phase ${phase.index}'s authenticated orchestrator`);
   }
   return refs as AttestationRef[];
+}
+
+export async function verifyBundleListing(listing: JsonObject, deps: Pick<BundleFinalizerDependencies, 'verifySignature'>): Promise<void> {
+  const signature = object(listing.signature);
+  const scope = { ...listing }; delete scope.signature; delete scope.contentHash;
+  const contentHash = jcsHashHex(scope);
+  if (listing.contentHash !== contentHash) throw new BundleFinalizationError('listing-hash', 'listing contentHash does not match its signed scope (SEB-1)');
+  if (!await signatureValid(deps, DOMAIN_SEPARATORS.LISTING, contentHash, signature)) throw new BundleFinalizationError('listing-signature', 'listing signature is invalid (SEB-1)');
+}
+
+async function resolveCommitment(input: CompletedSessionEvidence, deps: Pick<BundleFinalizerDependencies, 'fetchCommitment' | 'fetchReceipt' | 'verifySignature'>): Promise<ResolvedCommitment | undefined> {
+  if (input.outcome !== 'completed' && input.outcome !== 'failed-counterparty') return undefined;
+  if (!input.agreementRef || !deps.fetchCommitment) throw new BundleFinalizationError('commitment-unresolved', 'completed or failed-counterparty bundle requires a resolvable finalized commitment (ST-11)');
+  let resolved: ResolvedCommitment;
+  try { resolved = await deps.fetchCommitment(input.agreementRef); }
+  catch { throw new BundleFinalizationError('commitment-transport', 'agreement commitment could not be resolved (ST-11)'); }
+  const commitmentHash = jcsHashHex(resolved.commitment);
+  if (commitmentHash !== input.agreementRef.contentHash.replace(/^sha256:/, '') || resolved.commitment.jobId !== input.jobId) throw new BundleFinalizationError('commitment-binding', 'agreement commitment hash/job mismatch (ST-11)');
+  const agreementScope = { ...resolved.agreement } as JsonObject; delete agreementScope.signatures;
+  const agreementHash = jcsHashHex(agreementScope);
+  if (agreementHash !== resolved.commitment.agreementHash) throw new BundleFinalizationError('commitment-binding', 'commitment agreementHash mismatch (ST-11)');
+  const parties = new Map(resolved.agreement.parties.map((party) => [party.role, party]));
+  for (const role of ['buyer', 'seller'] as const) {
+    const party = parties.get(role);
+    const signatures = party ? resolved.agreement.signatures.filter((signature) => claimKey(signature.party) === claimKey(party.primaryClaim)) : [];
+    if (signatures.length !== 1) throw new BundleFinalizationError('commitment-signature', `agreement requires exactly one ${role} signature (ST-11)`);
+    const signature = signatures[0]!;
+    if (!await signatureValid(deps, DOMAIN_SEPARATORS.AGREEMENT, agreementHash, { signer: signature.party, algorithm: signature.algorithm, value: signature.value })) throw new BundleFinalizationError('commitment-signature', `agreement ${role} signature invalid (ST-11)`);
+  }
+  const commitmentScope = { ...resolved.commitment } as JsonObject; delete commitmentScope.signature;
+  if (!await signatureValid(deps, ADDITIVE_DOMAIN_SEPARATORS.FINALITY_COMMITMENT, jcsHashHex(commitmentScope), object(resolved.commitment.signature))) throw new BundleFinalizationError('commitment-signature', 'commitment signature invalid (ST-11)');
+  const logicalAddress = `dacs3:commit:${input.jobId}`;
+  if (!resolved.anchor || resolved.anchor.logicalAddress !== logicalAddress || resolved.anchor.nativeAddress !== input.agreementRef.anchor.locator) {
+    throw new BundleFinalizationError('commitment-binding', 'commitment anchor metadata is missing or mismatched (ST-11)');
+  }
+  let receipt: AnchorReceipt;
+  try { receipt = await deps.fetchReceipt({ logicalAddress, contentHash: commitmentHash, anchor: resolved.anchor }); }
+  catch { throw new BundleFinalizationError('commitment-transport', 'commitment receipt could not be independently fetched (ST-11)'); }
+  try { validateReceipt(receipt, { logicalAddress, contentHash: commitmentHash, anchor: resolved.anchor, storedContent: resolved.commitment }, true); }
+  catch (error) { throw new BundleFinalizationError('commitment-finality', error instanceof Error ? `${error.message} (ST-11)` : 'commitment receipt is not finalized and bound (ST-11)'); }
+  return resolved;
 }
 
 function checkFault(input: CompletedSessionEvidence): void {
@@ -225,8 +307,11 @@ async function emitBinding(input: CompletedSessionEvidence, deps: BundleFinalize
 export async function finalizeBundle(input: CompletedSessionEvidence, deps: BundleFinalizerDependencies): Promise<FinalizedBundleSet> {
   if (input.kind !== undefined && input.kind !== 'ebfab' && input.kind !== 'fab') throw new BundleFinalizationError('bundle-kind', 'legacy bundleVersion:"1" emission is not supported');
   checkFault(input);
-  if (jcsHashHex(input.listingRef) !== jcsHashHex({ listingId: input.listing.listingId, version: input.listing.listingVersion, contentHash: input.listing.contentHash ?? (() => { const x = { ...input.listing }; delete x.signature; return jcsHashHex(x); })() })) throw new BundleFinalizationError('listing-ref', 'listingRef does not match listing');
-  const pipeline = effectivePipeline(input, deps);
+  await verifyBundleListing(input.listing, deps);
+  if (jcsHashHex(input.listingRef) !== jcsHashHex({ listingId: input.listing.listingId, version: input.listing.listingVersion, contentHash: input.listing.contentHash })) throw new BundleFinalizationError('listing-ref', 'listingRef does not match listing');
+  const resolvedCommitment = await resolveCommitment(input, deps);
+  if (resolvedCommitment) input = { ...input, agreement: resolvedCommitment.agreement as unknown as JsonObject };
+  const pipeline = effectivePipeline(input, deps, resolvedCommitment?.agreement);
   const phaseSummary = validateTrace(input, pipeline);
   const evidence = await resolveEvidence(input, deps);
   const roles: Role[] = ['buyer', 'seller'];
@@ -250,11 +335,12 @@ export async function finalizeBundle(input: CompletedSessionEvidence, deps: Bund
     const verified = verifyBundleV1(bundle);
     if (verified.decision !== 'accept') throw new BundleFinalizationError('bundle-signature', verified.reasons.join('; '));
     const logical = deriveBundleLogicalAddress(input.jobId, role);
-    const anchor = await deps.anchor({ logicalAddress: logical, content: bundle, contentHash: scopeHash });
+    const storedContentHash = jcsHashHex(bundle);
+    const anchor = await deps.anchor({ logicalAddress: logical, content: bundle, contentHash: storedContentHash });
     const fetched = parsed(await deps.fetchAnchored(anchor.nativeAddress));
     if (bundleSignedScopeHashV1(fetched) !== scopeHash || fetched.anchoredByRole !== role) throw new BundleFinalizationError('cold-read', `bundle copy for ${role} did not independently resolve`);
-    const receipt = await deps.receiptProvider({ logicalAddress: logical, contentHash: scopeHash, anchor });
-    validateReceipt(receipt, { logicalAddress: logical, contentHash: scopeHash, anchor }, input.outcome === 'completed');
+    const receipt = await deps.fetchReceipt({ logicalAddress: logical, contentHash: storedContentHash, anchor });
+    validateReceipt(receipt, { logicalAddress: logical, contentHash: storedContentHash, anchor, storedContent: fetched }, input.outcome === 'completed');
     const binding = await emitBinding(input, deps, role, anchor.nativeAddress, scopeHash, anchor);
     bundles[role] = { bundle, hash: scopeHash, address: { logical, native: anchor.nativeAddress }, receipt, ...(binding ? { binding } : {}) };
   }
@@ -262,19 +348,35 @@ export async function finalizeBundle(input: CompletedSessionEvidence, deps: Bund
 }
 
 export async function verifyFinalizedBundleCold(expected: FinalizedBundleExpectation, deps: BundleFinalizerReadDependencies): Promise<{ outcome: 'pass' | 'fail' | 'indeterminate'; detail: string }> {
+  const fetchReceipt = deps.fetchReceipt;
+  if (!fetchReceipt) return { outcome: 'indeterminate', detail: 'evidence-not-refetched' };
   try {
+    if (!expected.bundles.buyer || !expected.bundles.seller) return { outcome: 'fail', detail: 'buyer and seller bundle copies are both required' };
     const entries = Object.entries(expected.bundles) as Array<[Role, NonNullable<FinalizedBundleSet['bundles'][Role]>]>;
-    if (entries.length < 2) return { outcome: 'indeterminate', detail: 'both buyer and seller bundle copies are required' };
+    let authorityBundle: JsonObject | undefined;
     for (const [role, copy] of entries) {
       let fetched: JsonObject;
       try { fetched = parsed(await deps.fetchAnchored(copy.address.native)); }
       catch { return { outcome: 'indeterminate', detail: `${role} bundle copy is unavailable` }; }
       if (fetched.anchoredByRole !== role || fetched.jobId !== expected.jobId || bundleSignedScopeHashV1(fetched) !== expected.scopeHash) return { outcome: 'fail', detail: `${role} bundle copy binding/hash mismatch` };
+      if (copy.hash !== expected.scopeHash) return { outcome: 'fail', detail: `${role} bundle copy declares a different hash` };
       const verdict = verifyBundleV1(fetched as unknown as CurrentAttestationBundle);
       if (verdict.decision === 'reject') return { outcome: 'fail', detail: `${role} bundle verification failed: ${verdict.reasons.join('; ')}` };
       if (verdict.decision === 'indeterminate') return { outcome: 'indeterminate', detail: `${role} bundle signatures could not be verified` };
+      if (!deps.verifySignature) return { outcome: 'indeterminate', detail: 'bundle signature verifier unavailable' };
+      const signatures = fetched.signatures;
+      const parties = fetched.parties;
+      if (!Array.isArray(signatures) || !Array.isArray(parties)) return { outcome: 'fail', detail: `${role} bundle signatures/parties malformed` };
+      for (const partyRole of ['buyer', 'seller'] as const) {
+        const party = (parties as JsonObject[]).find((candidate) => candidate.role === partyRole);
+        const matching = party ? (signatures as JsonObject[]).filter((signature) => claimKey(signature.party as Claim) === claimKey(party.primaryClaim as Claim)) : [];
+        if (matching.length !== 1) return { outcome: 'fail', detail: `${role} copy requires exactly one ${partyRole} signature` };
+        const signature = matching[0]!;
+        if (!await deps.verifySignature({ domain: fetched.faultBundleVersion === '1' ? DOMAIN_SEPARATORS.FAULT_BUNDLE : ADDITIVE_DOMAIN_SEPARATORS.EVIDENCE_BOUND_FAULT_BUNDLE, hash: expected.scopeHash, signer: signature.party as Claim, algorithm: String(signature.algorithm), value: String(signature.value) })) return { outcome: 'fail', detail: `${role} copy ${partyRole} signature invalid` };
+      }
+      const storedContentHash = jcsHashHex(fetched);
       let receipt: AnchorReceipt;
-      try { receipt = await deps.receiptProvider({ logicalAddress: copy.address.logical, contentHash: expected.scopeHash }); }
+      try { receipt = await fetchReceipt({ logicalAddress: copy.address.logical, contentHash: storedContentHash }); }
       catch { return { outcome: 'indeterminate', detail: `${role} receipt is unavailable` }; }
       const expectedAnchor: AgreementAnchorResult = {
         logicalAddress: copy.address.logical,
@@ -283,14 +385,36 @@ export async function verifyFinalizedBundleCold(expected: FinalizedBundleExpecta
         writer: copy.receipt.writer,
         ...(copy.receipt.nonce !== undefined ? { nonce: copy.receipt.nonce } : {}),
       };
-      try { validateReceipt(receipt, { logicalAddress: copy.address.logical, contentHash: expected.scopeHash, anchor: expectedAnchor }, fetched.outcome === 'completed'); }
+      try { validateReceipt(receipt, { logicalAddress: copy.address.logical, contentHash: storedContentHash, anchor: expectedAnchor, storedContent: fetched }, fetched.outcome === 'completed'); }
       catch (error) {
         if (error instanceof BundleFinalizationError && error.code === 'finality') return { outcome: 'indeterminate', detail: error.message };
         return { outcome: 'fail', detail: error instanceof Error ? error.message : 'invalid receipt' };
       }
+      if (role === 'buyer') authorityBundle = fetched;
     }
-    return { outcome: 'pass', detail: 'all role copies, signatures, hashes, addresses, and lifecycle receipts verified' };
+    if (!expected.session || !authorityBundle) return { outcome: 'indeterminate', detail: 'evidence verification input unavailable' };
+    await verifyBundleListing(expected.session.listing, deps);
+    const phaseSummary = authorityBundle.phaseSummary as JsonObject[];
+    const settlementEvidence = authorityBundle.settlementEvidence as AttestationRef[];
+    if (!Array.isArray(phaseSummary) || !Array.isArray(settlementEvidence)) return { outcome: 'fail', detail: 'bundle evidence fields malformed' };
+    const settlementByIndex = new Map<number, AttestationRef>();
+    for (const entry of phaseSummary) if (entry.attestationRef) settlementByIndex.set(Number(entry.index), entry.attestationRef as AttestationRef);
+    const replayInput: CompletedSessionEvidence = {
+      ...expected.session,
+      outcome: authorityBundle.outcome as BundleOutcome,
+      agreementRef: authorityBundle.agreementRef as AttestationRef | undefined,
+      phaseResults: expected.session.phaseResults.map((phase) => ({ ...phase, evidenceRef: settlementByIndex.get(phase.index) ?? phase.evidenceRef })),
+    };
+    const resolved = await resolveCommitment(replayInput, { ...deps, fetchReceipt });
+    if (resolved) replayInput.agreement = resolved.agreement as unknown as JsonObject;
+    const pipeline = effectivePipeline(replayInput, deps, resolved?.agreement);
+    validateTrace(replayInput, pipeline);
+    const refs = await resolveEvidence(replayInput, deps as BundleFinalizerDependencies);
+    if (jcsHashHex(refs) !== jcsHashHex(settlementEvidence)) return { outcome: 'fail', detail: 'bundle settlement evidence does not equal the re-derived SEB set' };
+    return { outcome: 'pass', detail: 'buyer/seller copies, signatures, hashes, finalized commitment, and SEB-1..SEB-6 evidence verified' };
   } catch (error) {
+    if (error instanceof BundleFinalizationError && error.code === 'commitment-transport') return { outcome: 'indeterminate', detail: error.message };
+    if (error instanceof BundleFinalizationError && error.code === 'commitment-unresolved') return { outcome: 'fail', detail: 'commitment-unresolved' };
     return { outcome: 'fail', detail: error instanceof Error ? error.message : 'bundle verification failed' };
   }
 }
