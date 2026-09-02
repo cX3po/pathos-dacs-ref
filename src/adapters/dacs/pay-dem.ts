@@ -1,13 +1,9 @@
-/** Included-only native DEM settlement adapter. */
+/** Pure included-only native DEM settlement policy and amount conversion. */
 
-import { DemosTransactions } from '@kynesyslabs/demosdk/websdk';
-import type { DemosHandle } from '../../demos/connection.js';
 import { emitSettlementEvidenceV1 } from '../../lib/emit-settlement-evidence-v1.js';
 import type { SettlementEvidenceV1Payment } from '../../types/settle.js';
 import type {
   DemosNativeClient,
-  DemosTransferResult,
-  PayDemPreparedTransfer,
   PayDemSettlementRecoveryContext,
   SettleResult,
 } from './sdk-pay-dem-types.js';
@@ -24,8 +20,6 @@ export type {
 
 export const PAY_DEM_RAIL_ID = 'pay-dem';
 const INCLUDED_STATE = 'included';
-/** Set-shaped for SDK API compatibility; acceptance below is an exact comparison. */
-export const TERMINAL_INCLUDED = new Set([INCLUDED_STATE]);
 
 const OS_PER_DEM = 1_000_000_000n;
 const CANONICAL_DEM_RE = /^(?:[1-9]\d*|(?:0|[1-9]\d*)\.\d*[1-9])$/;
@@ -186,103 +180,4 @@ export async function settlePayDemCore(
     finalityObservedAt,
     evidence,
   };
-}
-
-export interface DemosNativeClientOptions {
-  journalPreparedTransfer?: (prepared: Readonly<PayDemPreparedTransfer>) => Promise<void>;
-}
-
-function stringAt(value: unknown, paths: readonly (readonly string[])[]): string | undefined {
-  for (const path of paths) {
-    let cursor: unknown = value;
-    for (const key of path) {
-      cursor = cursor && typeof cursor === 'object' ? (cursor as Record<string, unknown>)[key] : undefined;
-    }
-    if (typeof cursor === 'string' && cursor.length > 0) return cursor;
-  }
-  return undefined;
-}
-
-/** Thin demosdk wiring; all settlement acceptance policy remains in the pure core. */
-export function createDemosNativeClient(
-  handle: DemosHandle,
-  opts: DemosNativeClientOptions = {},
-): DemosNativeClient {
-  const demos = handle.demos;
-  const payer = handle.address;
-  const journal = opts.journalPreparedTransfer;
-  return {
-    address: payer,
-    async transfer({ to, amountOs, recovery }): Promise<DemosTransferResult> {
-      const tx = await DemosTransactions.pay(to, amountOs, demos);
-      const signed = await demos.sign(tx);
-      const validity = await DemosTransactions.confirm(signed, demos);
-      const signedRecord = signed as unknown as { hash?: unknown; content?: { nonce?: unknown } };
-      const txHash = typeof signedRecord.hash === 'string' ? signedRecord.hash : '';
-      const nonce = signedRecord.content?.nonce;
-      if (!txHash || !Number.isSafeInteger(nonce) || (nonce as number) < 0) {
-        return { ok: false, hash: txHash, message: 'pay-dem signed transfer lacks hash or nonce' };
-      }
-      if (journal) {
-        await journal(Object.freeze({
-          txHash,
-          nonce: nonce as number,
-          payer,
-          payee: to,
-          amountOs: amountOs.toString(),
-          network: recovery?.network ?? 'demos',
-          ...(recovery === undefined ? {} : { recovery }),
-        }));
-      }
-
-      const payload = await DemosTransactions.broadcastAndWait(validity, demos) as unknown;
-      const hash = stringAt(payload, [
-        ['broadcast', 'data', 'tx_hash'],
-        ['broadcast', 'data', 'hash'],
-        ['broadcast', 'response', 'hash'],
-      ]) ?? txHash;
-      const state = stringAt(payload, [['status', 'state']]);
-      const rawBlock = payload && typeof payload === 'object'
-        ? (payload as { status?: { blockNumber?: unknown } }).status?.blockNumber
-        : undefined;
-      const blockNumber = typeof rawBlock === 'number' ? rawBlock : undefined;
-      return {
-        ok: hash.length > 0,
-        hash,
-        ...(state === undefined ? {} : { state }),
-        ...(blockNumber === undefined ? {} : { blockNumber }),
-        ...(hash.length > 0 ? {} : { message: 'pay-dem broadcast returned no transaction hash' }),
-      };
-    },
-  };
-}
-
-export type PayDemJournal =
-  | ((prepared: Readonly<PayDemPreparedTransfer>) => Promise<void>)
-  | { journalPreparedTransfer(prepared: Readonly<PayDemPreparedTransfer>): Promise<void> };
-
-/** Gateway convenience wrapper retaining the former call shape. */
-export async function settlePayDem(opts: {
-  buyer: DemosHandle;
-  sellerAddress: string;
-  amountOs?: bigint;
-  amountDemCanonical: string;
-  jobId: string;
-  phaseIndex: number;
-  network?: string;
-  journal?: PayDemJournal;
-}): Promise<PayDemSettleOutcome> {
-  const journalPreparedTransfer = typeof opts.journal === 'function'
-    ? opts.journal
-    : opts.journal?.journalPreparedTransfer.bind(opts.journal);
-  const client = createDemosNativeClient(opts.buyer, { journalPreparedTransfer });
-  return settlePayDemCore({
-    recipient: opts.sellerAddress,
-    amountDemCanonical: opts.amountDemCanonical,
-    currency: 'DEM',
-    jobId: opts.jobId,
-    phaseIndex: opts.phaseIndex,
-    network: opts.network,
-    amountOs: opts.amountOs,
-  }, client);
 }

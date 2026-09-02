@@ -40,6 +40,7 @@ import type { FetchResult } from '../demos/storage.js';
 import { anchorNames } from './anchor-naming.js';
 import { listingLogicalAddress } from '../dacs1/addressing.js';
 import { buildDiscoveryArtifacts, resolveListingFromPublishedBinding } from '../dacs1/discovery.js';
+import { createPayDemJsonlJournal } from './pay-dem-journal.js';
 
 const LIVE = process.env.LIVE === '1';
 const RPC = process.env.DEMOS_RPC ?? 'https://demosnode.discus.sh/';
@@ -248,10 +249,11 @@ log('DACS-3', `agreement ${agreementHash.slice(0, 16)}… signed by both parties
 const SETTLE_PHASE_INDEX = 3;
 let payEvidence;
 if (LIVE && handles) {
-  const { settlePayDem } = await import('../adapters/dacs/pay-dem.js');
+  const { settlePayDem } = await import('../adapters/dacs/pay-dem-demosdk.js');
   const pay = await settlePayDem({
     buyer: handles.buyer, sellerAddress: handles.seller.address,
     amountOs: PRICE_OS, amountDemCanonical: PRICE_DEM, jobId, phaseIndex: SETTLE_PHASE_INDEX,
+    journal: createPayDemJsonlJournal(process.env.DACS_PAYDEM_JOURNAL),
   });
   if (!pay.ok) throw new Error(`pay-dem settlement aborted: ${pay.reason}`);
   payEvidence = pay.evidence;
