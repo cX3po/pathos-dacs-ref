@@ -1,0 +1,13 @@
+{
+  "ts": 1788350400,
+  "action": "publish",
+  "target": "cX3po/pathos-dacs-ref#47",
+  "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "verdict": "APPROVED",
+  "verdict_code": "GATE_OK",
+  "tier": "T2",
+  "intent": "excluded fixture intent",
+  "checks": { "excluded": true },
+  "blocking": false,
+  "process_history": ["excluded"]
+}
