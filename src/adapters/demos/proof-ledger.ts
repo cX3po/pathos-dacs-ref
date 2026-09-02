@@ -138,8 +138,10 @@ async function broadcastPlan(handle: DemosHandle, payload: unknown): Promise<Bro
   const txHash = result.broadcast?.response?.hash
     ?? result.broadcast?.data?.tx_hash
     ?? result.broadcast?.data?.hash;
-  if (!txHash) throw new Error('proof-ledger: included append did not return a transaction hash');
-  return { txHash };
+  // The storage-program broadcast response has carried no transaction hash on the current
+  // testnet node (observed 2026-09-02 on every anchor); the included state and the planned
+  // storage address are the success criteria, and the hash is reported when present.
+  return { txHash: typeof txHash === 'string' ? txHash : '' };
 }
 
 function parseLedger(value: unknown, label: string): LedgerData {
