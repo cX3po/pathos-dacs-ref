@@ -93,6 +93,9 @@ DACS-1 listing (signed, JCS, SR-2 anchored)
         ↓
 DACS-2 vet via DAHR (consensus-backed-proxy GLEIF)
         ↓
+DACS-4 pay-dem via src/adapters/dacs/pay-dem.ts
+        (only exact `included` + block witness emits `bft-final` evidence)
+        ↓
 DACS-5 AttestationBundle (cosigned, two-sided anchored at stor-{sha256(jobId+role)})
         ↓
 verify CLI walks §10.4.1 → recompute hash → verify both signatures → walk every

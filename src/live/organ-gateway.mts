@@ -8,7 +8,7 @@
  *   DACS-1  seller anchors a signed listing (SR-2, name-addressed — see anchor-naming.ts)
  *   DACS-2  buyer verifies the seller's cci primary claim over the listing signature
  *   DACS-3  fixed-price agreement, signed by both parties (CD-1 canonical price)
- *   DACS-4  pay-dem (§9.5.9): REAL native-DEM transfer, bft-final evidence (pay-dem.ts);
+ *   DACS-4  pay-dem (§9.5.9): REAL native-DEM transfer, included-only bft-final evidence;
  *           deliver-storage-program (§9.6.1): the organ answer anchored at
  *           dacs4:deliverable:{jobId}, delivery evidence with real contentHash + locator
  *   DACS-5  both parties emit AttestationBundleV1, both copies anchored two-sided;
@@ -40,6 +40,7 @@ import type { FetchResult } from '../demos/storage.js';
 import { anchorNames } from './anchor-naming.js';
 import { listingLogicalAddress } from '../dacs1/addressing.js';
 import { buildDiscoveryArtifacts, resolveListingFromPublishedBinding } from '../dacs1/discovery.js';
+import { createPayDemJsonlJournal } from './pay-dem-journal.js';
 
 const LIVE = process.env.LIVE === '1';
 const RPC = process.env.DEMOS_RPC ?? 'https://demosnode.discus.sh/';
@@ -50,6 +51,9 @@ const PRICE_OS = 1_000_000_000n;
 const SPEND_CAP_DEM = Number(process.env.GATEWAY_SPEND_CAP_DEM ?? '50');
 // Env config for running this gateway against your own setup:
 //   DACS_ENV_PATH  path to the dotenv file holding DEMOS_MNEMONIC / DEMOS_SELLER_MNEMONIC (default: .env)
+//   DACS_PAYDEM_JOURNAL  append-only JSONL journal of signed pay-dem preparations, outside the checkout
+//                        (default: ~/.pathos-dacs-ref/pay-dem-journal.jsonl); built in LIVE preflight so a
+//                        refused path fails before any SR-2 write
 //   AXIOM_PY       interpreter for the deliverable generator                              (default: python3)
 //   ORGAN_CLI      deliverable-generator CLI that prints the answer text on stdout        (default: organ_answer.py)
 // The generator is pluggable — point AXIOM_PY/ORGAN_CLI at any interpreter + CLI. ORGAN_CLI is resolved by
@@ -104,12 +108,16 @@ const handles = LIVE ? await connectLive() : null;
 // run whose parameters match a dry-run you actually passed (Codex note, 2026-07-09).
 const paramHash = jcsHashHex({ v: 'organ-gateway-params:1', organ: ORGAN, query: QUERY, priceDem: PRICE_DEM, capDem: SPEND_CAP_DEM });
 
+let payDemJournal: ReturnType<typeof createPayDemJsonlJournal> | undefined;
 // PREFLIGHT (LIVE only) — a live session anchors ~7 SR-2 writes + 1 pay-dem transfer, all DEM.
 // The fail-closed gate refuses to spend unless: the estimate is under the cap, the buyer wallet
 // is funded, an explicit operator go is set, and the run is bound to a verified dry-run hash.
 // Dry-run mode spends nothing, so it skips the gate entirely.
 if (LIVE && handles) {
   const { preflight } = await import('./spend-preflight.js');
+  // The pay-dem journal is resolved here, before DACS-1, so a refused path stops the run
+  // before any DEM moves or any SR-2 anchor is written.
+  payDemJournal = createPayDemJsonlJournal(process.env.DACS_PAYDEM_JOURNAL);
   const suppliedHash = process.env.GATEWAY_DRYRUN_HASH ?? null;
   // Match-gate: the operator's dry-run hash MUST equal this run's recomputed paramHash. A mismatch
   // (price/query/cap/organ changed since the dry-run) fails closed BEFORE the balance query.
@@ -248,11 +256,13 @@ log('DACS-3', `agreement ${agreementHash.slice(0, 16)}… signed by both parties
 const SETTLE_PHASE_INDEX = 3;
 let payEvidence;
 if (LIVE && handles) {
-  const { settlePayDem } = await import('./pay-dem.js');
+  const { settlePayDem } = await import('../adapters/dacs/pay-dem-demosdk.js');
   const pay = await settlePayDem({
     buyer: handles.buyer, sellerAddress: handles.seller.address,
     amountOs: PRICE_OS, amountDemCanonical: PRICE_DEM, jobId, phaseIndex: SETTLE_PHASE_INDEX,
+    journal: payDemJournal ?? createPayDemJsonlJournal(process.env.DACS_PAYDEM_JOURNAL),
   });
+  if (!pay.ok) throw new Error(`pay-dem settlement aborted: ${pay.reason}`);
   payEvidence = pay.evidence;
   log('DACS-4', `pay-dem settled ${PRICE_DEM} DEM → tx demos:${pay.txHash.slice(0, 16)}… (bft-final)`);
 } else {
