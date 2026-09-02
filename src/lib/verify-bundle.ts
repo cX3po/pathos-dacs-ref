@@ -19,7 +19,7 @@ import type { AttestationBundle, VerifyStep, VerifyVerdict, AttestationRef } fro
 import { jcsCanonical, jcsHash } from '../jcs.js';
 import { verify as edVerify } from './sign.js';
 import { DOMAIN_SEPARATORS, LEGACY_READ_SEPARATORS } from '../domain-sep.js';
-import { fetchAnchored } from '../demos/storage.js';
+import { fetchAnchored, unwrapTextAnchor } from '../demos/storage.js';
 
 /** Step recorder — accumulates the verify walk for the final verdict. */
 export class StepLog {
@@ -398,7 +398,7 @@ async function fetchAnchoredWithStatus(
   try {
     const result = await fetchImpl(rpc, addr);
     if (!result) return { status: 'absent' };
-    return { status: 'present', data: result.data };
+    return { status: 'present', data: unwrapTextAnchor(result.data) ?? result.data };
   } catch (e) {
     return { status: 'error', error: (e as Error).message };
   }
@@ -500,13 +500,14 @@ async function walkAttestationRefs(
     // v0.2 verifier accepts ONLY string-anchored attestations to keep the hash chain honest;
     // object-anchored attestations resolve to indeterminate until v0.3 wires the canonical-
     // bytes API the SDK exposes for that case.
-    if (typeof fetched.data !== 'string') {
+    const fetchedData = unwrapTextAnchor(fetched.data) ?? fetched.data;
+    if (typeof fetchedData !== 'string') {
       log.add(label, 'indeterminate',
-        `anchored data is not a string (type=${typeof fetched.data}). v0.2 verifier only ` +
+        `anchored data is not a string (type=${typeof fetchedData}). v0.2 verifier only ` +
         `handles string-anchored attestations (DAHR shape); object-anchored attestations land in v0.3.`);
       continue;
     }
-    const bytes = new TextEncoder().encode(fetched.data);
+    const bytes = new TextEncoder().encode(fetchedData);
     const actualHash = bytesToHex(sha256(bytes));
 
     if (actualHash !== ref.contentHash.toLowerCase()) {

@@ -11,7 +11,7 @@
  * The wrapper here keeps the SDK call shape out of the CLIs.
  */
 
-import { StorageProgram } from '@kynesyslabs/demosdk/storage';
+import { StorageProgram, type StorageProgramData } from '@kynesyslabs/demosdk/storage';
 import type { DemosHandle } from './connection.js';
 
 export interface AnchorResult {
@@ -19,8 +19,10 @@ export interface AnchorResult {
   storageAddress: string;
   /** Transaction hash that created the storage program */
   txHash: string;
-  /** Bytes anchored */
+  /** Stored byte length, including the JSON text-envelope overhead when present */
   sizeBytes: number;
+  /** Original content byte length before adding a text envelope */
+  contentBytes: number;
   /** When anchored (ISO 8601) */
   anchoredAt: string;
 }
@@ -32,12 +34,75 @@ export interface FetchResult {
   owner: string;
   /** Raw data field — JSON object or string depending on encoding */
   data: unknown;
+  /** True when a wrapped-text JSON anchor was transparently unwrapped */
+  wrapped?: true;
   /** Bytes size */
   sizeBytes: number;
   /** Transaction that created this storage */
   createdByTx?: string;
   /** When created (ISO 8601 per SDK) */
   createdAt: string;
+}
+
+export interface FetchAnchoredOptions {
+  /** Test/substrate seam for the raw nodeCall transport. */
+  fetchImpl?: typeof fetch;
+}
+
+export function wrapTextAnchor(text: string): { v: 'dacs-ref-text:1'; text: string } {
+  return { v: 'dacs-ref-text:1', text };
+}
+
+export function unwrapTextAnchor(data: unknown): string | null {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return null;
+  const keys = Reflect.ownKeys(data);
+  if (keys.length !== 2 || !keys.includes('v') || !keys.includes('text')) return null;
+  const candidate = data as { v?: unknown; text?: unknown };
+  return candidate.v === 'dacs-ref-text:1' && typeof candidate.text === 'string'
+    ? candidate.text
+    : null;
+}
+
+export function storedAnchorPayload(
+  data: Record<string, unknown> | string,
+  encoding: 'json' | 'binary',
+): Record<string, unknown> | string {
+  return typeof data === 'string' && encoding === 'json' ? wrapTextAnchor(data) : data;
+}
+
+/**
+ * Read a Storage Program without the SDK's error-to-null conversion.
+ * Only a dedicated not-found response or an empty successful response is absence.
+ */
+export async function getStorageProgram(
+  rpc: string,
+  storageAddress: string,
+  options: FetchAnchoredOptions = {},
+): Promise<StorageProgramData | null> {
+  const httpRes = await (options.fetchImpl ?? fetch)(rpc, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      method: 'nodeCall',
+      params: [{
+        message: 'getStorageProgram',
+        data: { storageAddress },
+        muid: `dacs-anchor-address-${storageAddress.length}-${storageAddress.slice(0, 24)}`,
+      }],
+    }),
+  });
+  // Every non-2xx, including 404, is a transport or routing error on this POST wire: the node
+  // reports a missing program as HTTP 200 with envelope result 404, never as an HTTP status.
+  if (!httpRes.ok) throw new Error(`getStorageProgram HTTP ${httpRes.status} for "${storageAddress}"`);
+  const envelope = (await httpRes.json()) as { result?: number; response?: unknown };
+  if (envelope?.result === 404) return null;
+  if (envelope?.result !== 200) {
+    throw new Error(
+      `getStorageProgram RPC returned result=${String(envelope?.result)} for "${storageAddress}"`,
+    );
+  }
+  if (envelope.response == null) return null;
+  return envelope.response as StorageProgramData;
 }
 
 /**
@@ -57,7 +122,7 @@ export async function anchor(
   handle: DemosHandle,
   programName: string,
   data: Record<string, unknown> | string,
-  options: { acl?: 'public' | 'private'; salt?: string } = {}
+  options: { acl?: 'public' | 'private'; salt?: string; encoding?: 'binary' } = {}
 ): Promise<AnchorResult> {
   const { demos, address } = handle;
 
@@ -79,9 +144,15 @@ export async function anchor(
     ? StorageProgram.privateACL()
     : StorageProgram.publicACL();
 
-  // Pick encoding based on input shape
-  const encoding: 'json' | 'binary' = typeof data === 'string' ? 'binary' : 'json';
-  if (!StorageProgram.validateSize(data, encoding)) {
+  if (options.encoding === 'binary' && typeof data !== 'string') {
+    throw new Error('Binary encoding is only supported for string anchors');
+  }
+
+  // Demos node 0.9.8 (stabilisation) was observed on 2026-09-02 accepting binary
+  // storage writes for propagation but never including them. Keep binary opt-in for future nodes.
+  const encoding: 'json' | 'binary' = options.encoding === 'binary' ? 'binary' : 'json';
+  const storedData = storedAnchorPayload(data, encoding);
+  if (!StorageProgram.validateSize(storedData, encoding)) {
     throw new Error(`Data exceeds StorageProgram size limit (encoding=${encoding})`);
   }
 
@@ -90,7 +161,7 @@ export async function anchor(
   const payload = StorageProgram.createStorageProgram(
     address,
     programName,
-    data,
+    storedData,
     encoding,
     acl,
     { nonce, salt: options.salt }
@@ -158,12 +229,16 @@ export async function anchor(
     throw new Error(`SR-2 anchor of "${programName}" not included (state=${result.status?.state ?? 'missing'})`);
   }
 
-  const sizeBytes = StorageProgram.getDataSize(data, encoding);
+  const sizeBytes = StorageProgram.getDataSize(storedData, encoding);
+  const contentBytes = typeof data === 'string'
+    ? new TextEncoder().encode(data).byteLength
+    : sizeBytes;
 
   return {
     storageAddress,
     txHash,
     sizeBytes,
+    contentBytes,
     anchoredAt: new Date().toISOString(),
   };
 }
@@ -177,14 +252,17 @@ export async function anchor(
  */
 export async function fetchAnchored(
   rpc: string,
-  storageAddress: string
+  storageAddress: string,
+  options: FetchAnchoredOptions = {},
 ): Promise<FetchResult | null> {
-  const data = await StorageProgram.getByAddress(rpc, storageAddress);
+  const data = await getStorageProgram(rpc, storageAddress, options);
   if (!data) return null;
+  const unwrapped = unwrapTextAnchor(data.data);
   return {
     storageAddress: data.storageAddress,
     owner: data.owner,
-    data: data.data ?? null,
+    data: unwrapped ?? data.data ?? null,
+    ...(unwrapped !== null ? { wrapped: true as const } : {}),
     sizeBytes: data.sizeBytes,
     createdByTx: data.createdByTx,
     createdAt: data.createdAt,
@@ -204,18 +282,20 @@ export async function fetchAnchored(
 export async function verifyAnchor(
   rpc: string,
   storageAddress: string,
-  expectedContentHashHex: string
+  expectedContentHashHex: string,
+  options: { fetchAnchoredImpl?: typeof fetchAnchored } = {}
 ): Promise<{ outcome: 'pass' | 'fail' | 'indeterminate'; detail: string; actualHashHex?: string }> {
   try {
-    const result = await fetchAnchored(rpc, storageAddress);
+    const result = await (options.fetchAnchoredImpl ?? fetchAnchored)(rpc, storageAddress);
     if (!result) {
       return { outcome: 'indeterminate', detail: `anchor ${storageAddress} not found at ${rpc}` };
     }
     const { sha256 } = await import('@noble/hashes/sha2');
+    const payload = unwrapTextAnchor(result.data) ?? result.data;
     // Re-serialize as the SDK would have stored it
-    const bytes = typeof result.data === 'string'
-      ? new TextEncoder().encode(result.data)
-      : new TextEncoder().encode(JSON.stringify(result.data));
+    const bytes = typeof payload === 'string'
+      ? new TextEncoder().encode(payload)
+      : new TextEncoder().encode(JSON.stringify(payload));
     const actualHash = sha256(bytes);
     const actualHashHex = Array.from(actualHash, (b) => b.toString(16).padStart(2, '0')).join('');
     if (actualHashHex === expectedContentHashHex.toLowerCase()) {
