@@ -137,26 +137,30 @@ test('emission refuses an unresolved commitment with a typed error', async () =>
   await assert.rejects(finalizeBundle(input, state.deps), (error: unknown) => error instanceof Error && error.name === 'BundleFinalizationError' && /ST-11/.test(error.message));
 });
 
-test('ST-11 independently refetches the commitment receipt for emission and cold verification', async () => {
+test('ST-11 independently refetches the commitment receipt and distinguishes pending from contradictory data', async () => {
   const emissionState = setup(); const emissionInput = await session(emissionState);
   const commitmentLogical = `dacs3:commit:${emissionInput.jobId}`;
   const emissionResolved = emissionState.commitments.get(emissionInput.agreementRef!.anchor.locator)!;
   emissionResolved.receipt = { ...emissionResolved.receipt, logicalAddress: commitmentLogical, state: 'finalized', observationDisposition: 'established' };
   emissionState.receipts.set(commitmentLogical, { ...emissionState.receipts.get(commitmentLogical)!, state: 'included' });
-  await assert.rejects(finalizeBundle(emissionInput, emissionState.deps), /not finalized/);
+  await assert.rejects(finalizeBundle(emissionInput, emissionState.deps), /commitment-pending/);
 
   const coldState = setup(); const coldInput = await session(coldState); const result = await finalizeBundle(coldInput, coldState.deps);
   coldState.receipts.set(commitmentLogical, { ...coldState.receipts.get(commitmentLogical)!, state: 'included' });
   const verdict = await verifyFinalizedBundleCold({ jobId: coldInput.jobId, ...result, session: coldInput }, coldState.deps);
-  assert.equal(verdict.outcome, 'fail');
+  assert.deepEqual(verdict, { outcome: 'indeterminate', detail: 'commitment-pending' });
+
+  coldState.receipts.set(commitmentLogical, { ...coldState.receipts.get(commitmentLogical)!, state: 'finalized', writer: buyer.claim });
+  const contradictory = await verifyFinalizedBundleCold({ jobId: coldInput.jobId, ...result, session: coldInput }, coldState.deps);
+  assert.equal(contradictory.outcome, 'fail');
 });
 
-test('cold ST-11 fails without the commitment seam and is indeterminate only on seam transport error', async () => {
+test('cold ST-11 is indeterminate without the commitment seam or on seam transport error', async () => {
   const state = setup(); const input = await session(state); const result = await finalizeBundle(input, state.deps);
   const expectation = { jobId: input.jobId, ...result, session: input };
   const { fetchCommitment: _missing, ...withoutCommitment } = state.deps;
   const missing = await verifyFinalizedBundleCold(expectation, withoutCommitment);
-  assert.deepEqual(missing, { outcome: 'fail', detail: 'commitment-unresolved' });
+  assert.deepEqual(missing, { outcome: 'indeterminate', detail: 'commitment-not-refetched' });
   const transport = await verifyFinalizedBundleCold(expectation, { ...state.deps, async fetchCommitment() { throw new Error('transport'); } });
   assert.equal(transport.outcome, 'indeterminate');
 });
@@ -198,6 +202,37 @@ test('cold verification requires buyer and seller, reruns SEB, and needs a recei
   const { fetchReceipt: _fetchReceipt, ...withoutReceipt } = state.deps;
   const noSeam = await verifyFinalizedBundleCold(expectation, withoutReceipt);
   assert.deepEqual(noSeam, { outcome: 'indeterminate', detail: 'evidence-not-refetched' });
+});
+
+test('cold verification binds the caller listing and phaseResults to the authority bundle', async () => {
+  const state = setup(); const input = await session(state); const result = await finalizeBundle(input, state.deps);
+  const substitute = structuredClone(input);
+  substitute.listing.listingId = 'substitute-listing';
+  const listingScope = { ...substitute.listing }; delete listingScope.signature; delete listingScope.contentHash;
+  substitute.listing.contentHash = jcsHashHex(listingScope);
+  substitute.listing.signature = { algorithm: 'ed25519', signer: seller.claim, value: Buffer.from(sign(DOMAIN_SEPARATORS.LISTING, new TextEncoder().encode(substitute.listing.contentHash as string), seller.privateKey)).toString('base64url') };
+  const listingVerdict = await verifyFinalizedBundleCold({ jobId: input.jobId, ...result, session: substitute }, state.deps);
+  assert.equal(listingVerdict.outcome, 'fail');
+  assert.match(listingVerdict.detail, /listingRef/);
+
+  const alteredTrace = structuredClone(input);
+  alteredTrace.phaseResults[0]!.txRefs = [{ chainId: 'test', txHash: 'altered' }];
+  const phaseVerdict = await verifyFinalizedBundleCold({ jobId: input.jobId, ...result, session: alteredTrace }, state.deps);
+  assert.equal(phaseVerdict.outcome, 'fail');
+  assert.match(phaseVerdict.detail, /phaseSummary/);
+});
+
+test('cold verification treats evidence receipt transport failure as indeterminate', async () => {
+  const state = setup(); const input = await session(state); const result = await finalizeBundle(input, state.deps);
+  const unavailable = input.phaseResults[2]!.evidenceLogicalAddress!;
+  const verdict = await verifyFinalizedBundleCold({ jobId: input.jobId, ...result, session: input }, {
+    ...state.deps,
+    async fetchReceipt(request) {
+      if (request.logicalAddress === unavailable) throw new Error('unavailable');
+      return state.deps.fetchReceipt(request);
+    },
+  });
+  assert.deepEqual(verdict, { outcome: 'indeterminate', detail: 'evidence-not-refetched' });
 });
 
 test('pinned settlement fixtures replay hashes, structural outcomes, and signatures bytewise', () => {

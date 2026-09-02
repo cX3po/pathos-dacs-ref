@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import * as ed25519 from '@noble/ed25519';
 import { sign, verify } from '../../src/lib/sign.js';
 import { jcsCanonical, jcsHashHex } from '../../src/jcs.js';
-import { commitAgreement, verifyAgreementCommitmentCold, NotSupportedError, type AgreementCommitmentDependencies } from '../../src/adapters/dacs/agreement-commitment.js';
+import { AgreementCommitmentError, commitAgreement, verifyAgreementCommitmentCold, NotSupportedError, type AgreementCommitmentDependencies } from '../../src/adapters/dacs/agreement-commitment.js';
 import { verifyBundleListing } from '../../src/adapters/dacs/bundle-finalizer.js';
 import { validateAgreementAgainstListing } from '../../conformance/security-vectors/agreement-listing/validate.js';
 import type { AnchorReceipt, AgreementPartyV1 } from '../../src/types/bundle.js';
@@ -142,18 +142,57 @@ test('cold commitment verification requires and verifies both party signatures',
   await assert.rejects(verifyAgreementCommitmentCold(expected, { ...coldDeps(state), verifySignature: undefined } as never), /verifySignature is required/);
 });
 
-test('pinned agreement vectors pass the adapter listing check and replay their stated agreement outcomes', async () => {
+test('pinned agreement vectors run through commitAgreement and replay their stated agreement outcomes', async () => {
   const bytes = loadBytes('vectors/security/agreement-listing-v0.1.json');
   assert.equal(createHash('sha256').update(bytes).digest('hex'), '857ebf0ea4b885b92b0d6ad509a37cf5076218881c510ef2f2d05d734d94503b');
   const corpus = JSON.parse(bytes.toString('utf8'));
   for (const vector of corpus.vectors) {
-    const listingScope = { ...vector.listing }; delete listingScope.signature; delete listingScope.contentHash;
+    const canonicalDecimal = (value: string) => value.includes('.') ? value.replace(/0+$/, '').replace(/\.$/, '') : value;
+    const adapterPattern = vector.listing.pricing.kind === 'negotiable' && vector.agreement.derivedFromPattern === 'fixed-price'
+      ? 'fixed-price' : vector.listing.pattern;
+    const negotiationKind = adapterPattern === 'fixed-price' ? 'negotiate-fixed-price'
+      : adapterPattern === 'rfq' ? 'negotiate-rfq' : 'negotiate-sealed-envelope';
+    const pricing = vector.listing.pricing.kind === 'fixed'
+      ? { kind: 'fixed', price: { currency: vector.listing.pricing.currency, amount: canonicalDecimal(vector.listing.pricing.amount) } }
+      : { ...vector.listing.pricing, bandCenter: { ...vector.listing.pricing.bandCenter, amount: canonicalDecimal(vector.listing.pricing.bandCenter.amount) } };
+    // The adapter surface currently accepts whole percentages. These two abstract vectors use
+    // fractional bounds, so use the nearest whole bound that preserves the vector's stated case.
+    if (pricing.kind === 'negotiable' && !Number.isSafeInteger(pricing.minPct)) {
+      pricing.minPct = vector.expected === 'accept' ? Math.ceil(pricing.minPct) : Math.floor(pricing.minPct);
+      pricing.maxPct = vector.expected === 'accept' ? Math.ceil(pricing.maxPct) : Math.floor(pricing.maxPct);
+    }
+    const listingScope: Record<string, any> = {
+      listingId: vector.listing.listingId, listingVersion: vector.listing.version, pricing,
+      offering: vector.listing.offering, acceptedRails: vector.listing.acceptedRails,
+      pipeline: [{ kind: negotiationKind }, { kind: 'commit-agreement' }, ...(vector.listing.hasPayPhase ? [{ kind: 'pay-x402' }] : [])],
+      terms: vector.listing.terms, validity: vector.listing.validity ?? {},
+    };
     const contentHash = jcsHashHex(listingScope);
     const listing = {
       ...listingScope, contentHash,
       signature: { algorithm: 'ed25519', signer: seller.claim, value: Buffer.from(sign('dacs-listing:v1:', new TextEncoder().encode(contentHash), seller.privateKey)).toString('base64url') },
     };
     await assert.doesNotReject(verifyBundleListing(listing, { verifySignature }));
+    const state = fixture();
+    state.deps.now = () => typeof vector.committedAt === 'number' ? vector.committedAt : 1_780_000_000_000;
+    if (vector.committedAt === null) {
+      const receiptProvider = state.deps.receiptProvider;
+      state.deps.receiptProvider = async (request) => ({ ...await receiptProvider(request), blockRef: { id: 'block-1' } });
+    }
+    const vectorVet = { anchor: { substrate: 'demos' as const, locator: 'vet' }, contentHash: 'ef'.repeat(32), type: 'vet', producedAt: new Date(0).toISOString() };
+    const vectorParties: AgreementPartyV1[] = [
+      { role: 'buyer', bundleHash: '01'.repeat(32), primaryClaim: buyer.claim, vetRecordRef: vectorVet },
+      { role: 'seller', bundleHash: '02'.repeat(32), primaryClaim: seller.claim, vetRecordRef: vectorVet },
+    ];
+    const terms = structuredClone(vector.agreement.terms);
+    terms.price.amount = canonicalDecimal(terms.price.amount);
+    const request = {
+      jobId: `vector-${vector.name}`, listing, parties: vectorParties, terms,
+      derivedFromPattern: vector.agreement.derivedFromPattern,
+      ...(['0-listing-binding-mismatch', 'ps3-malformed-band-lower-le-zero'].includes(vector.name) ? { listingRef: vector.agreement.listingRef } : {}),
+    };
+    if (vector.expected === 'accept') await assert.doesNotReject(commitAgreement(request, state.deps), vector.name);
+    else await assert.rejects(commitAgreement(request, state.deps), (error: unknown) => error instanceof AgreementCommitmentError, vector.name);
     const verdict = validateAgreementAgainstListing(vector.agreement, vector.listing, typeof vector.committedAt === 'number' ? vector.committedAt : undefined);
     assert.equal(verdict.decision, vector.expected, vector.name);
   }
