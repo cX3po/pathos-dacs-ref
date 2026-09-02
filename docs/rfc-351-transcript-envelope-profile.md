@@ -38,7 +38,7 @@ For each member `i` in roster order:
 - `header = { suiteId, transcriptVersion: "1", channelId, memberSetHash, memberKeysHash, plaintextHash }`.
 - `aad = UTF8(JCS(header))`: the RFC 8785 canonical form of `header`, with no trailing newline.
 - `ciphertext = AES-256-GCM(cek, iv, plaintext = UTF8(JCS(AuthenticatedChannelTranscript)), aad)`, with a 12-byte random `iv` and a 16-byte `tag`; `iv`, `ciphertext`, and `tag` are separate base64url fields.
-- `contentHash = sha256(UTF8(JCS(header)) || iv || ciphertext || tag)` hex.
+- `contentHash = sha256(UTF8(JCS(header)) || raw(iv) || raw(ciphertext) || raw(tag))` hex, where `raw(·)` is the unpadded-base64url decoding of that field (12 bytes / variable / 16 bytes); the base64url strings themselves are never hashed.
 
 `contentHash` binds the header (and through it `memberSetHash`, `memberKeysHash`, and `plaintextHash`) to the content bytes, so header tampering is a public step-4 failure. The SDK anchor helper (`anchor.js:67,123`) hashes only the L2PS ciphertext under the subnet key; it is a different object and is not this profile.
 
@@ -69,7 +69,7 @@ Admission verifies every `memberKeys[i].keySig` against the member's current DAC
 1. Check envelope shape and encodings.
 2. Verify production `memberKeys` signatures (specified, skipped by this harness).
 3. Recompute and compare both `memberSetHash` from the ordered claims and `memberKeysHash` from the advertised `{claim, kem, publicKey}` entries.
-4. Recompute and compare `contentHash = sha256(UTF8(JCS(header)) || iv || ciphertext || tag)`.
+4. Recompute and compare `contentHash = sha256(UTF8(JCS(header)) || raw(iv) || raw(ciphertext) || raw(tag))` (decoded bytes, never the base64url strings).
 5. For the verifier's claim, locate its wrap, compute `ss = Decaps(ct, dk)`, and authenticate/decrypt the wrapped `cek`.
 6. Open the content with `aad = UTF8(JCS(header))`.
 7. Check `sha256(JCS(plaintext)) == plaintextHash`.

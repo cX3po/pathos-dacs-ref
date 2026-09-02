@@ -5,7 +5,7 @@
     "keyDerivation": "Raw ML-KEM-768 keygen with the listed 64-byte seeds; no SDK HKDF derivation.",
     "memberKeyBinding": "Advertised {claim, kem, publicKey} entries are committed by memberKeysHash.",
     "keySig": "keySig and stale-key verification are specified but out of scope; verification step 2 is skipped because it needs the DACS signer.",
-    "contentHash": "SHA-256 over UTF8(JCS(header)) || iv || ciphertext || tag."
+    "contentHash": "SHA-256 over UTF8(JCS(header)) || raw(iv) || raw(ciphertext) || raw(tag), where raw() is the unpadded-base64url decoding of the field (12 / variable / 16 bytes); the base64url strings are never hashed."
   },
   "vectors": [
     {
