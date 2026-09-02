@@ -1,0 +1,208 @@
+{
+  "seal-golden-inputs": {
+    "outcome": "pass",
+    "step": 8,
+    "code": "SEALED",
+    "justification": "The profile inputs reproduce the golden bytes and the resulting envelope opens for every member through step 8.",
+    "outputs": {
+      "memberSetHash": "c66152f67134116ea13e35947e31574559e791488166ff2c71a3ab02207abee5",
+      "recipientBindingsHash": "eed1f70bc1db4fe02b747d12a356422e24c0f5cc7c6be3dc026e03e9ad98dfcf",
+      "plaintextHash": "afbd0fddf25a0a5abb4420494071a55999135d61f9f924a0b43222da3af9f117",
+      "contentHash": "7ce87e6a871b0f3a633e2d6a28c84e45e62e6a9609c7783b092b38aabf342acf",
+      "ciphertext": "7TJE_IRV8zhgT4s-UV_8Th8vjO_VBikjqOZiqepUg5KOnVFi84PYvoM5N1l0pfAZqTk-iN1sB8FR58ImDv_h_Ste75gMHJexhOHfjIDUcsOYwyTb5GJwo9WUubjHEwnBxNML37CWlZxFKsvPGfJzy1E2gYGjORr7WtV7vxHPOZMLMdcRSMtZODO5D-UuMaI5UHcHUBChZ_VK9cDgFYb_XPXvbgI6RNzWjpxSbrCBe5g_g5QurAR6NlS2uvZSB7IffSwVn11BbCd6rXKSWMOpF6gDBBXklWdWAkfu3pvmuDEGV83ZLiPcBrOtT1-kkw4uQivT0hQuev9oVpQE-a6AU2-3Vk6ndGkXYy0qcyPUUFfOOdZcsirez0kDyyHCe3pjwaIk8oApmSXW3PrDxOTZF59rtm7-Fz3x-_1Q3_xvyZbO9xC52s1oA-RDEDtB5A",
+      "tag": "IKvH5xFi4GWbz3KCKvJ4iw"
+    }
+  },
+  "exact-open-member-a": {
+    "outcome": "pass",
+    "step": 8,
+    "code": "OPENED",
+    "justification": "Member A passes all eight verification steps."
+  },
+  "exact-open-member-b": {
+    "outcome": "pass",
+    "step": 8,
+    "code": "OPENED",
+    "justification": "Member B passes all eight verification steps."
+  },
+  "wrong-recipient-coordinate": {
+    "outcome": "fail",
+    "step": 5,
+    "code": "RECIPIENT_NOT_FOUND",
+    "justification": "The exact recipient coordinate cannot be located at step 5."
+  },
+  "wrong-mlkem-secret": {
+    "outcome": "fail",
+    "step": 5,
+    "code": "CEK_WRAP_AUTHENTICATION_FAILED",
+    "justification": "The wrong decapsulation key cannot authenticate the CEK wrap at step 5."
+  },
+  "ciphertext-tamper-stale-content-hash": {
+    "outcome": "fail",
+    "step": 4,
+    "code": "CONTENT_HASH_MISMATCH",
+    "justification": "The stale public content commitment mismatches at step 4."
+  },
+  "ciphertext-tamper-recomputed-content-hash": {
+    "outcome": "fail",
+    "step": 6,
+    "code": "CONTENT_AUTHENTICATION_FAILED",
+    "justification": "The recomputed public hash passes, but content GCM authentication fails at step 6."
+  },
+  "wrap-tamper-stale-content-hash": {
+    "outcome": "fail",
+    "step": 4,
+    "code": "CONTENT_HASH_MISMATCH",
+    "justification": "The stale commitment exposes the changed wrap at step 4."
+  },
+  "wrap-tamper-recomputed-content-hash": {
+    "outcome": "fail",
+    "step": 5,
+    "code": "CEK_WRAP_AUTHENTICATION_FAILED",
+    "justification": "The recomputed commitment passes, but wrap GCM authentication fails at step 5."
+  },
+  "channel-id-change-recomputed-content-hash": {
+    "outcome": "fail",
+    "step": 6,
+    "code": "CONTENT_AUTHENTICATION_FAILED",
+    "justification": "The changed header produces different AAD, so content authentication fails at step 6."
+  },
+  "modified-key-signature": {
+    "outcome": "fail",
+    "step": 2,
+    "code": "BAD_KEY_SIGNATURE",
+    "justification": "The canonical but altered binding signature fails at step 2."
+  },
+  "revoked-key": {
+    "outcome": "fail",
+    "step": 2,
+    "code": "KEY_REVOKED",
+    "justification": "Authenticated revoked status fails at step 2."
+  },
+  "unavailable-key-status": {
+    "outcome": "indeterminate",
+    "step": 2,
+    "code": "KEY_STATUS_UNAVAILABLE",
+    "justification": "Unavailable authenticated status is indeterminate at step 2."
+  },
+  "expired-key": {
+    "outcome": "fail",
+    "step": 2,
+    "code": "KEY_OUTSIDE_VALIDITY_WINDOW",
+    "justification": "The exclusive expiry boundary fails at step 2."
+  },
+  "unsupported-suite-id": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "An unsupported suite selector is malformed at step 1."
+  },
+  "unsupported-suite-version": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "An unsupported suite version is malformed at step 1."
+  },
+  "suite-version-boolean-true": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "A boolean is not the exact integer suite version and is malformed at step 1."
+  },
+  "suite-version-float-one": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "A floating-point 1.0 is not the exact integer suite version and is malformed at step 1."
+  },
+  "binding-valid-from-boolean": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "A boolean validity bound is not a safe integer and is malformed at step 1."
+  },
+  "missing-recipient-binding": {
+    "outcome": "fail",
+    "step": 5,
+    "code": "RECIPIENT_NOT_FOUND",
+    "justification": "After self-consistent public hashes, the removed exact coordinate is absent at step 5."
+  },
+  "duplicate-recipient": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "The recipient roster is not duplicate-free at step 1."
+  },
+  "reordered-bindings": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "Bindings are not in canonical member-byte order at step 1."
+  },
+  "noncanonical-base64url-tag": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "Padded Base64URL is non-canonical and malformed at step 1."
+  },
+  "wrap-binding-coordinate-mismatch": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "The positional wrap/binding bijection is broken at step 1."
+  },
+  "stale-member-set-hash-resealed-content": {
+    "outcome": "fail",
+    "step": 3,
+    "code": "MEMBER_SET_HASH_MISMATCH",
+    "justification": "The memberSetHash is stale while content is sealed under that header and its contentHash is current, isolating step 3."
+  },
+  "stale-recipient-bindings-hash-resealed-content": {
+    "outcome": "fail",
+    "step": 3,
+    "code": "RECIPIENT_BINDINGS_HASH_MISMATCH",
+    "justification": "The recipientBindingsHash is stale while content is sealed under that header and its contentHash is current, isolating step 3."
+  },
+  "member-b-revoked-open-member-a": {
+    "outcome": "fail",
+    "step": 2,
+    "code": "KEY_REVOKED",
+    "justification": "Opening as member A still checks member B's authenticated status at step 2."
+  },
+  "member-b-bad-key-signature-open-member-a": {
+    "outcome": "fail",
+    "step": 2,
+    "code": "BAD_KEY_SIGNATURE",
+    "justification": "Opening as member A still verifies member B's binding signature at step 2; later hashes and encryption are consistent."
+  },
+  "wrong-plaintext-hash-resealed-content": {
+    "outcome": "fail",
+    "step": 7,
+    "code": "PLAINTEXT_HASH_MISMATCH",
+    "justification": "Content authenticates under a header containing the wrong plaintextHash, so only the recomputation at step 7 fails."
+  },
+  "transcript-member-order-mismatch-resealed-content": {
+    "outcome": "fail",
+    "step": 8,
+    "code": "TRANSCRIPT_ROSTER_MISMATCH",
+    "justification": "The decrypted transcript has a correct plaintextHash but its member order differs from the envelope roster at step 8."
+  },
+  "malformed-plus-revoked-key": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "Malformed encoding at step 1 precedes the independently revoked member B key at step 2."
+  },
+  "bad-key-signature-plus-stale-content-hash": {
+    "outcome": "fail",
+    "step": 2,
+    "code": "BAD_KEY_SIGNATURE",
+    "justification": "The bad binding signature at step 2 precedes the independently stale contentHash at step 4."
+  },
+  "stale-member-set-hash-plus-stale-content-hash": {
+    "outcome": "fail",
+    "step": 3,
+    "code": "MEMBER_SET_HASH_MISMATCH",
+    "justification": "The stale memberSetHash at step 3 precedes the resulting stale contentHash at step 4."
+  }
+}

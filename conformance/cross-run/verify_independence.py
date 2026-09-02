@@ -44,6 +44,7 @@ SETS = {
     "artifact-reference-shapes-v0.1": "eval_artifact_reference_shapes",
     "sb3-eip3009-nonce-v0.1": "eval_sb3_eip3009_nonce",
     "x402-receipt-hash-v0.1": "eval_x402_receipt_hash",
+    "transcript-suite-mlkem768-v0.1": "eval_transcript_suite_mlkem768",
 }
 
 

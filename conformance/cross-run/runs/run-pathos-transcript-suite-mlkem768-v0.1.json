@@ -1,0 +1,212 @@
+{
+  "set": "transcript-suite-mlkem768-v0.1",
+  "impl": "pathos-dacs-ref@cross-run-2",
+  "results": [
+    {
+      "name": "seal-golden-inputs",
+      "outcome": "pass",
+      "step": 8,
+      "code": "SEALED",
+      "outputs": {
+        "memberSetHash": "c66152f67134116ea13e35947e31574559e791488166ff2c71a3ab02207abee5",
+        "recipientBindingsHash": "eed1f70bc1db4fe02b747d12a356422e24c0f5cc7c6be3dc026e03e9ad98dfcf",
+        "plaintextHash": "afbd0fddf25a0a5abb4420494071a55999135d61f9f924a0b43222da3af9f117",
+        "contentHash": "7ce87e6a871b0f3a633e2d6a28c84e45e62e6a9609c7783b092b38aabf342acf",
+        "ciphertext": "7TJE_IRV8zhgT4s-UV_8Th8vjO_VBikjqOZiqepUg5KOnVFi84PYvoM5N1l0pfAZqTk-iN1sB8FR58ImDv_h_Ste75gMHJexhOHfjIDUcsOYwyTb5GJwo9WUubjHEwnBxNML37CWlZxFKsvPGfJzy1E2gYGjORr7WtV7vxHPOZMLMdcRSMtZODO5D-UuMaI5UHcHUBChZ_VK9cDgFYb_XPXvbgI6RNzWjpxSbrCBe5g_g5QurAR6NlS2uvZSB7IffSwVn11BbCd6rXKSWMOpF6gDBBXklWdWAkfu3pvmuDEGV83ZLiPcBrOtT1-kkw4uQivT0hQuev9oVpQE-a6AU2-3Vk6ndGkXYy0qcyPUUFfOOdZcsirez0kDyyHCe3pjwaIk8oApmSXW3PrDxOTZF59rtm7-Fz3x-_1Q3_xvyZbO9xC52s1oA-RDEDtB5A",
+        "tag": "IKvH5xFi4GWbz3KCKvJ4iw"
+      }
+    },
+    {
+      "name": "exact-open-member-a",
+      "outcome": "pass",
+      "step": 8,
+      "code": "OPENED"
+    },
+    {
+      "name": "exact-open-member-b",
+      "outcome": "pass",
+      "step": 8,
+      "code": "OPENED"
+    },
+    {
+      "name": "wrong-recipient-coordinate",
+      "outcome": "fail",
+      "step": 5,
+      "code": "RECIPIENT_NOT_FOUND"
+    },
+    {
+      "name": "wrong-mlkem-secret",
+      "outcome": "fail",
+      "step": 5,
+      "code": "CEK_WRAP_AUTHENTICATION_FAILED"
+    },
+    {
+      "name": "ciphertext-tamper-stale-content-hash",
+      "outcome": "fail",
+      "step": 4,
+      "code": "CONTENT_HASH_MISMATCH"
+    },
+    {
+      "name": "ciphertext-tamper-recomputed-content-hash",
+      "outcome": "fail",
+      "step": 6,
+      "code": "CONTENT_AUTHENTICATION_FAILED"
+    },
+    {
+      "name": "wrap-tamper-stale-content-hash",
+      "outcome": "fail",
+      "step": 4,
+      "code": "CONTENT_HASH_MISMATCH"
+    },
+    {
+      "name": "wrap-tamper-recomputed-content-hash",
+      "outcome": "fail",
+      "step": 5,
+      "code": "CEK_WRAP_AUTHENTICATION_FAILED"
+    },
+    {
+      "name": "channel-id-change-recomputed-content-hash",
+      "outcome": "fail",
+      "step": 6,
+      "code": "CONTENT_AUTHENTICATION_FAILED"
+    },
+    {
+      "name": "modified-key-signature",
+      "outcome": "fail",
+      "step": 2,
+      "code": "BAD_KEY_SIGNATURE"
+    },
+    {
+      "name": "revoked-key",
+      "outcome": "fail",
+      "step": 2,
+      "code": "KEY_REVOKED"
+    },
+    {
+      "name": "unavailable-key-status",
+      "outcome": "indeterminate",
+      "step": 2,
+      "code": "KEY_STATUS_UNAVAILABLE"
+    },
+    {
+      "name": "expired-key",
+      "outcome": "fail",
+      "step": 2,
+      "code": "KEY_OUTSIDE_VALIDITY_WINDOW"
+    },
+    {
+      "name": "unsupported-suite-id",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "unsupported-suite-version",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "suite-version-boolean-true",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "suite-version-float-one",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "binding-valid-from-boolean",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "missing-recipient-binding",
+      "outcome": "fail",
+      "step": 5,
+      "code": "RECIPIENT_NOT_FOUND"
+    },
+    {
+      "name": "duplicate-recipient",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "reordered-bindings",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "noncanonical-base64url-tag",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "wrap-binding-coordinate-mismatch",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "stale-member-set-hash-resealed-content",
+      "outcome": "fail",
+      "step": 3,
+      "code": "MEMBER_SET_HASH_MISMATCH"
+    },
+    {
+      "name": "stale-recipient-bindings-hash-resealed-content",
+      "outcome": "fail",
+      "step": 3,
+      "code": "RECIPIENT_BINDINGS_HASH_MISMATCH"
+    },
+    {
+      "name": "member-b-revoked-open-member-a",
+      "outcome": "fail",
+      "step": 2,
+      "code": "KEY_REVOKED"
+    },
+    {
+      "name": "member-b-bad-key-signature-open-member-a",
+      "outcome": "fail",
+      "step": 2,
+      "code": "BAD_KEY_SIGNATURE"
+    },
+    {
+      "name": "wrong-plaintext-hash-resealed-content",
+      "outcome": "fail",
+      "step": 7,
+      "code": "PLAINTEXT_HASH_MISMATCH"
+    },
+    {
+      "name": "transcript-member-order-mismatch-resealed-content",
+      "outcome": "fail",
+      "step": 8,
+      "code": "TRANSCRIPT_ROSTER_MISMATCH"
+    },
+    {
+      "name": "malformed-plus-revoked-key",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "bad-key-signature-plus-stale-content-hash",
+      "outcome": "fail",
+      "step": 2,
+      "code": "BAD_KEY_SIGNATURE"
+    },
+    {
+      "name": "stale-member-set-hash-plus-stale-content-hash",
+      "outcome": "fail",
+      "step": 3,
+      "code": "MEMBER_SET_HASH_MISMATCH"
+    }
+  ]
+}

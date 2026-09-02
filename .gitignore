@@ -20,3 +20,7 @@ config/dacs-agents.json
 *.swp
 conformance/security-vectors/convergence-harness/report.json
 conformance/security-vectors/convergence-harness/report.md
+
+# Python bytecode from the cross-run harness
+__pycache__/
+*.pyc
