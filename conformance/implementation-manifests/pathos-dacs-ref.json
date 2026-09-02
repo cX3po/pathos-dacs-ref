@@ -1,0 +1,285 @@
+{
+  "manifestVersion": "1",
+  "generatedAt": "2026-09-02T02:46:22.166Z",
+  "implementation": {
+    "name": "pathos-dacs-ref",
+    "version": "0.1.0",
+    "repository": "https://github.com/cX3po/pathos-dacs-ref",
+    "commit": "886bd52cc9b5a855a46ba2daeeeeef42c409431f"
+  },
+  "profile": {
+    "id": "DACS-v0.1",
+    "repository": "https://github.com/DACS-Agent-commerce/DACS-Standard",
+    "commit": "662be1d4899a2cadf327fe2d5523e93a80334e5f",
+    "documents": {
+      "CORE": "0.1",
+      "DACS-1": "0.3",
+      "DACS-2": "0.2",
+      "DACS-3": "0.3",
+      "DACS-4": "0.3",
+      "DACS-5": "0.3"
+    }
+  },
+  "roles": [
+    "verifier"
+  ],
+  "conformanceSuite": {
+    "repository": "https://github.com/DACS-Agent-commerce/DACS-Standard",
+    "commit": "662be1d4899a2cadf327fe2d5523e93a80334e5f",
+    "manifestPath": "conformance/MANIFEST.json",
+    "manifestSha256": "67ea898958b0b380759f8b4b13d540200a792919552f23822cb99c72f47df4ac"
+  },
+  "claims": [
+    {
+      "id": "claim-artifact-signatures",
+      "level": "capability",
+      "result": "conformance-tested",
+      "roles": [
+        "verifier"
+      ],
+      "modules": [
+        "CORE"
+      ],
+      "capabilityRefs": [
+        "artifact-signatures"
+      ],
+      "ruleRefs": [
+        "SIG-2"
+      ],
+      "evidenceRefs": [
+        "c1-artifact-signatures"
+      ]
+    },
+    {
+      "id": "claim-canonical-content-hash",
+      "level": "capability",
+      "result": "conformance-tested",
+      "roles": [
+        "verifier"
+      ],
+      "modules": [
+        "CORE"
+      ],
+      "capabilityRefs": [
+        "canonical-content-hash"
+      ],
+      "ruleRefs": [
+        "CF-1"
+      ],
+      "evidenceRefs": [
+        "c1-canonical-content-hash"
+      ]
+    },
+    {
+      "id": "claim-bundle-consistency",
+      "level": "capability",
+      "result": "conformance-tested",
+      "roles": [
+        "verifier"
+      ],
+      "modules": [
+        "DACS-5"
+      ],
+      "capabilityRefs": [
+        "bundle-consistency"
+      ],
+      "ruleRefs": [
+        "DACS-5-10.4.3"
+      ],
+      "evidenceRefs": [
+        "c1-bundle-consistency"
+      ]
+    },
+    {
+      "id": "claim-derive-reputation",
+      "level": "capability",
+      "result": "conformance-tested",
+      "roles": [
+        "verifier"
+      ],
+      "modules": [
+        "DACS-5"
+      ],
+      "capabilityRefs": [
+        "derive-reputation"
+      ],
+      "ruleRefs": [
+        "DACS-5-10.5.1"
+      ],
+      "evidenceRefs": [
+        "c1-derive-reputation"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "ref": "artifact-signatures",
+      "kind": "verification-method",
+      "id": "ed25519-domain-separated-artifacts",
+      "modules": [
+        "CORE"
+      ],
+      "roles": [
+        "verifier"
+      ],
+      "supportStatus": "implemented",
+      "testStatus": "passed",
+      "evidenceRefs": [
+        "c1-artifact-signatures"
+      ]
+    },
+    {
+      "ref": "canonical-content-hash",
+      "kind": "verification-method",
+      "id": "rfc8785-sha256-content-hash",
+      "modules": [
+        "CORE"
+      ],
+      "roles": [
+        "verifier"
+      ],
+      "supportStatus": "implemented",
+      "testStatus": "passed",
+      "evidenceRefs": [
+        "c1-canonical-content-hash"
+      ]
+    },
+    {
+      "ref": "settlement-evidence",
+      "kind": "verification-method",
+      "id": "verify-settlement-evidence",
+      "modules": [
+        "DACS-4"
+      ],
+      "roles": [
+        "verifier"
+      ],
+      "supportStatus": "implemented",
+      "testStatus": "failed",
+      "evidenceRefs": [
+        "c1-settlement-evidence"
+      ]
+    },
+    {
+      "ref": "verify-attestation-bundle",
+      "kind": "bundle-operation",
+      "id": "verify-attestation-bundle",
+      "modules": [
+        "DACS-5"
+      ],
+      "roles": [
+        "verifier"
+      ],
+      "supportStatus": "implemented",
+      "testStatus": "failed",
+      "evidenceRefs": [
+        "c1-verify-attestation-bundle"
+      ]
+    },
+    {
+      "ref": "bundle-consistency",
+      "kind": "bundle-operation",
+      "id": "bundle-consistency",
+      "modules": [
+        "DACS-5"
+      ],
+      "roles": [
+        "verifier"
+      ],
+      "supportStatus": "implemented",
+      "testStatus": "passed",
+      "evidenceRefs": [
+        "c1-bundle-consistency"
+      ]
+    },
+    {
+      "ref": "derive-reputation",
+      "kind": "reputation-operation",
+      "id": "derive-reputation",
+      "modules": [
+        "DACS-5"
+      ],
+      "roles": [
+        "verifier"
+      ],
+      "supportStatus": "implemented",
+      "testStatus": "passed",
+      "evidenceRefs": [
+        "c1-derive-reputation"
+      ]
+    }
+  ],
+  "testRuns": [
+    {
+      "id": "c1-artifact-signatures",
+      "result": "pass",
+      "caseIds": [
+        "artifact-signatures"
+      ],
+      "command": "npx tsx conformance/c1-bridge.mts --ablate"
+    },
+    {
+      "id": "c1-canonical-content-hash",
+      "result": "pass",
+      "caseIds": [
+        "canonical-content-hash"
+      ],
+      "command": "npx tsx conformance/c1-bridge.mts --ablate"
+    },
+    {
+      "id": "c1-settlement-evidence",
+      "result": "fail",
+      "caseIds": [
+        "settlement-evidence"
+      ],
+      "command": "npx tsx conformance/c1-bridge.mts --ablate"
+    },
+    {
+      "id": "c1-verify-attestation-bundle",
+      "result": "fail",
+      "caseIds": [
+        "verify-attestation-bundle"
+      ],
+      "command": "npx tsx conformance/c1-bridge.mts --ablate"
+    },
+    {
+      "id": "c1-bundle-consistency",
+      "result": "pass",
+      "caseIds": [
+        "bundle-consistency"
+      ],
+      "command": "npx tsx conformance/c1-bridge.mts --ablate"
+    },
+    {
+      "id": "c1-derive-reputation",
+      "result": "pass",
+      "caseIds": [
+        "derive-reputation"
+      ],
+      "command": "npx tsx conformance/c1-bridge.mts --ablate"
+    }
+  ],
+  "liveTests": [],
+  "deviations": [],
+  "notes": {
+    "sdk": {
+      "package": "@kynesyslabs/dacs",
+      "commit": "12c5ad358800b4ddc6e732405366035b6a2ac955",
+      "standardPin": "662be1d4899a2cadf327fe2d5523e93a80334e5f"
+    },
+    "executed": [
+      "artifact-signatures",
+      "canonical-content-hash",
+      "settlement-evidence",
+      "verify-attestation-bundle",
+      "bundle-consistency",
+      "derive-reputation"
+    ],
+    "notExecuted": {
+      "liveSubstrate": "The Standard walkthrough uses FakeSubstrate and reports liveSdkCalls=false.",
+      "dispute": "Inputs are constructed in dacs-verify conformance/run.ts and are not shipped as Standard artifacts.",
+      "disclosure": "Inputs are constructed in dacs-verify conformance/run.ts and are not shipped as Standard artifacts.",
+      "x402": "The walkthrough uses an EVM ERC-20 settlement and does not execute x402."
+    }
+  }
+}
