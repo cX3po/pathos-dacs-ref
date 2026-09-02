@@ -288,3 +288,15 @@ test('an envelope result 404 on the address read is honest absence and may fall 
   assert.equal(result, null);
   assert.equal(searchCalls, 1);
 });
+
+test('a legacy program whose data is a plain string is returned as-is and not marked wrapped', async () => {
+  const result = await fetchAnchored(rpc, storageAddress, {
+    fetchImpl: async () => addressResponse({
+      storageAddress, owner, name: programName, data: 'legacy binary-era string', sizeBytes: 24,
+      createdAt: '2026-09-02T00:00:00.000Z',
+    } as unknown as StorageProgramData),
+  });
+  assert.ok(result);
+  assert.equal(result.data, 'legacy binary-era string');
+  assert.equal(result.wrapped, undefined);
+});
