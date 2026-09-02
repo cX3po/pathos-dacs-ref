@@ -47,6 +47,46 @@ class TranscriptSuiteTests(unittest.TestCase):
                 with self.assertRaises(suite.Malformed):
                     suite._b64d(bad)
 
+    def test_jcs_distinguishes_booleans_from_integers(self):
+        self.assertEqual("true", suite.jcs(True))
+        self.assertEqual("false", suite.jcs(False))
+        self.assertEqual("1", suite.jcs(1))
+        self.assertEqual("0", suite.jcs(0))
+
+    def test_suite_version_boolean_true_is_malformed(self):
+        vector = self._blind_vector("suite-version-boolean-true")
+        self.assertIs(type(vector["envelope"]["suiteVersion"]), bool)
+        self.assertEqual(("error", 1, "MALFORMED_ENVELOPE"),
+                         self._verdict(vector))
+
+    def test_suite_version_float_one_is_malformed(self):
+        vector = self._blind_vector("suite-version-float-one")
+        self.assertIs(type(vector["envelope"]["suiteVersion"]), float)
+        self.assertEqual(("error", 1, "MALFORMED_ENVELOPE"),
+                         self._verdict(vector))
+
+    def test_binding_valid_from_boolean_is_malformed(self):
+        vector = self._blind_vector("binding-valid-from-boolean")
+        valid_from = vector["envelope"]["recipientBindings"][0]["validFrom"]
+        self.assertIs(type(valid_from), bool)
+        self.assertEqual(("error", 1, "MALFORMED_ENVELOPE"),
+                         self._verdict(vector))
+
+    def test_other_integer_fields_require_exact_int(self):
+        base = self._blind_vector("exact-open-member-a")
+        for field, value in (("expiresAt", 2000000000000.0),):
+            with self.subTest(field=field):
+                vector = copy.deepcopy(base)
+                vector["envelope"]["recipientBindings"][0][field] = value
+                self.assertEqual(("error", 1, "MALFORMED_ENVELOPE"),
+                                 self._verdict(vector))
+        for value in (True, 1900000000000.0):
+            with self.subTest(authenticatedAt=value):
+                vector = copy.deepcopy(base)
+                vector["authority"]["authenticatedAt"] = value
+                self.assertEqual(("error", 2, "AUTHENTICATED_TIME_INVALID"),
+                                 self._verdict(vector))
+
     def test_each_blind_vector_matches_answer_key(self):
         blind = json.loads(BLIND_PATH.read_text(encoding="utf-8"))
         answers = json.loads(ANSWERS_PATH.read_text(encoding="utf-8"))
@@ -85,6 +125,17 @@ class TranscriptSuiteTests(unittest.TestCase):
             bytes([ciphertext[0] ^ 1]) + ciphertext[1:])
         got = suite.evaluate(vector)
         self.assertEqual(("fail", 2), (got["outcome"], got["step"]))
+
+    @staticmethod
+    def _blind_vector(name):
+        blind = json.loads(BLIND_PATH.read_text(encoding="utf-8"))
+        return next(copy.deepcopy(vector) for vector in blind["vectors"]
+                    if vector["name"] == name)
+
+    @staticmethod
+    def _verdict(vector):
+        got = suite.evaluate(vector)
+        return got["outcome"], got["step"], got["code"]
 
 
 if __name__ == "__main__":

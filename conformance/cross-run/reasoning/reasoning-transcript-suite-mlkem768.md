@@ -63,8 +63,12 @@ implemented.
 
 When one binding and its wrap are removed and all three affected public hashes
 are recomputed, the envelope alone contains no external copy of the fixed roster.
-The pure verifier therefore discovers the absent requested coordinate at step 5.
-It does not infer a roster from vector names or from unrelated authority keys.
+The `missing-recipient-binding` vector removes a member's binding and wrap and
+recomputes the public hashes. Because the member roster lives inside the
+ciphertext, the envelope is self-consistent at step 1; the omission is first
+observable at step 5 when opening as the removed member, or at step 8 as a roster
+mismatch when opening as the retained member. This is how the harness reads
+profile §3 versus §8, and is noted so a reader does not expect a step-1 failure.
 
 ## Blind-vector step coverage
 
@@ -92,6 +96,9 @@ byte with their committed forms.
 | `expired-key` | fail | 2 | `KEY_OUTSIDE_VALIDITY_WINDOW` | Exclusive expiry boundary. |
 | `unsupported-suite-id` | error | 1 | `MALFORMED_ENVELOPE` | Closed suite ID. |
 | `unsupported-suite-version` | error | 1 | `MALFORMED_ENVELOPE` | Closed suite version. |
+| `suite-version-boolean-true` | error | 1 | `MALFORMED_ENVELOPE` | Boolean is not the exact numeric suite version. |
+| `suite-version-float-one` | error | 1 | `MALFORMED_ENVELOPE` | Floating-point 1.0 is not the exact integer suite version. |
+| `binding-valid-from-boolean` | error | 1 | `MALFORMED_ENVELOPE` | Boolean validity bound is not a safe integer. |
 | `missing-recipient-binding` | fail | 5 | `RECIPIENT_NOT_FOUND` | Absent opener after self-consistent roster removal. |
 | `duplicate-recipient` | error | 1 | `MALFORMED_ENVELOPE` | Duplicate-free roster. |
 | `reordered-bindings` | error | 1 | `MALFORMED_ENVELOPE` | Canonical member-byte order. |

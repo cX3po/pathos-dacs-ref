@@ -103,6 +103,24 @@
     "code": "MALFORMED_ENVELOPE",
     "justification": "An unsupported suite version is malformed at step 1."
   },
+  "suite-version-boolean-true": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "A boolean is not the exact integer suite version and is malformed at step 1."
+  },
+  "suite-version-float-one": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "A floating-point 1.0 is not the exact integer suite version and is malformed at step 1."
+  },
+  "binding-valid-from-boolean": {
+    "outcome": "error",
+    "step": 1,
+    "code": "MALFORMED_ENVELOPE",
+    "justification": "A boolean validity bound is not a safe integer and is malformed at step 1."
+  },
   "missing-recipient-binding": {
     "outcome": "fail",
     "step": 5,

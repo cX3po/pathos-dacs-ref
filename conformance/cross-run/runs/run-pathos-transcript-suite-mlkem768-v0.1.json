@@ -107,6 +107,24 @@
       "code": "MALFORMED_ENVELOPE"
     },
     {
+      "name": "suite-version-boolean-true",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "suite-version-float-one",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
+      "name": "binding-valid-from-boolean",
+      "outcome": "error",
+      "step": 1,
+      "code": "MALFORMED_ENVELOPE"
+    },
+    {
       "name": "missing-recipient-binding",
       "outcome": "fail",
       "step": 5,

@@ -20,6 +20,9 @@ importable as a canonicalisation library.  This module therefore implements
 RFC 8785 for the profile's value subset (strings, safe integers, booleans,
 null, arrays and objects), including CORE CF-1 values-only NFC, in ``jcs``.
 Object member names are not normalised and sort by UTF-16 code units.
+
+An invalid ``authority.authenticatedAt`` is treated as an authenticated
+substrate-time error at step 2, rather than as envelope structure at step 1.
 """
 from __future__ import annotations
 
@@ -81,11 +84,9 @@ def jcs(value: Any) -> str:
     """RFC 8785 serialization for the profile subset, with CF-1 values NFC."""
     if value is None:
         return "null"
-    if value is True:
-        return "true"
-    if value is False:
-        return "false"
-    if isinstance(value, int) and not isinstance(value, bool):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if type(value) is int:
         if abs(value) > SAFE_MAX:
             raise ValueError("integer is outside the interoperable safe range")
         return str(value)
@@ -193,13 +194,14 @@ def _result(outcome: str, step: int, code: str, transcript: Any = None) -> dict[
 
 
 def _is_safe_nonnegative(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= SAFE_MAX
+    return type(value) is int and 0 <= value <= SAFE_MAX
 
 
 def _validate_shape(e: Any) -> None:
     if not isinstance(e, dict) or set(e) != ENVELOPE_KEYS:
         raise Malformed("envelope has the wrong exact shape")
-    if e["envelopeVersion"] != "1" or e["suiteId"] != SUITE_ID or e["suiteVersion"] != 1:
+    if (e["envelopeVersion"] != "1" or e["suiteId"] != SUITE_ID
+            or type(e["suiteVersion"]) is not int or e["suiteVersion"] != SUITE_VERSION):
         raise Malformed("unsupported envelope or suite version")
     if not isinstance(e["channelId"], str) or not e["channelId"] or unicodedata.normalize("NFC", e["channelId"]) != e["channelId"]:
         raise Malformed("channelId must be a non-empty NFC string")
@@ -250,7 +252,7 @@ def _validate_shape(e: Any) -> None:
 def _step2(envelope: dict[str, Any], authority: dict[str, Any]) -> dict[str, Any] | None:
     authenticated_at = authority.get("authenticatedAt")
     if not _is_safe_nonnegative(authenticated_at):
-        return _result("indeterminate", 2, "AUTHENTICATED_TIME_UNAVAILABLE")
+        return _result("error", 2, "AUTHENTICATED_TIME_INVALID")
     signing_keys = authority.get("signingKeys")
     statuses = authority.get("keyStatus")
     if not isinstance(signing_keys, dict) or not isinstance(statuses, dict):

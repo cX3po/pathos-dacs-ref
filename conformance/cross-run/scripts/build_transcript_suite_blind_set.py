@@ -184,6 +184,21 @@ def build() -> tuple[dict[str, Any], dict[str, Any]]:
         "An unsupported suite version is malformed at step 1.")
 
     vector = copy.deepcopy(base_a)
+    vector["envelope"]["suiteVersion"] = True
+    add("suite-version-boolean-true", vector, "error", 1, "MALFORMED_ENVELOPE",
+        "A boolean is not the exact integer suite version and is malformed at step 1.")
+
+    vector = copy.deepcopy(base_a)
+    vector["envelope"]["suiteVersion"] = 1.0
+    add("suite-version-float-one", vector, "error", 1, "MALFORMED_ENVELOPE",
+        "A floating-point 1.0 is not the exact integer suite version and is malformed at step 1.")
+
+    vector = copy.deepcopy(base_a)
+    vector["envelope"]["recipientBindings"][0]["validFrom"] = False
+    add("binding-valid-from-boolean", vector, "error", 1, "MALFORMED_ENVELOPE",
+        "A boolean validity bound is not a safe integer and is malformed at step 1.")
+
+    vector = copy.deepcopy(base_a)
     del vector["envelope"]["recipientBindings"][0]
     del vector["envelope"]["wraps"][0]
     members = [item["member"] for item in vector["envelope"]["recipientBindings"]]
@@ -309,7 +324,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="fail instead of writing if generated files differ")
     args = parser.parse_args(argv)
     blind, answers = build()
-    generated = {BLIND_PATH: _serialized(blind), ANSWERS_PATH: _serialized(answers)}
+    blind_text = _serialized(blind)
+    round_tripped = json.loads(blind_text)
+    float_vector = next(vector for vector in round_tripped["vectors"]
+                        if vector["name"] == "suite-version-float-one")
+    if type(float_vector["envelope"]["suiteVersion"]) is not float:
+        raise RuntimeError("suite-version-float-one did not round-trip as a JSON float")
+    generated = {BLIND_PATH: blind_text, ANSWERS_PATH: _serialized(answers)}
     if args.check:
         stale = [path for path, text in generated.items()
                  if not path.exists() or path.read_text(encoding="utf-8") != text]
