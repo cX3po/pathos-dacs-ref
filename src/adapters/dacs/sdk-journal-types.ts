@@ -1,4 +1,8 @@
-/** vendored from DACS-Agent-commerce/dacs-sdk @ 12c5ad3; replace with the package import when published */
+/**
+ * vendored from DACS-Agent-commerce/dacs-sdk @ 12c5ad3; replace with the package import when published.
+ * Forcing function: plan ledger item s1-sdk-types-unvendor stays open, and is surfaced in the weekly
+ * digest, until this file no longer carries the "vendored from" marker; do not remove the marker by hand.
+ */
 
 /** Durable authority for Demos wallet nonce and write recovery. */
 
