@@ -145,7 +145,7 @@ async function anchorString(handle: LiveHandles['buyer'] | null, ownerLabel: str
   }
   const { anchor } = await import('../demos/storage.js');
   const res = await anchor(handle, programName, data);
-  log('SR-2', `anchored ${programName} → ${res.storageAddress} (tx ${res.txHash.slice(0, 12)}…, ${res.sizeBytes}B)`);
+  log('SR-2', `anchored ${programName} → ${res.storageAddress} (tx ${res.txHash.slice(0, 12)}…, stored=${res.sizeBytes}B content=${res.contentBytes}B)`);
   return res.storageAddress;
 }
 
@@ -438,8 +438,8 @@ const buyerBundle = emitAttestationBundleV1({ ...unsignedBase, anchoredByRole: '
 const sellerBundle = emitAttestationBundleV1({ ...unsignedBase, anchoredByRole: 'seller' }, signers);
 const buyerBundleStr = jcsString(buyerBundle);
 const sellerBundleStr = jcsString(sellerBundle);
-await anchorString(handles?.buyer ?? null, buyerOwner, anchorNames.bundle(jobId, 'buyer'), buyerBundleStr);
-await anchorString(handles?.seller ?? null, sellerOwner, anchorNames.bundle(jobId, 'seller'), sellerBundleStr);
+const buyerBundleLocator = await anchorString(handles?.buyer ?? null, buyerOwner, anchorNames.bundle(jobId, 'buyer'), buyerBundleStr);
+const sellerBundleLocator = await anchorString(handles?.seller ?? null, sellerOwner, anchorNames.bundle(jobId, 'seller'), sellerBundleStr);
 log('DACS-5', `both bundle copies anchored two-sided (names ${anchorNames.bundle(jobId, 'buyer')} / :seller)`);
 
 // Verification fetch: maps the spec's jobId-derived pair addresses to the substrate-equivalent
@@ -448,17 +448,22 @@ log('DACS-5', `both bundle copies anchored two-sided (names ${anchorNames.bundle
 const pair = computeAnchorPairV1(jobId);
 async function gatewayFetch(_rpc: string, addr: string): Promise<FetchResult | null> {
   const nameFor = addr === pair.buyer
-    ? { owner: buyerOwner, name: anchorNames.bundle(jobId, 'buyer') }
+    ? { owner: buyerOwner, name: anchorNames.bundle(jobId, 'buyer'), storageAddress: buyerBundleLocator }
     : addr === pair.seller
-      ? { owner: sellerOwner, name: anchorNames.bundle(jobId, 'seller') }
+      ? { owner: sellerOwner, name: anchorNames.bundle(jobId, 'seller'), storageAddress: sellerBundleLocator }
       : null;
   if (!LIVE) {
     const hit = nameFor ? memoryAnchors.get(`name:${nameFor.owner}:${nameFor.name}`) : memoryAnchors.get(addr);
     return hit ? { storageAddress: addr, owner: hit.owner, data: hit.data, sizeBytes: hit.data.length, createdAt: new Date().toISOString() } : null;
   }
-  const { resolveByName } = await import('./anchor-naming.js');
+  const { fetchAddressFirst } = await import('./anchor-naming.js');
   const { fetchAnchored } = await import('../demos/storage.js');
-  return nameFor ? resolveByName(RPC, nameFor.owner, nameFor.name) : fetchAnchored(RPC, addr);
+  return nameFor
+    ? fetchAddressFirst(RPC, nameFor.storageAddress, nameFor.owner, nameFor.name, {
+        retries: 5,
+        delayMs: 10_000,
+      })
+    : fetchAnchored(RPC, addr);
 }
 
 const verdict = await verifyBundleV1Full(buyerBundle as AttestationBundleV1, {

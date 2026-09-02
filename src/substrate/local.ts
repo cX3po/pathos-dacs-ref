@@ -57,7 +57,13 @@ export async function localAnchor(
     if (bytesToHex(sha256(dataBytes(existing.data))) !== bytesToHex(sha256(bytes))) {
       throw new Error(`SR-2 immutability: ${storageAddress} already anchored with different content`);
     }
-    return { storageAddress, txHash: 'local', sizeBytes: existing.sizeBytes, anchoredAt: existing.createdAt ?? '' };
+    return {
+      storageAddress,
+      txHash: 'local',
+      sizeBytes: existing.sizeBytes,
+      contentBytes: existing.sizeBytes,
+      anchoredAt: existing.createdAt ?? '',
+    };
   }
   const record: FetchResult = {
     storageAddress,
@@ -68,7 +74,13 @@ export async function localAnchor(
     createdAt: new Date().toISOString(),
   };
   await fs.writeFile(recordPath(storeDir, storageAddress), JSON.stringify(record));
-  return { storageAddress, txHash: 'local', sizeBytes: bytes.length, anchoredAt: record.createdAt };
+  return {
+    storageAddress,
+    txHash: 'local',
+    sizeBytes: bytes.length,
+    contentBytes: bytes.length,
+    anchoredAt: record.createdAt,
+  };
 }
 
 /** Fetch a previously anchored record. Signature matches `typeof fetchAnchored`. */

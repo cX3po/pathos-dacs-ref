@@ -24,7 +24,7 @@ import { DOMAIN_SEPARATORS } from '../domain-sep.js';
 import { jcsCanonical } from '../jcs.js';
 import { bundleSignedScopeHashV1 } from './bundle-signed-scope-v1.js';
 import { sha256 } from '@noble/hashes/sha2';
-import { fetchAnchored } from '../demos/storage.js';
+import { fetchAnchored, unwrapTextAnchor } from '../demos/storage.js';
 
 const enc = new TextEncoder();
 
@@ -525,19 +525,20 @@ async function walkV1AttestationRefs(
       failed++;
       continue;
     }
-    if (typeof fetched.data !== 'string') {
+    const fetchedData = unwrapTextAnchor(fetched.data) ?? fetched.data;
+    if (typeof fetchedData !== 'string') {
       steps.push({ ref: label, outcome: 'indeterminate',
-        detail: `anchored data is not a string (type=${typeof fetched.data}); v0.2 walks string-anchored refs only` });
+        detail: `anchored data is not a string (type=${typeof fetchedData}); v0.2 walks string-anchored refs only` });
       continue;
     }
-    const actualHash = bytesToHexLocal(sha256(enc.encode(fetched.data)));
+    const actualHash = bytesToHexLocal(sha256(enc.encode(fetchedData)));
     if (actualHash !== wantHash) {
       steps.push({ ref: label, outcome: 'fail',
         detail: `content-hash mismatch at ${anchor.locator}: want ${wantHash.slice(0, 16)}…, got ${actualHash.slice(0, 16)}… — §7.5.2 MUST reject` });
       failed++;
       continue;
     }
-    const authorship = verifyReferencedArtifact(fetched.data, ref, bundle);
+    const authorship = verifyReferencedArtifact(fetchedData, ref, bundle);
     if (authorship.outcome === 'pass') {
       steps.push({ ref: label, outcome: 'pass', detail: `content-hash matches (${actualHash.slice(0, 16)}…); ${authorship.detail}; anchor=${anchor.locator}` });
       verified++;
@@ -581,7 +582,7 @@ type AnchorFetch = { status: 'present'; data: unknown } | { status: 'absent' } |
 async function fetchV1WithStatus(rpc: string, addr: string, fetchImpl: typeof fetchAnchored): Promise<AnchorFetch> {
   try {
     const r = await fetchImpl(rpc, addr);
-    return r ? { status: 'present', data: r.data } : { status: 'absent' };
+    return r ? { status: 'present', data: unwrapTextAnchor(r.data) ?? r.data } : { status: 'absent' };
   } catch (e) {
     return { status: 'error', error: (e as Error).message };
   }

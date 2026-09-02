@@ -20,6 +20,21 @@ LIVE=1 npx tsx src/live/organ-gateway.mts          # real devnet session (~6-7 D
 Live mode needs in `~/axiom/.env`: `DEMOS_MNEMONIC` (buyer, funded) and
 `DEMOS_SELLER_MNEMONIC` (seller). Exit 0 iff the bundle verification rollup is PASS.
 
+## Wrapped text anchors
+
+String SR-2 payloads are stored with JSON encoding as
+`{"v":"dacs-ref-text:1","text":"<original string>"}`. This works around Demos node
+0.9.8 (stabilisation) behaviour observed on 2026-09-02: binary-encoded storage
+programs were accepted for propagation but never included. Read-back is transparent:
+`fetchAnchored()` returns the exact original string and marks the result `wrapped: true`.
+The live canary can still reproduce the affected path with `ANCHOR_ENCODING=binary`.
+
+The node's `searchStoragePrograms` name index can lag immediately after an anchor is
+included. Post-anchor gateway checks therefore read each bundle copy by the `stor-`
+address returned by `anchor()` first, then fall back to exact owner/name resolution
+with a bounded retry window (at most 50 seconds); an RPC error remains indeterminate
+and is never interpreted as an absent party anchor.
+
 ## Files
 - `organ-gateway.mts` — the DACS-1→5 orchestrator (dry-run + live)
 - `../adapters/dacs/pay-dem.ts` — SDK-faithful native-DEM adapter; only exact

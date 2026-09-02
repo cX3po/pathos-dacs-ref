@@ -173,6 +173,7 @@ export async function dahrFetch(
       storageAddress: `stor-stub-${contentHashHex.slice(0, 32)}`,
       txHash: 'stub-no-broadcast',
       sizeBytes: responseBytes.length,
+      contentBytes: responseBytes.length,
       anchoredAt: fetchedAt,
     };
   } else {
