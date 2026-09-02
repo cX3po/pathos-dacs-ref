@@ -1,0 +1,708 @@
+{
+  "set": "dacsx-dispute-artifacts-v0.1",
+  "impl": "pathos-dacs-ref@cross-run-2",
+  "results": [
+    {
+      "name": "release-complete-budget",
+      "result": "verified",
+      "rule": "DRV",
+      "detail": "all applicable checks succeeded; the candidate names no numbered verified-result rule"
+    },
+    {
+      "name": "evaluator-rejection-refund",
+      "result": "verified",
+      "rule": "DRV",
+      "detail": "all applicable checks succeeded; the candidate names no numbered verified-result rule"
+    },
+    {
+      "name": "pre-submission-evaluator-rejection",
+      "result": "verified",
+      "rule": "DRV",
+      "detail": "all applicable checks succeeded; the candidate names no numbered verified-result rule"
+    },
+    {
+      "name": "expiry-before-submission",
+      "result": "verified",
+      "rule": "DRV",
+      "detail": "all applicable checks succeeded; the candidate names no numbered verified-result rule"
+    },
+    {
+      "name": "expiry-after-submission-grace",
+      "result": "verified",
+      "rule": "DRV",
+      "detail": "all applicable checks succeeded; the candidate names no numbered verified-result rule"
+    },
+    {
+      "name": "pipeline-missing-terminal",
+      "result": "rejected",
+      "rule": "DRP-1",
+      "detail": "pipeline must contain exactly two job-escrow steps"
+    },
+    {
+      "name": "pipeline-actions-reversed",
+      "result": "rejected",
+      "rule": "DRP-2",
+      "detail": "paired escrow actions are not fund then terminal"
+    },
+    {
+      "name": "pipeline-second-delivery",
+      "result": "rejected",
+      "rule": "DRP-3",
+      "detail": "exactly one supported delivery must be inside the pair"
+    },
+    {
+      "name": "pipeline-extra-payment",
+      "result": "rejected",
+      "rule": "DRP-4",
+      "detail": "an additional payment or delivery appears alongside the pair"
+    },
+    {
+      "name": "pipeline-rail-divergence",
+      "result": "rejected",
+      "rule": "DRP-5",
+      "detail": "escrow invocations do not bind the same complete rail"
+    },
+    {
+      "name": "pipeline-phase-index-divergence",
+      "result": "rejected",
+      "rule": "DRA-11",
+      "detail": "signed phase indexes do not match the pipeline"
+    },
+    {
+      "name": "evaluator-added-as-bundle-party",
+      "result": "rejected",
+      "rule": "DRA-13",
+      "detail": "evaluator was added to the bilateral signer set"
+    },
+    {
+      "name": "delivery-submission-circularity",
+      "result": "rejected",
+      "rule": "DRP-9",
+      "detail": "delivery hash circularly includes native submission evidence"
+    },
+    {
+      "name": "description-prefix-substitution",
+      "result": "rejected",
+      "rule": "DREB-1",
+      "detail": "native description is not the byte-exact agreement binding"
+    },
+    {
+      "name": "description-sha256-prefix",
+      "result": "rejected",
+      "rule": "DREB-1",
+      "detail": "native description is not the byte-exact agreement binding"
+    },
+    {
+      "name": "uppercase-delivery-hash",
+      "result": "rejected",
+      "rule": "DREB-3",
+      "detail": "deliveryHash is not 64 lowercase hexadecimal characters"
+    },
+    {
+      "name": "prefixed-delivery-hash",
+      "result": "rejected",
+      "rule": "DREB-3",
+      "detail": "deliveryHash is not 64 lowercase hexadecimal characters"
+    },
+    {
+      "name": "delivery-hash-text-rehash",
+      "result": "rejected",
+      "rule": "DREB-4",
+      "detail": "deliverable is not decode_hex_32 of the recomputed delivery hash"
+    },
+    {
+      "name": "delivery-byte-order-reversal",
+      "result": "rejected",
+      "rule": "DREB-4",
+      "detail": "deliverable is not decode_hex_32 of the recomputed delivery hash"
+    },
+    {
+      "name": "delivery-padding-truncation",
+      "result": "rejected",
+      "rule": "DREB-4",
+      "detail": "deliverable is not decode_hex_32 of the recomputed delivery hash"
+    },
+    {
+      "name": "zero-deliverable",
+      "result": "rejected",
+      "rule": "DREB-5",
+      "detail": "zero bytes32 is forbidden for deliverable or reason"
+    },
+    {
+      "name": "decision-hash-text-rehash",
+      "result": "rejected",
+      "rule": "DREB-4",
+      "detail": "reason is not decode_hex_32 of the recomputed decision hash"
+    },
+    {
+      "name": "zero-decision-reason",
+      "result": "rejected",
+      "rule": "DREB-5",
+      "detail": "zero bytes32 is forbidden for deliverable or reason"
+    },
+    {
+      "name": "decision-hash-substitution",
+      "result": "rejected",
+      "rule": "DREB-2",
+      "detail": "decision mapping source is not the recomputed hash"
+    },
+    {
+      "name": "evaluator-primary-claim-collision",
+      "result": "rejected",
+      "rule": "DRA-3",
+      "detail": "invalid delivery-or-remedy overlay signature"
+    },
+    {
+      "name": "evaluator-account-collision",
+      "result": "rejected",
+      "rule": "DRA-7",
+      "detail": "evaluator account collides with client or provider"
+    },
+    {
+      "name": "evaluator-wrong-chain",
+      "result": "rejected",
+      "rule": "DRA-5",
+      "detail": "evaluator EVM claim is not the selected-chain EIP-155 form"
+    },
+    {
+      "name": "native-evaluator-mismatch",
+      "result": "rejected",
+      "rule": "DREB-9",
+      "detail": "native evaluator differs from the controlled account"
+    },
+    {
+      "name": "evaluator-vet-failure",
+      "result": "rejected",
+      "rule": "DRA-9",
+      "detail": "evaluator Vet result is not pass and fresh"
+    },
+    {
+      "name": "nonpositive-evaluation-window",
+      "result": "rejected",
+      "rule": "DRA-14",
+      "detail": "mutable profile parameters differ from the signed rail"
+    },
+    {
+      "name": "evaluation-deadline-divergence",
+      "result": "rejected",
+      "rule": "DRA-14",
+      "detail": "mutable profile parameters differ from the signed rail"
+    },
+    {
+      "name": "native-expiry-divergence",
+      "result": "rejected",
+      "rule": "DREB-12",
+      "detail": "native expiry does not equal submission cutoff"
+    },
+    {
+      "name": "cross-job-delivery-replay",
+      "result": "rejected",
+      "rule": "DRD-8",
+      "detail": "delivery belongs to another job"
+    },
+    {
+      "name": "cross-job-decision-replay",
+      "result": "rejected",
+      "rule": "DRD-8",
+      "detail": "decision belongs to another job"
+    },
+    {
+      "name": "consumed-decision-replay",
+      "result": "rejected",
+      "rule": "DRD-8",
+      "detail": "decision was already consumed"
+    },
+    {
+      "name": "wrong-evaluator-signer",
+      "result": "rejected",
+      "rule": "DRE-1",
+      "detail": "evaluation signer is not the bound evaluator"
+    },
+    {
+      "name": "relayed-outer-submitter",
+      "result": "verified",
+      "rule": "DRV",
+      "detail": "all applicable checks succeeded; the candidate names no numbered verified-result rule"
+    },
+    {
+      "name": "eip1271-relayed-execution",
+      "result": "verified",
+      "rule": "DRV",
+      "detail": "all applicable checks succeeded; the candidate names no numbered verified-result rule"
+    },
+    {
+      "name": "relayer-substituted-as-native-caller",
+      "result": "rejected",
+      "rule": "DREB-21",
+      "detail": "native evaluator action was called by another account"
+    },
+    {
+      "name": "reject-evaluation-release-action",
+      "result": "rejected",
+      "rule": "DRD-2",
+      "detail": "evaluation result does not authorize the disposition"
+    },
+    {
+      "name": "accept-evaluation-refund-action",
+      "result": "rejected",
+      "rule": "DRD-2",
+      "detail": "evaluation result does not authorize the disposition"
+    },
+    {
+      "name": "partial-terminal-release",
+      "result": "rejected",
+      "rule": "DRT-5",
+      "detail": "terminal amount is not the complete funded budget"
+    },
+    {
+      "name": "wrong-release-recipient",
+      "result": "rejected",
+      "rule": "DRT-5",
+      "detail": "terminal recipient is not the agreement-bound account"
+    },
+    {
+      "name": "wrong-refund-recipient",
+      "result": "rejected",
+      "rule": "DRT-6",
+      "detail": "terminal recipient is not the agreement-bound account"
+    },
+    {
+      "name": "nonzero-preterminal-payout",
+      "result": "rejected",
+      "rule": "DRL-7",
+      "detail": "provider value moved before release"
+    },
+    {
+      "name": "nonzero-platform-fee",
+      "result": "rejected",
+      "rule": "DRT-7",
+      "detail": "escrow fees are not zero"
+    },
+    {
+      "name": "expiry-invented-decision",
+      "result": "rejected",
+      "rule": "DRD-7",
+      "detail": "expiry recovery invented an evaluator decision"
+    },
+    {
+      "name": "pre-submission-expiry-delivery-ref",
+      "result": "rejected",
+      "rule": "DRT-12",
+      "detail": "pre-submission refund carries delivery evidence"
+    },
+    {
+      "name": "expiry-invented-seller-fault",
+      "result": "rejected",
+      "rule": "DRT-13",
+      "detail": "expiry projected seller fault without authenticated finding"
+    },
+    {
+      "name": "rail-resolution-unavailable",
+      "result": "indeterminate",
+      "rule": "DRV-1",
+      "detail": "authenticated railResolution is unavailable"
+    },
+    {
+      "name": "runtime-code-unavailable",
+      "result": "indeterminate",
+      "rule": "DRJ-7",
+      "detail": "authenticated codeResolution is unavailable"
+    },
+    {
+      "name": "terminal-finality-unavailable",
+      "result": "indeterminate",
+      "rule": "DRT-8",
+      "detail": "authenticated terminalFinality is unavailable"
+    },
+    {
+      "name": "cross-substrate-order-unavailable",
+      "result": "indeterminate",
+      "rule": "DRD-10",
+      "detail": "authenticated decisionOrdering is unavailable"
+    },
+    {
+      "name": "self-reported-time-cannot-order",
+      "result": "indeterminate",
+      "rule": "DRD-10",
+      "detail": "authenticated decisionOrdering is unavailable"
+    },
+    {
+      "name": "decision-finalized-after-terminal",
+      "result": "rejected",
+      "rule": "DRD-11",
+      "detail": "authenticated decisionOrdering is contradictory"
+    },
+    {
+      "name": "decision-artifact-unavailable",
+      "result": "indeterminate",
+      "rule": "DRD-4",
+      "detail": "authenticated decisionFinality is unavailable"
+    },
+    {
+      "name": "authenticated-native-contradiction",
+      "result": "rejected",
+      "rule": "DRJ-7",
+      "detail": "authenticated codeResolution is contradictory"
+    },
+    {
+      "name": "noncanonical-job-id",
+      "result": "error",
+      "rule": "DRAA-1",
+      "detail": "jobId is not a canonical JID"
+    },
+    {
+      "name": "malformed-native-bytes32",
+      "result": "error",
+      "rule": "DRV-3",
+      "detail": "native deliverable is not bytes32"
+    },
+    {
+      "name": "unsupported-profile-discriminator",
+      "result": "error",
+      "rule": "DRV-3",
+      "detail": "unsupported candidate profile discriminator"
+    },
+    {
+      "name": "evaluation-seq-not-zero",
+      "result": "rejected",
+      "rule": "DRAA-6",
+      "detail": "first evaluation sequence is not zero"
+    },
+    {
+      "name": "synthetic-all-rules-control",
+      "result": "verified",
+      "rule": "DRC",
+      "detail": "all DRC capability checks pass",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-1-preterminal-payout",
+      "result": "rejected",
+      "rule": "DRC-1",
+      "detail": "failed: DRC-1",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "rejected",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-2-mutable-fees",
+      "result": "rejected",
+      "rule": "DRC-2",
+      "detail": "failed: DRC-2",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "rejected",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-3-blocked-expiry-recovery",
+      "result": "rejected",
+      "rule": "DRC-3",
+      "detail": "failed: DRC-3",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "rejected",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-4-emergency-withdrawal",
+      "result": "rejected",
+      "rule": "DRC-4",
+      "detail": "failed: DRC-4",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "rejected",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-5-logic-replacement",
+      "result": "rejected",
+      "rule": "DRC-5",
+      "detail": "failed: DRC-5",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "rejected",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-6-live-upgrade-authority",
+      "result": "rejected",
+      "rule": "DRC-6",
+      "detail": "failed: DRC-6",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "rejected",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-7-mutable-blocking-hook",
+      "result": "rejected",
+      "rule": "DRC-7",
+      "detail": "failed: DRC-7",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "rejected",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-8-fee-on-transfer-token",
+      "result": "rejected",
+      "rule": "DRC-8",
+      "detail": "failed: DRC-8",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "rejected",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-9-ambiguous-events",
+      "result": "rejected",
+      "rule": "DRC-9",
+      "detail": "failed: DRC-9",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "rejected",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-10-bytecode-mismatch",
+      "result": "rejected",
+      "rule": "DRC-10",
+      "detail": "failed: DRC-10",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "rejected",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-11-conflicting-evidence",
+      "result": "rejected",
+      "rule": "DRC-11",
+      "detail": "failed: DRC-11",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "rejected",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "drc-12-unauthenticated-ordering",
+      "result": "rejected",
+      "rule": "DRC-12",
+      "detail": "failed: DRC-12",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "pass",
+        "DRC-11": "pass",
+        "DRC-12": "rejected"
+      }
+    },
+    {
+      "name": "source-to-bytecode-evidence-unavailable",
+      "result": "indeterminate",
+      "rule": "DRC-10",
+      "detail": "unavailable: DRC-10",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "pass",
+        "DRC-2": "pass",
+        "DRC-3": "pass",
+        "DRC-4": "pass",
+        "DRC-5": "pass",
+        "DRC-6": "pass",
+        "DRC-7": "pass",
+        "DRC-8": "pass",
+        "DRC-9": "pass",
+        "DRC-10": "indeterminate",
+        "DRC-11": "pass",
+        "DRC-12": "pass"
+      }
+    },
+    {
+      "name": "current-reference-142e669-ineligible",
+      "result": "rejected",
+      "rule": "DRC-1",
+      "detail": "failed: DRC-1, DRC-2, DRC-3, DRC-4, DRC-5, DRC-6, DRC-7",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "rejected",
+        "DRC-2": "rejected",
+        "DRC-3": "rejected",
+        "DRC-4": "rejected",
+        "DRC-5": "rejected",
+        "DRC-6": "rejected",
+        "DRC-7": "rejected",
+        "DRC-8": "indeterminate",
+        "DRC-9": "pass",
+        "DRC-10": "indeterminate",
+        "DRC-11": "indeterminate",
+        "DRC-12": "indeterminate"
+      }
+    },
+    {
+      "name": "malformed-deployment-manifest",
+      "result": "error",
+      "rule": "DRC-1",
+      "detail": "malformed deployment manifest",
+      "registrationEligible": false,
+      "rules": {
+        "DRC-1": "error",
+        "DRC-2": "error",
+        "DRC-3": "error",
+        "DRC-4": "error",
+        "DRC-5": "error",
+        "DRC-6": "error",
+        "DRC-7": "error",
+        "DRC-8": "error",
+        "DRC-9": "error",
+        "DRC-10": "error",
+        "DRC-11": "error",
+        "DRC-12": "error"
+      }
+    }
+  ]
+}

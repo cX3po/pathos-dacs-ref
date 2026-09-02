@@ -1,0 +1,772 @@
+{
+  "release-complete-budget": {
+    "suite": "protocol",
+    "expected": "verified",
+    "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
+    "rules": [
+      "DRV-7"
+    ],
+    "note": "fund, deliver, evaluate, and release the complete budget"
+  },
+  "evaluator-rejection-refund": {
+    "suite": "protocol",
+    "expected": "verified",
+    "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
+    "rules": [
+      "DRV-7"
+    ],
+    "note": "a signed rejection refunds the complete budget"
+  },
+  "pre-submission-evaluator-rejection": {
+    "suite": "protocol",
+    "expected": "verified",
+    "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
+    "rules": [
+      "DRV-7"
+    ],
+    "note": "agreement-authorized pre-submission rejection uses a DisputeOutcome and omits delivery evidence"
+  },
+  "expiry-before-submission": {
+    "suite": "protocol",
+    "expected": "verified",
+    "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
+    "rules": [
+      "DRV-7"
+    ],
+    "note": "pre-submission expiry refunds without a decision or delivery reference"
+  },
+  "expiry-after-submission-grace": {
+    "suite": "protocol",
+    "expected": "verified",
+    "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
+    "rules": [
+      "DRV-7"
+    ],
+    "note": "post-submission expiry refunds after grace without inventing a decision"
+  },
+  "pipeline-missing-terminal": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRP-1",
+    "crossRunExpectedRule": "DRP-1",
+    "rules": [
+      "DRP-1"
+    ],
+    "note": "an unpaired escrow phase is rejected"
+  },
+  "pipeline-actions-reversed": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRP-2",
+    "crossRunExpectedRule": "DRP-2",
+    "rules": [
+      "DRP-2"
+    ],
+    "note": "escrow phases must be fund then terminal"
+  },
+  "pipeline-second-delivery": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRP-3",
+    "crossRunExpectedRule": "DRP-3",
+    "rules": [
+      "DRP-3"
+    ],
+    "note": "only one delivery step may occur"
+  },
+  "pipeline-extra-payment": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRP-4",
+    "crossRunExpectedRule": "DRP-4",
+    "rules": [
+      "DRP-4"
+    ],
+    "note": "ordinary payment phases cannot accompany the pair"
+  },
+  "pipeline-rail-divergence": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRP-5",
+    "crossRunExpectedRule": "DRP-5",
+    "rules": [
+      "DRP-5"
+    ],
+    "note": "both escrow invocations must use the same rail"
+  },
+  "pipeline-phase-index-divergence": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRA-11",
+    "crossRunExpectedRule": "DRA-11",
+    "rules": [
+      "DRA-11"
+    ],
+    "note": "signed indexes must match the phase pair"
+  },
+  "evaluator-added-as-bundle-party": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRA-13",
+    "crossRunExpectedRule": "DRA-13",
+    "rules": [
+      "DRA-13"
+    ],
+    "note": "the evaluator overlay signature does not create a third bundle party"
+  },
+  "delivery-submission-circularity": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRP-9",
+    "crossRunExpectedRule": "DRP-9",
+    "rules": [
+      "DRP-9"
+    ],
+    "note": "delivery evidence must be fixed before and independent of the native submission event"
+  },
+  "description-prefix-substitution": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-1",
+    "crossRunExpectedRule": "DREB-1",
+    "rules": [
+      "DREB-1"
+    ],
+    "note": "the exact ASCII description prefix is bound"
+  },
+  "description-sha256-prefix": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-1",
+    "crossRunExpectedRule": "DREB-1",
+    "rules": [
+      "DREB-1"
+    ],
+    "note": "a sha256: textual prefix is not inserted"
+  },
+  "uppercase-delivery-hash": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-3",
+    "crossRunExpectedRule": "DREB-3",
+    "rules": [
+      "DREB-3"
+    ],
+    "note": "declared content hashes are lowercase"
+  },
+  "prefixed-delivery-hash": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-3",
+    "crossRunExpectedRule": "DREB-3",
+    "rules": [
+      "DREB-3"
+    ],
+    "note": "declared content hashes have no algorithm prefix"
+  },
+  "delivery-hash-text-rehash": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-4",
+    "crossRunExpectedRule": "DREB-4",
+    "rules": [
+      "DREB-4"
+    ],
+    "note": "deliverable is raw decoded hash bytes, not a text rehash"
+  },
+  "delivery-byte-order-reversal": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-4",
+    "crossRunExpectedRule": "DREB-4",
+    "rules": [
+      "DREB-4"
+    ],
+    "note": "deliverable byte order is not reinterpreted"
+  },
+  "delivery-padding-truncation": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-4",
+    "crossRunExpectedRule": "DREB-4",
+    "rules": [
+      "DREB-4"
+    ],
+    "note": "a shifted/padded digest is a binding mismatch"
+  },
+  "zero-deliverable": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-5",
+    "crossRunExpectedRule": "DREB-5",
+    "rules": [
+      "DREB-5"
+    ],
+    "note": "zero cannot stand in for delivery evidence"
+  },
+  "decision-hash-text-rehash": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-4",
+    "crossRunExpectedRule": "DREB-4",
+    "rules": [
+      "DREB-4"
+    ],
+    "note": "reason is raw decoded decision hash bytes"
+  },
+  "zero-decision-reason": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-5",
+    "crossRunExpectedRule": "DREB-5",
+    "rules": [
+      "DREB-5"
+    ],
+    "note": "zero cannot stand in for an evaluator decision"
+  },
+  "decision-hash-substitution": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-2",
+    "crossRunExpectedRule": "DREB-2",
+    "rules": [
+      "DREB-2"
+    ],
+    "note": "declared decision hash must be independently recomputed"
+  },
+  "evaluator-primary-claim-collision": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRA-6",
+    "crossRunExpectedRule": "DRA-3",
+    "rules": [
+      "DRA-6"
+    ],
+    "note": "evaluator and buyer primary claims must differ"
+  },
+  "evaluator-account-collision": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRA-7",
+    "crossRunExpectedRule": "DRA-7",
+    "rules": [
+      "DRA-7"
+    ],
+    "note": "evaluator and provider accounts must differ"
+  },
+  "evaluator-wrong-chain": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRA-5",
+    "crossRunExpectedRule": "DRA-5",
+    "rules": [
+      "DRA-5"
+    ],
+    "note": "role accounts are bound to the selected chain"
+  },
+  "native-evaluator-mismatch": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-9",
+    "crossRunExpectedRule": "DREB-9",
+    "rules": [
+      "DREB-9"
+    ],
+    "note": "native evaluator must equal the controlled evaluator account"
+  },
+  "evaluator-vet-failure": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRA-9",
+    "crossRunExpectedRule": "DRA-9",
+    "rules": [
+      "DRA-9"
+    ],
+    "note": "evaluator must have a fresh pass"
+  },
+  "nonpositive-evaluation-window": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-14",
+    "crossRunExpectedRule": "DRA-14",
+    "rules": [
+      "DREB-14"
+    ],
+    "note": "registered rail windows must be positive"
+  },
+  "evaluation-deadline-divergence": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-13",
+    "crossRunExpectedRule": "DRA-14",
+    "rules": [
+      "DREB-13"
+    ],
+    "note": "deadline must equal cutoff plus pinned grace"
+  },
+  "native-expiry-divergence": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-12",
+    "crossRunExpectedRule": "DREB-12",
+    "rules": [
+      "DREB-12"
+    ],
+    "note": "native expiry must equal the submission cutoff"
+  },
+  "cross-job-delivery-replay": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRD-8",
+    "crossRunExpectedRule": "DRD-8",
+    "rules": [
+      "DRD-8"
+    ],
+    "note": "delivery from another job cannot be replayed"
+  },
+  "cross-job-decision-replay": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRD-8",
+    "crossRunExpectedRule": "DRD-8",
+    "rules": [
+      "DRD-8"
+    ],
+    "note": "decision from another job cannot be replayed"
+  },
+  "consumed-decision-replay": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRD-8",
+    "crossRunExpectedRule": "DRD-8",
+    "rules": [
+      "DRD-8"
+    ],
+    "note": "a terminally consumed decision is one-use"
+  },
+  "wrong-evaluator-signer": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRE-1",
+    "crossRunExpectedRule": "DRE-1",
+    "rules": [
+      "DRE-1"
+    ],
+    "note": "commercial parties cannot sign evaluator artifacts"
+  },
+  "relayed-outer-submitter": {
+    "suite": "protocol",
+    "expected": "verified",
+    "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
+    "rules": [
+      "DRV-7"
+    ],
+    "note": "an outer relay does not replace the authenticated native evaluator caller"
+  },
+  "eip1271-relayed-execution": {
+    "suite": "protocol",
+    "expected": "verified",
+    "expectedRule": "DRV-7",
+    "crossRunExpectedRule": "DRV",
+    "rules": [
+      "DRV-7"
+    ],
+    "note": "a supported contract account remains the native caller while an outer account submits"
+  },
+  "relayer-substituted-as-native-caller": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DREB-21",
+    "crossRunExpectedRule": "DREB-21",
+    "rules": [
+      "DREB-21"
+    ],
+    "note": "a relayer cannot replace the agreement-bound evaluator as native caller"
+  },
+  "reject-evaluation-release-action": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRD-2",
+    "crossRunExpectedRule": "DRD-2",
+    "rules": [
+      "DRD-2"
+    ],
+    "note": "rejection cannot authorize release"
+  },
+  "accept-evaluation-refund-action": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRD-2",
+    "crossRunExpectedRule": "DRD-2",
+    "rules": [
+      "DRD-2"
+    ],
+    "note": "acceptance cannot authorize refund"
+  },
+  "partial-terminal-release": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRT-5",
+    "crossRunExpectedRule": "DRT-5",
+    "rules": [
+      "DRT-5"
+    ],
+    "note": "terminal release must cover the complete budget"
+  },
+  "wrong-release-recipient": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRT-5",
+    "crossRunExpectedRule": "DRT-5",
+    "rules": [
+      "DRT-5"
+    ],
+    "note": "release goes only to the bound seller payout account"
+  },
+  "wrong-refund-recipient": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRT-6",
+    "crossRunExpectedRule": "DRT-6",
+    "rules": [
+      "DRT-6"
+    ],
+    "note": "refund goes only to the client"
+  },
+  "nonzero-preterminal-payout": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRL-7",
+    "crossRunExpectedRule": "DRL-7",
+    "rules": [
+      "DRL-7"
+    ],
+    "note": "any preterminal provider payout is forbidden"
+  },
+  "nonzero-platform-fee": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRT-7",
+    "crossRunExpectedRule": "DRT-7",
+    "rules": [
+      "DRT-7"
+    ],
+    "note": "escrow fees must be zero"
+  },
+  "expiry-invented-decision": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRD-7",
+    "crossRunExpectedRule": "DRD-7",
+    "rules": [
+      "DRD-7"
+    ],
+    "note": "expiry cannot manufacture an evaluator decision"
+  },
+  "pre-submission-expiry-delivery-ref": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRT-12",
+    "crossRunExpectedRule": "DRT-12",
+    "rules": [
+      "DRT-12"
+    ],
+    "note": "pre-submission expiry omits delivery evidence"
+  },
+  "expiry-invented-seller-fault": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRT-13",
+    "crossRunExpectedRule": "DRT-13",
+    "rules": [
+      "DRT-13"
+    ],
+    "note": "decisionless expiry cannot invent buyer or seller fault"
+  },
+  "rail-resolution-unavailable": {
+    "suite": "protocol",
+    "expected": "indeterminate",
+    "expectedRule": "DRV-2",
+    "crossRunExpectedRule": "DRV-1",
+    "rules": [
+      "DRV-2"
+    ],
+    "note": "unavailable rail authority does not become a guessed failure"
+  },
+  "runtime-code-unavailable": {
+    "suite": "protocol",
+    "expected": "indeterminate",
+    "expectedRule": "DRV-2",
+    "crossRunExpectedRule": "DRJ-7",
+    "rules": [
+      "DRV-2"
+    ],
+    "note": "unresolved code remains indeterminate"
+  },
+  "terminal-finality-unavailable": {
+    "suite": "protocol",
+    "expected": "indeterminate",
+    "expectedRule": "DRV-2",
+    "crossRunExpectedRule": "DRT-8",
+    "rules": [
+      "DRV-2"
+    ],
+    "note": "missing finality evidence remains indeterminate"
+  },
+  "cross-substrate-order-unavailable": {
+    "suite": "protocol",
+    "expected": "indeterminate",
+    "expectedRule": "DRD-10",
+    "crossRunExpectedRule": "DRD-10",
+    "rules": [
+      "DRD-10"
+    ],
+    "note": "unorderable decision and terminal evidence remains indeterminate"
+  },
+  "self-reported-time-cannot-order": {
+    "suite": "protocol",
+    "expected": "indeterminate",
+    "expectedRule": "DRD-10",
+    "crossRunExpectedRule": "DRD-10",
+    "rules": [
+      "DRD-10"
+    ],
+    "note": "a self-reported decidedAt value cannot replace authenticated ordering"
+  },
+  "decision-finalized-after-terminal": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRV-6",
+    "crossRunExpectedRule": "DRD-11",
+    "rules": [
+      "DRV-6"
+    ],
+    "note": "authenticated after-terminal decision finality is contradictory"
+  },
+  "decision-artifact-unavailable": {
+    "suite": "protocol",
+    "expected": "indeterminate",
+    "expectedRule": "DRD-10",
+    "crossRunExpectedRule": "DRD-4",
+    "rules": [
+      "DRD-10"
+    ],
+    "note": "missing decision evidence without contradiction remains indeterminate"
+  },
+  "authenticated-native-contradiction": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRV-6",
+    "crossRunExpectedRule": "DRJ-7",
+    "rules": [
+      "DRV-6"
+    ],
+    "note": "authenticated contradictory chain evidence rejects"
+  },
+  "noncanonical-job-id": {
+    "suite": "protocol",
+    "expected": "error",
+    "expectedRule": "DRAA-1",
+    "crossRunExpectedRule": "DRAA-1",
+    "rules": [
+      "DRAA-1"
+    ],
+    "note": "malformed JID is an input error"
+  },
+  "malformed-native-bytes32": {
+    "suite": "protocol",
+    "expected": "error",
+    "expectedRule": "DRV-2",
+    "crossRunExpectedRule": "DRV-3",
+    "rules": [
+      "DRV-2"
+    ],
+    "note": "malformed native bytes are not repaired"
+  },
+  "unsupported-profile-discriminator": {
+    "suite": "protocol",
+    "expected": "error",
+    "expectedRule": "DRV-1",
+    "crossRunExpectedRule": "DRV-3",
+    "rules": [
+      "DRV-1"
+    ],
+    "note": "unsupported profiles fail before action"
+  },
+  "evaluation-seq-not-zero": {
+    "suite": "protocol",
+    "expected": "rejected",
+    "expectedRule": "DRAA-6",
+    "crossRunExpectedRule": "DRAA-6",
+    "rules": [
+      "DRAA-6"
+    ],
+    "note": "the first evaluation sequence must be zero"
+  },
+  "synthetic-all-rules-control": {
+    "suite": "deployment",
+    "expected": "verified",
+    "crossRunExpectedRule": "DRC",
+    "registrationEligible": false,
+    "expectedFailedRules": [],
+    "note": "all DRC rules pass, but fixtureOnly keeps registration ineligible"
+  },
+  "drc-1-preterminal-payout": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-1",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-1"
+    ],
+    "note": "a Funded payout path violates delivery gating"
+  },
+  "drc-2-mutable-fees": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-2",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-2"
+    ],
+    "note": "zero defaults do not repair mutable fee authority"
+  },
+  "drc-3-blocked-expiry-recovery": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-3",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-3"
+    ],
+    "note": "pause-gated expiry recovery is ineligible"
+  },
+  "drc-4-emergency-withdrawal": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-4",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-4"
+    ],
+    "note": "an alternate locked-fund recipient is ineligible"
+  },
+  "drc-5-logic-replacement": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-5",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-5"
+    ],
+    "note": "mutable logic can weaken core guarantees"
+  },
+  "drc-6-live-upgrade-authority": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-6",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-6"
+    ],
+    "note": "syntactic upgradeability needs irreversible disablement proof"
+  },
+  "drc-7-mutable-blocking-hook": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-7",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-7"
+    ],
+    "note": "hooks cannot block recovery or change later"
+  },
+  "drc-8-fee-on-transfer-token": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-8",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-8"
+    ],
+    "note": "token transfer fees break exact accounting"
+  },
+  "drc-9-ambiguous-events": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-9",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-9"
+    ],
+    "note": "events must identify the exact job and action"
+  },
+  "drc-10-bytecode-mismatch": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-10",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-10"
+    ],
+    "note": "independently resolved code must match reproducible output"
+  },
+  "drc-11-conflicting-evidence": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-11",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-11"
+    ],
+    "note": "conflicting deployment evidence leaves the rail unavailable"
+  },
+  "drc-12-unauthenticated-ordering": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-12",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-12"
+    ],
+    "note": "decision ordering must be authenticated"
+  },
+  "source-to-bytecode-evidence-unavailable": {
+    "suite": "deployment",
+    "expected": "indeterminate",
+    "crossRunExpectedRule": "DRC-10",
+    "registrationEligible": false,
+    "expectedFailedRules": [],
+    "note": "missing source-to-bytecode evidence is not guessed"
+  },
+  "current-reference-142e669-ineligible": {
+    "suite": "deployment",
+    "expected": "rejected",
+    "crossRunExpectedRule": "DRC-1",
+    "registrationEligible": false,
+    "expectedFailedRules": [
+      "DRC-1",
+      "DRC-2",
+      "DRC-3",
+      "DRC-4",
+      "DRC-5",
+      "DRC-6",
+      "DRC-7"
+    ],
+    "note": "the pinned reference source is not a DACS-eligible deployment"
+  },
+  "malformed-deployment-manifest": {
+    "suite": "deployment",
+    "expected": "error",
+    "crossRunExpectedRule": "DRC-1",
+    "registrationEligible": false,
+    "expectedFailedRules": [],
+    "note": "malformed capability input fails before eligibility"
+  }
+}
