@@ -39,7 +39,8 @@ than assumed — worth considering for future sets (opaque case ids).
 | `sb3-eip3009-nonce-v0.1` | 14 | 14/14 | 14/14 |
 | `x402-receipt-hash-v0.1` | 12 | 11/12 | 12/12 |
 | `transcript-suite-mlkem768-v0.1` | 30 | 30/30 | 30/30 |
-| **total** | **89** | **88/89** | **89/89** |
+| `dacsx-dispute-artifacts-v0.1` | 76 | 76/76 | 76/76 |
+| **total** | **165** | **164/165** | **165/165** |
 
 The transcript run also reproduces the upstream deterministic envelope field by
 field. Its source is `kynesyslabs/sdks` PR #130 at commit
@@ -85,6 +86,10 @@ python3 impl/eval_transcript_suite_mlkem768.py \
 python3 impl/eval_transcript_suite_mlkem768.py \
         blind/transcript-suite-mlkem768-v0.1.json \
         --out runs/run-pathos-transcript-suite-mlkem768-v0.1.json
+python3 scripts/build_dacsx_dispute_blind_set.py --check
+python3 impl/eval_dacsx_dispute_artifacts.py \
+        blind/dacsx-dispute-artifacts-v0.1.json \
+        --out runs/run-pathos-dacsx-dispute-artifacts-v0.1.json
 python3 scripts/build_transcript_suite_blind_set.py --check
 python3 -m unittest discover -s . -p 'test_*.py'
 python3 verify_independence.py

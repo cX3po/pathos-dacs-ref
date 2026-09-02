@@ -45,6 +45,7 @@ SETS = {
     "sb3-eip3009-nonce-v0.1": "eval_sb3_eip3009_nonce",
     "x402-receipt-hash-v0.1": "eval_x402_receipt_hash",
     "transcript-suite-mlkem768-v0.1": "eval_transcript_suite_mlkem768",
+    "dacsx-dispute-artifacts-v0.1": "eval_dacsx_dispute_artifacts",
 }
 
 
@@ -67,7 +68,10 @@ def main() -> int:
     for set_name, module_name in SETS.items():
         blind = json.loads((HERE / "blind" / f"{set_name}.json").read_text(encoding="utf-8"))
         vectors = blind["vectors"]
-        evaluate = load_evaluator(module_name).evaluate
+        module = load_evaluator(module_name)
+        if hasattr(module, "configure_bases"):
+            module.configure_bases(blind.get("fixtures", {}), blind.get("manifests", {}))
+        evaluate = module.evaluate
 
         # 1 — no answer fields survived blinding.
         for vector in vectors:
