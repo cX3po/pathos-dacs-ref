@@ -2,7 +2,7 @@
 
 Sells a PATH-OS proof-organ answer through a full **DACS-1→5** session on the
 sanctioned v0.1 machinery — real signed listing, both-party signed + anchored
-agreement, **pay-dem** (§9.5.9, `bft-final`) settlement, **deliver-storage-program**
+agreement, **pay-dem** (§9.5.9, exact `included` + block-witness `bft-final`) settlement, **deliver-storage-program**
 (§9.6.1) delivery of the organ answer, and two-sided `AttestationBundleV1`
 anchoring verified ENFORCING by `verifyBundleV1Full`.
 
@@ -22,7 +22,8 @@ Live mode needs in `~/axiom/.env`: `DEMOS_MNEMONIC` (buyer, funded) and
 
 ## Files
 - `organ-gateway.mts` — the DACS-1→5 orchestrator (dry-run + live)
-- `pay-dem.ts` — real §9.5.9 native-DEM settlement with amount/finality guards
+- `../adapters/dacs/pay-dem.ts` — SDK-faithful native-DEM adapter; only exact
+  `included` with a block-number witness can emit `bft-final` evidence
 - `anchor-naming.ts` — Demos substrate-equivalent anchor addressing (name-based,
   owner-checked resolution — see the §10.4.3 "substrate-equivalent" note inside)
 - axiom-side bridge: `~/axiom/tools/organ_answer.py` (organ answer + keyed commitment)

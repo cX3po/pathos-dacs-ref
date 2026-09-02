@@ -8,7 +8,7 @@
  *   DACS-1  seller anchors a signed listing (SR-2, name-addressed — see anchor-naming.ts)
  *   DACS-2  buyer verifies the seller's cci primary claim over the listing signature
  *   DACS-3  fixed-price agreement, signed by both parties (CD-1 canonical price)
- *   DACS-4  pay-dem (§9.5.9): REAL native-DEM transfer, bft-final evidence (pay-dem.ts);
+ *   DACS-4  pay-dem (§9.5.9): REAL native-DEM transfer, included-only bft-final evidence;
  *           deliver-storage-program (§9.6.1): the organ answer anchored at
  *           dacs4:deliverable:{jobId}, delivery evidence with real contentHash + locator
  *   DACS-5  both parties emit AttestationBundleV1, both copies anchored two-sided;
@@ -248,11 +248,12 @@ log('DACS-3', `agreement ${agreementHash.slice(0, 16)}… signed by both parties
 const SETTLE_PHASE_INDEX = 3;
 let payEvidence;
 if (LIVE && handles) {
-  const { settlePayDem } = await import('./pay-dem.js');
+  const { settlePayDem } = await import('../adapters/dacs/pay-dem.js');
   const pay = await settlePayDem({
     buyer: handles.buyer, sellerAddress: handles.seller.address,
     amountOs: PRICE_OS, amountDemCanonical: PRICE_DEM, jobId, phaseIndex: SETTLE_PHASE_INDEX,
   });
+  if (!pay.ok) throw new Error(`pay-dem settlement aborted: ${pay.reason}`);
   payEvidence = pay.evidence;
   log('DACS-4', `pay-dem settled ${PRICE_DEM} DEM → tx demos:${pay.txHash.slice(0, 16)}… (bft-final)`);
 } else {
