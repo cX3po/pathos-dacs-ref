@@ -94,3 +94,128 @@ test("emitted implementation manifest validates against the pinned Standard sche
   ].join("; "), Buffer.from(JSON.stringify({ schema: JSON.parse(schema.stdout), manifest: JSON.parse(manifest) })).toString("base64")], { encoding: "utf8" });
   assert.equal(validation.status, 0, validation.stdout || validation.stderr);
 });
+
+// ---- Action / CLI surface (hermetic: no checkouts needed) ----------------------------------
+
+import { parseCliArgs } from "../../conformance/c1-bridge.mjs";
+
+test("C1 bridge CLI parses flags as a pure function and keeps the flag-less default", () => {
+  assert.deepEqual(parseCliArgs([]), { json: false, ablate: false });
+  assert.deepEqual(parseCliArgs(["--json", "--ablate"]), { json: true, ablate: true });
+  assert.deepEqual(
+    parseCliArgs(["--standard-dir=/s", "--sdk-dir=/k", "--standard-ref=abc", "--out=out/report.json", "--json"]),
+    { json: true, ablate: false, standardDir: "/s", sdkDir: "/k", standardRef: "abc", out: "out/report.json" },
+  );
+  assert.throws(() => parseCliArgs(["--bogus"]), /unknown argument: --bogus/);
+  assert.throws(() => parseCliArgs(["--out"]), /--out requires a value/);
+  assert.throws(() => parseCliArgs(["--out="]), /--out requires a value/);
+  assert.throws(() => parseCliArgs(["--json=1"]), /unknown argument/);
+});
+
+type Step = { name: string; uses: string; run: string; withKeys: Map<string, string>; env: Map<string, string>; raw: string; top: string[] };
+
+/**
+ * Minimal, dependency-free reader for the two Actions YAML files in this repo. It splits the
+ * document into steps (`- name:` / `- uses:` items) and, per step, collects the `run:` scalar
+ * (single-line or block), the `with:` keys, and the `env:` keys, so the assertions below can
+ * talk about keys and commands rather than substrings that a comment could satisfy.
+ */
+function readSteps(text: string): Step[] {
+  const lines = text.split("\n");
+  const steps: Step[] = [];
+  let current: Step | undefined;
+  let stepIndent = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const item = /^(\s*)- (name|uses|run):\s*(.*)$/.exec(line);
+    if (item && (stepIndent === -1 || item[1]!.length <= stepIndent)) {
+      stepIndent = item[1]!.length;
+      current = { name: "", uses: "", run: "", withKeys: new Map(), env: new Map(), raw: "", top: [] };
+      steps.push(current);
+    }
+    if (!current) continue;
+    current.raw += `${line}\n`;
+    const keyIndent = stepIndent + 2;
+    const field = new RegExp(`^\\s{${keyIndent}}(?:- )?(name|uses|run|with|env|continue-on-error):\\s*(.*)$`).exec(line.replace(/^(\s*)- /, (m, sp: string) => `${sp}  `));
+    if (!field) continue;
+    const [, key, value] = field;
+    if (key === "continue-on-error") current.top.push(`${key}: ${value}`);
+    if (key === "name") current.name = value!.trim();
+    if (key === "uses") current.uses = value!.trim();
+    if (key === "run") {
+      if (value!.trim() === "|") {
+        let j = i + 1;
+        const body: string[] = [];
+        while (j < lines.length && (/^\s{8,}/.test(lines[j]!) || lines[j]!.trim() === "")) { body.push(lines[j]!); j += 1; }
+        current.run = body.map((b) => b.trimEnd()).join("\n");
+      } else current.run = value!.trim();
+    }
+    if (key === "with" || key === "env") {
+      let j = i + 1;
+      while (j < lines.length && new RegExp(`^\\s{${keyIndent + 2}}\\S`).test(lines[j]!)) {
+        const kv = /^\s+([A-Za-z0-9_.-]+):\s*(.*)$/.exec(lines[j]!);
+        if (kv) (key === "with" ? current.withKeys : current.env).set(kv[1]!, kv[2]!.trim());
+        j += 1;
+      }
+    }
+  }
+  return steps;
+}
+
+const actionText = (): string => readFileSync(new URL("../../.github/actions/c1-bridge/action.yml", import.meta.url), "utf8");
+const workflowText = (): string => readFileSync(new URL("../../.github/workflows/c1-bridge.yml", import.meta.url), "utf8");
+const commandLines = (run: string): string[] => run.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+
+test("C1 bridge action: inputs reach shell only through env, the bridge really runs, and the hashed file is what is uploaded", () => {
+  const steps = readSteps(actionText());
+  assert.ok(steps.length >= 3, `expected setup/install/run/upload steps, saw ${steps.length}`);
+  for (const step of steps) {
+    assert.doesNotMatch(step.run, /\$\{\{\s*(inputs|secrets)\./, `${step.name || step.uses}: expression interpolated into run:`);
+    assert.deepEqual(step.top, [], `${step.name}: continue-on-error is not allowed`);
+  }
+  const run = steps.find((s) => s.name === "Run the C1 bridge");
+  assert.ok(run, "run step present");
+  const expectedEnv: Record<string, string> = {
+    STANDARD_DIR: "${{ inputs.standard-dir }}", SDK_DIR: "${{ inputs.sdk-dir }}", STANDARD_REF: "${{ inputs.standard-ref }}",
+    REPORT_PATH: "${{ inputs.report-path }}", ACTION_PATH: "${{ github.action_path }}",
+  };
+  for (const [key, value] of Object.entries(expectedEnv)) assert.equal(run.env.get(key), value, `env ${key} carries the input`);
+  const cmds = commandLines(run.run);
+  assert.ok(cmds.some((l) => l.startsWith("if ! npx tsx conformance/c1-bridge.mts")), "the bridge command is executed and its failure is checked");
+  assert.ok(cmds.some((l) => l.includes('[ ! -s "$report" ]')), "an empty or missing report is a failure");
+  assert.ok(cmds.some((l) => l.startsWith('sha="$(sha256sum "$report"')), "the report file is hashed");
+  assert.ok(cmds.some((l) => l === 'echo "report-path=$report" >> "$GITHUB_OUTPUT"'), "the hashed absolute path is the output");
+  assert.ok(cmds.some((l) => l === "exit 1"), "failure exits 1");
+  assert.ok(cmds.every((l) => !l.includes("::error::") || l.includes("fail") || l.startsWith('echo "::error::$1"')), "every error path goes through fail()");
+  const upload = steps.find((s) => s.uses.startsWith("actions/upload-artifact@"));
+  assert.ok(upload, "upload step present");
+  assert.equal(upload.withKeys.get("path"), "${{ steps.run.outputs.report-path }}");
+  assert.equal(upload.withKeys.get("if-no-files-found"), "error");
+  assert.equal(upload.withKeys.get("compression-level"), "0");
+});
+
+test("C1 bridge workflow: token gate runs before the private checkout, refs pin on schedule, credentials do not persist", () => {
+  const text = workflowText();
+  const steps = readSteps(text);
+  const names = steps.map((s) => s.name || s.uses);
+  const gate = steps.findIndex((s) => s.name === "Require the SDK access token");
+  const sdk = steps.findIndex((s) => s.withKeys.get("repository") === "DACS-Agent-commerce/dacs-sdk");
+  const standard = steps.findIndex((s) => s.withKeys.get("repository") === "DACS-Agent-commerce/DACS-Standard");
+  assert.ok(gate >= 0 && sdk > gate, `token gate must precede the SDK checkout: ${names.join(" > ")}`);
+  assert.ok(standard >= 0, "Standard checkout present");
+  const gateStep = steps[gate]!;
+  assert.equal(gateStep.env.get("DACS_SDK_TOKEN"), "${{ secrets.DACS_SDK_TOKEN }}", "token reaches the gate through env");
+  assert.match(gateStep.run, /\[ -z "\$DACS_SDK_TOKEN" \]/);
+  for (const step of steps) assert.doesNotMatch(step.run, /\$\{\{\s*(inputs|secrets)\./, `${step.name}: expression in run:`);
+  assert.equal(steps[standard]!.withKeys.get("ref"), `\${{ inputs.standard_ref || '${STANDARD_PIN}' }}`);
+  assert.equal(steps[standard]!.withKeys.get("fetch-depth"), "0");
+  assert.equal(steps[sdk]!.withKeys.get("ref"), "${{ inputs.sdk_ref || 'main' }}");
+  assert.equal(steps[sdk]!.withKeys.get("token"), "${{ secrets.DACS_SDK_TOKEN }}");
+  assert.equal(steps[sdk]!.withKeys.get("persist-credentials"), "false");
+  assert.deepEqual(steps.filter((s) => s.withKeys.has("token")).map((s) => s.withKeys.get("repository")), ["DACS-Agent-commerce/dacs-sdk"]);
+  const bridge = steps.find((s) => s.uses === "./.github/actions/c1-bridge");
+  assert.ok(bridge, "workflow uses the composite action");
+  assert.equal(bridge.withKeys.get("standard-ref"), "${{ inputs.standard_ref || '' }}");
+  for (const step of steps) assert.deepEqual(step.top, [], `${step.name}: continue-on-error is not allowed`);
+  assert.match(text, /^permissions:\n  contents: read$/m);
+});

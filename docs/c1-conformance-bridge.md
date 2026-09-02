@@ -32,3 +32,18 @@ The walkthrough also fixes `jobId` to the non-ULID value `walkthrough-261-0001` 
 The bridge reads the Standard manifest schema, golden vector, walkthrough pins, and generated walkthrough inputs. Reading a rule, fixture description, or example manifest is not counted as executing it.
 
 It does not prove live-substrate behavior: the walkthrough declares `FakeSubstrate` and `liveSdkCalls=false`. It does not execute dispute or disclosure because their inputs are constructed inside dacs-verify's `conformance/run.ts` and are not shipped as replayable Standard artifacts. It also does not execute x402; the walkthrough settles over its EVM ERC-20 example. Accordingly, none of those areas appears as an executed capability in the emitted manifest.
+
+## CLI flags and the GitHub Action
+
+The bridge accepts the checkouts as flags as well as environment variables, and can write the JSON report to a file:
+
+```sh
+npx tsx conformance/c1-bridge.mts --json --ablate \
+  --standard-dir=../DACS-Standard --sdk-dir=../dacs-sdk --out=c1-bridge-report.json
+```
+
+`--standard-ref=<ref>` selects the Standard ref; it must still resolve to the pin. Flags override `DACS_STANDARD_DIR`, `DACS_SDK_DIR` and `DACS_STANDARD_REF`. Without flags the behaviour is unchanged.
+
+`.github/actions/c1-bridge` is a composite action around the same command. It takes `standard-dir` and `sdk-dir` (git checkouts; the SDK must have `dist/` built), runs the bridge, uploads the report byte-for-byte as a workflow artifact (`compression-level: 0`, missing file is an error) and writes the report's sha256, the OK/PARTIAL status, the divergence count and the three commits it ran against to the job summary. It fails the job whenever the bridge did not complete; PARTIAL (executed with divergences) is reported, not hidden, and does not fail the job.
+
+`.github/workflows/c1-bridge.yml` runs it on `workflow_dispatch` (inputs `sdk_ref`, `standard_ref`) and weekly. The SDK repository is private, so the workflow needs a read token in the `DACS_SDK_TOKEN` secret and stops with an error before any checkout when it is absent; a run that never executed the bridge is never green.

@@ -1,0 +1,87 @@
+name: DACS C1 conformance bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk_ref:
+        description: 'dacs-sdk ref to build and bridge against'
+        required: false
+        default: 'main'
+      standard_ref:
+        description: 'DACS-Standard ref; must resolve to the bridge pin'
+        required: false
+        default: '662be1d4899a2cadf327fe2d5523e93a80334e5f'
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require the SDK access token
+        # The SDK repository is private. Without the token the checkout below cannot run,
+        # and a run that never executed the bridge must not look green.
+        env:
+          DACS_SDK_TOKEN: ${{ secrets.DACS_SDK_TOKEN }}
+        run: |
+          if [ -z "$DACS_SDK_TOKEN" ]; then
+            msg="DACS_SDK_TOKEN secret is not set; the bridge needs a read token for DACS-Agent-commerce/dacs-sdk"
+            echo "::error::$msg"
+            { echo "## DACS C1 conformance bridge — FAIL"; echo; echo "$msg"; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Check out DACS-Standard
+        uses: actions/checkout@v4
+        with:
+          repository: DACS-Agent-commerce/DACS-Standard
+          ref: ${{ inputs.standard_ref || '662be1d4899a2cadf327fe2d5523e93a80334e5f' }}
+          path: external/DACS-Standard
+          fetch-depth: 0
+
+      - name: Check out dacs-sdk
+        uses: actions/checkout@v4
+        with:
+          repository: DACS-Agent-commerce/dacs-sdk
+          ref: ${{ inputs.sdk_ref || 'main' }}
+          path: external/dacs-sdk
+          token: ${{ secrets.DACS_SDK_TOKEN }}
+          # The token is for this clone only; it must not stay in .git/config where the SDK's
+          # own npm scripts or the bridge's git calls could read it.
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build the SDK
+        working-directory: external/dacs-sdk
+        run: |
+          npm ci
+          npm run build
+
+      - name: Walkthrough Python dependencies
+        working-directory: external/DACS-Standard
+        run: |
+          python3 --version
+          if [ -f requirements.txt ]; then python3 -m pip install --user -r requirements.txt; fi
+
+      - name: Run the bridge
+        id: bridge
+        uses: ./.github/actions/c1-bridge
+        with:
+          standard-dir: external/DACS-Standard
+          sdk-dir: external/dacs-sdk
+          standard-ref: ${{ inputs.standard_ref || '' }}
+          report-path: c1-bridge-report.json
+
+      - name: Report
+        env:
+          STATUS: ${{ steps.bridge.outputs.status }}
+          SHA: ${{ steps.bridge.outputs.report-sha256 }}
+        run: echo "C1 bridge $STATUS; report sha256 $SHA"
