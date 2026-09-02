@@ -16,6 +16,7 @@
     "convergence": "tsx conformance/convergence-suite.mts",
     "fuzz:bb-binding": "tsx conformance/cross-run-corpus/bb-differential-fuzzer.mts",
     "fuzz:bb-stateful": "tsx conformance/cross-run-corpus/bb-stateful-fuzzer.mts",
+    "gen:transcript-envelope": "tsx conformance/transcript-envelope/generate-vectors.mts",
     "gen:unsigned-vectors": "tsx conformance/cross-run-corpus/gen-unsigned-field-vectors.mts && tsx conformance/cross-run-corpus/gen-unsigned-field-vectors.mts --check",
     "cross-run:unsigned-vectors": "tsx conformance/cross-run-corpus/unsigned-field-cross-run.mts",
     "postinstall": "patch-package"
