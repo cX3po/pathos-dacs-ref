@@ -8,9 +8,9 @@ import { main } from '../../src/cli/dacs-agents.js';
 const EXAMPLE_CONFIG = resolve('config/dacs-agents.example.json');
 const FIXED_ADDRESS = '03A107BFF3CE10BE1D70DD18E74BC09967E4D6309BA50D5F1DDC8664125531B8';
 
-function capture(argv: string[]): { code: number; output: string } {
+function capture(argv: string[], env: Record<string, string | undefined> = {}): { code: number; output: string } {
   let output = '';
-  const code = main(argv, {}, { write: (chunk) => {
+  const code = main(argv, env, { write: (chunk) => {
     output += String(chunk);
     return true;
   } });
@@ -23,6 +23,22 @@ test('check prints both example agents and reports absent environment variables'
   assert.equal(result.code, 0);
   assert.match(result.output, /test-buyer buyer-reviewer DACS_TEST_BUYER_MNEMONIC no demos:/);
   assert.match(result.output, /test-seller seller DACS_TEST_SELLER_MNEMONIC no \(derived after first unlock\)/);
+});
+
+test('check reports present credentials as yes without printing them', () => {
+  const buyer = new Array<string>(12).fill('disposable').join(' ');
+  const seller = new Array<string>(12).fill('throwaway').join(' ');
+  const result = capture(['check', '--config', EXAMPLE_CONFIG], {
+    DACS_TEST_BUYER_MNEMONIC: buyer,
+    DACS_TEST_SELLER_MNEMONIC: seller,
+  });
+
+  assert.equal(result.code, 0);
+  assert.match(result.output, /test-buyer buyer-reviewer DACS_TEST_BUYER_MNEMONIC yes /);
+  assert.match(result.output, /test-seller seller DACS_TEST_SELLER_MNEMONIC yes /);
+  assert.equal(result.output.includes(buyer), false);
+  assert.equal(result.output.includes(seller), false);
+  assert.equal(result.output.includes('disposable'), false);
 });
 
 test('check returns 2 for a rejected config without printing its secret', () => {

@@ -23,6 +23,7 @@ import type { DemosHandle } from '../../src/demos/connection.js';
 
 const EXAMPLE_CONFIG = resolve('config/dacs-agents.example.json');
 const FIXED_ADDRESS = '03A107BFF3CE10BE1D70DD18E74BC09967E4D6309BA50D5F1DDC8664125531B8';
+const SELLER_ADDRESS = '1D4C2A9E7F3B5860C1E2D3F4A5B6C7D8E9F0011223344556677889AABBCCDDEE';
 
 function withConfig(raw: unknown, run: (path: string) => void): void {
   const directory = mkdtempSync(join(tmpdir(), 'dacs-identity-'));
@@ -182,14 +183,41 @@ test('unlockAgent passes the mnemonic and RPC to connect and derives a missing c
   }, {
     connect: async (connectedMnemonic, rpc): Promise<DemosHandle> => {
       received = { mnemonic: connectedMnemonic, rpc };
-      return { demos: fakeDemos, address: FIXED_ADDRESS, rpc };
+      return { demos: fakeDemos, address: SELLER_ADDRESS, rpc };
     },
   });
 
   assert.deepEqual(received, { mnemonic, rpc: config.rpc });
   assert.equal(result.name, 'test-seller');
   assert.equal(result.role, 'seller');
-  assert.equal(result.claim, claimRefFor(FIXED_ADDRESS));
+  assert.equal(result.claim, `demos:0x${SELLER_ADDRESS.toLowerCase()}`);
+  assert.notEqual(result.claim, claimRefFor(FIXED_ADDRESS));
+});
+
+test('unlockAgent keeps a configured claim only when it matches the unlocked wallet', async () => {
+  const config = loadAgentsConfig(EXAMPLE_CONFIG);
+  const configured = config.agents['test-buyer']!.claimRef!;
+  const configuredAddress = configured.slice('demos:'.length);
+  const env = { DACS_TEST_BUYER_MNEMONIC: new Array<string>(12).fill('disposable').join(' ') };
+  const fakeDemos = { marker: 'fake-demos' } as unknown as DemosHandle['demos'];
+
+  const matched = await unlockAgent(config, 'test-buyer', env, {
+    connect: async (_m, rpc): Promise<DemosHandle> => ({ demos: fakeDemos, address: configuredAddress, rpc }),
+  });
+  assert.equal(matched.claim, configured);
+
+  await assert.rejects(
+    unlockAgent(config, 'test-buyer', env, {
+      connect: async (_m, rpc): Promise<DemosHandle> => ({ demos: fakeDemos, address: SELLER_ADDRESS, rpc }),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /Agent "test-buyer" configured claimRef does not match/);
+      assert.equal(error.message.includes(SELLER_ADDRESS.toLowerCase()), false);
+      assert.equal(error.message.includes(env.DACS_TEST_BUYER_MNEMONIC), false);
+      return true;
+    },
+  );
 });
 
 test('unlockAgent does not retain the mnemonic in its returned object', async () => {
@@ -197,6 +225,8 @@ test('unlockAgent does not retain the mnemonic in its returned object', async ()
   const mnemonic = 'one two three four five six seven eight nine ten eleven twelve';
   let passedMnemonic: string | undefined;
 
+  // The buyer carries a configured claim, so the fake wallet must be that address.
+  const buyerAddress = config.agents['test-buyer']!.claimRef!.slice('demos:'.length);
   const result = await unlockAgent(config, 'test-buyer', {
     DACS_TEST_BUYER_MNEMONIC: mnemonic,
   }, {
@@ -204,7 +234,7 @@ test('unlockAgent does not retain the mnemonic in its returned object', async ()
       passedMnemonic = value;
       return {
         demos: { marker: 'fake-demos' } as unknown as DemosHandle['demos'],
-        address: FIXED_ADDRESS,
+        address: buyerAddress,
         rpc,
       };
     },

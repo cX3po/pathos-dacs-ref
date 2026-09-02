@@ -214,8 +214,13 @@ export async function unlockAgent(
   // Keep the credential local to this network-requiring operation.
   const mnemonic = mnemonicFromEnv(agent.mnemonicEnv, env);
   const connected = await deps.connect(mnemonic, config.rpc);
-  const claim = agent.claimRef ?? claimRefFor(connected.address);
-  return { ...connected, name, role: agent.role, mnemonicEnv: agent.mnemonicEnv, claim };
+  const derived = claimRefFor(connected.address);
+  // Fail closed: a configured claim that is not this wallet's claim would let a caller sign
+  // under one identity with another wallet's key. Error names the agent, never the values.
+  if (agent.claimRef !== null && agent.claimRef !== derived) {
+    throw new Error(`Agent "${name}" configured claimRef does not match the unlocked wallet`);
+  }
+  return { ...connected, name, role: agent.role, mnemonicEnv: agent.mnemonicEnv, claim: derived };
 }
 
 function identitySigningBytes(payload: Uint8Array): Uint8Array {
