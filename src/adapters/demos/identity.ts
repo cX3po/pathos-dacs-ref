@@ -4,6 +4,12 @@
  * This is the only importer of @kynesyslabs/demosdk/identity. Callers must use
  * the types and functions exported here rather than depending on SDK CCI types.
  * The boundary is testnet-only and never accepts inline secret material.
+ *
+ * Blast radius: new agent config, adapter tests, and CLI files; two edits to
+ * existing modules (an optional env parameter on mnemonicFromEnv with its
+ * default unchanged, and one added DACS_X_EXTENSION_SEPARATORS key). The first
+ * caller is src/cli/dacs-agents.ts. Existing entry points have no runtime
+ * behaviour changes.
  */
 
 import { readFileSync } from 'node:fs';
@@ -53,6 +59,10 @@ export interface UnlockedAgent extends DemosHandle {
   role: AgentRole;
   mnemonicEnv: string;
   claim: ClaimReference;
+}
+
+export interface UnlockAgentDependencies {
+  connect: (mnemonic: string, rpc: string) => Promise<DemosHandle>;
 }
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -198,11 +208,12 @@ export async function unlockAgent(
   config: AgentsConfig,
   name: string,
   env: Environment = process.env,
+  deps: UnlockAgentDependencies = { connect: connectDemos },
 ): Promise<UnlockedAgent> {
   const agent = configuredAgent(config, name);
   // Keep the credential local to this network-requiring operation.
   const mnemonic = mnemonicFromEnv(agent.mnemonicEnv, env);
-  const connected = await connectDemos(mnemonic, config.rpc);
+  const connected = await deps.connect(mnemonic, config.rpc);
   const claim = agent.claimRef ?? claimRefFor(connected.address);
   return { ...connected, name, role: agent.role, mnemonicEnv: agent.mnemonicEnv, claim };
 }

@@ -14,8 +14,12 @@ import {
   loadAgentsConfig,
   parseClaim,
   resolveAgent,
+  signAsAgent,
+  unlockAgent,
   verifyAgentSignature,
+  type UnlockedAgent,
 } from '../../src/adapters/demos/identity.js';
+import type { DemosHandle } from '../../src/demos/connection.js';
 
 const EXAMPLE_CONFIG = resolve('config/dacs-agents.example.json');
 const FIXED_ADDRESS = '03A107BFF3CE10BE1D70DD18E74BC09967E4D6309BA50D5F1DDC8664125531B8';
@@ -149,6 +153,98 @@ test('claim references round-trip with SDK lowercase and 0x normalisation', () =
     scheme: 'demos',
     identifier: `0x${FIXED_ADDRESS.toLowerCase()}`,
   });
+});
+
+test('unlockAgent rejects a missing mnemonic environment variable before connecting', async () => {
+  const config = loadAgentsConfig(EXAMPLE_CONFIG);
+  let connectCalls = 0;
+
+  await assert.rejects(
+    unlockAgent(config, 'test-buyer', {}, {
+      connect: async () => {
+        connectCalls += 1;
+        throw new Error('connect must not be called');
+      },
+    }),
+    /Environment variable DACS_TEST_BUYER_MNEMONIC is not set/,
+  );
+  assert.equal(connectCalls, 0);
+});
+
+test('unlockAgent passes the mnemonic and RPC to connect and derives a missing claim', async () => {
+  const config = loadAgentsConfig(EXAMPLE_CONFIG);
+  const mnemonic = new Array<string>(12).fill('disposable').join(' ');
+  let received: { mnemonic: string; rpc: string } | undefined;
+  const fakeDemos = { marker: 'fake-demos' } as unknown as DemosHandle['demos'];
+
+  const result = await unlockAgent(config, 'test-seller', {
+    DACS_TEST_SELLER_MNEMONIC: mnemonic,
+  }, {
+    connect: async (connectedMnemonic, rpc): Promise<DemosHandle> => {
+      received = { mnemonic: connectedMnemonic, rpc };
+      return { demos: fakeDemos, address: FIXED_ADDRESS, rpc };
+    },
+  });
+
+  assert.deepEqual(received, { mnemonic, rpc: config.rpc });
+  assert.equal(result.name, 'test-seller');
+  assert.equal(result.role, 'seller');
+  assert.equal(result.claim, claimRefFor(FIXED_ADDRESS));
+});
+
+test('unlockAgent does not retain the mnemonic in its returned object', async () => {
+  const config = loadAgentsConfig(EXAMPLE_CONFIG);
+  const mnemonic = 'one two three four five six seven eight nine ten eleven twelve';
+  let passedMnemonic: string | undefined;
+
+  const result = await unlockAgent(config, 'test-buyer', {
+    DACS_TEST_BUYER_MNEMONIC: mnemonic,
+  }, {
+    connect: async (value, rpc): Promise<DemosHandle> => {
+      passedMnemonic = value;
+      return {
+        demos: { marker: 'fake-demos' } as unknown as DemosHandle['demos'],
+        address: FIXED_ADDRESS,
+        rpc,
+      };
+    },
+  });
+
+  assert.equal(passedMnemonic, mnemonic);
+  assert.equal(JSON.stringify(result).includes(mnemonic), false);
+  assert.equal(Object.values(result).includes(mnemonic), false);
+});
+
+test('signAsAgent signs the domain-separated payload through a fake Demos handle', async () => {
+  const signature = Uint8Array.of(7, 8, 9);
+  let signedPayload: Uint8Array | undefined;
+  const fakeDemos = {
+    walletConnected: true,
+    getEd25519Address: async () => FIXED_ADDRESS,
+    crypto: {
+      sign: async (algorithm: string, payload: Uint8Array) => {
+        assert.equal(algorithm, 'ed25519');
+        signedPayload = payload;
+        return { signature };
+      },
+    },
+  } as unknown as DemosHandle['demos'];
+  const handle: UnlockedAgent = {
+    demos: fakeDemos,
+    address: FIXED_ADDRESS,
+    rpc: 'https://demosnode.discus.sh/',
+    name: 'test-buyer',
+    role: 'buyer-reviewer',
+    mnemonicEnv: 'DACS_TEST_BUYER_MNEMONIC',
+    claim: claimRefFor(FIXED_ADDRESS),
+  };
+  const payload = new TextEncoder().encode('fake signer payload');
+
+  assert.deepEqual(await signAsAgent(handle, payload), signature);
+  assert.deepEqual(
+    signedPayload,
+    new TextEncoder().encode('dacs-x-agent-identity:v1:fake signer payload'),
+  );
 });
 
 test('pinned Ed25519 vector verifies only for the original payload', () => {

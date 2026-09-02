@@ -99,6 +99,7 @@ test('§B.7 — registry separator count (13 registry + 13 dacs-x extension)', (
   // in src/lib/bundle-binding-v1.ts; now centralized into DOMAIN_SEPARATORS → 10 → 13.
   // 2026-09-01 CCI agent identity adapter: +1 dacs-x kind (AGENT_IDENTITY) binding agent payloads
   // signed through the CCI adapter (src/adapters/demos/identity.ts) → 12 → 13.
+  // 2026-09-02 maintenance rule: the next dacs-x extension addition bumps this count to 14.
   assert.equal(Object.keys(DOMAIN_SEPARATORS).length, 13,
     `expected 13 §B.7-registry separators, got ${Object.keys(DOMAIN_SEPARATORS).length}`);
   assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 13,
