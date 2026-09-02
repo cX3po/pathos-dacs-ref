@@ -38,9 +38,13 @@ than assumed — worth considering for future sets (opaque case ids).
 | `artifact-reference-shapes-v0.1` | 23 | 23/23 | 23/23 |
 | `sb3-eip3009-nonce-v0.1` | 14 | 14/14 | 14/14 |
 | `x402-receipt-hash-v0.1` | 12 | 11/12 | 12/12 |
-| **total** | **59** | **58/59** | **59/59** |
+| `transcript-suite-mlkem768-v0.1` | 21 | 21/21 | 21/21 |
+| **total** | **80** | **79/80** | **80/80** |
 
-Three sets print `cross-run CONVERGED` under `scripts/diff_vector_runs.py`.
+The transcript run also reproduces the upstream deterministic envelope field by
+field. Its source is `kynesyslabs/sdks` PR #130 at commit
+`31389e5176afb642fdae6c72fd4819d85973773a`; the pinned fixture SHA-256 is
+`e9c8c0a60da017c7d5f33e6c47c811ef77b30c4127258b3ecc78efc3ba5ec95d`.
 
 The convergence is not label-matching. Seven stored `paymentReceiptHash` values were
 reproduced byte-exactly from the header alone — including a reordered/pretty-printed
@@ -76,9 +80,16 @@ python3 impl/eval_artifact_reference_shapes.py blind/artifact-reference-shapes-v
         --out runs/run-pathos-artifact-reference-shapes-v0.1.json
 python3 impl/eval_sb3_eip3009_nonce.py blind/sb3-eip3009-nonce-v0.1.json \
         runs/run-pathos-sb3-eip3009-nonce-v0.1.json
+python3 impl/eval_transcript_suite_mlkem768.py \
+        --reproduce upstream/sdks-130-31389e51-transcript-encryption-v0.1.json
+python3 impl/eval_transcript_suite_mlkem768.py \
+        blind/transcript-suite-mlkem768-v0.1.json \
+        --out runs/run-pathos-transcript-suite-mlkem768-v0.1.json
+python3 verify_independence.py
 ```
 
-Each reads only `blind/` and rewrites its run file; all four reproduce the results above.
+The blind runners rewrite their run files from vector data alone; the transcript
+reproduction command separately reads the pinned upstream fixture.
 Then, from a DACS-Standard checkout:
 
 ```sh

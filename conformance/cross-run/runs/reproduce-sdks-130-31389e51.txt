@@ -1,0 +1,18 @@
+field                                      result
+-----------------------------------------  -----
+memberSetHash                              EQUAL
+recipientBindingsHash                      EQUAL
+plaintextHash                              EQUAL
+contentHash                                EQUAL
+iv                                         EQUAL
+ciphertext                                 EQUAL
+tag                                        EQUAL
+binding[0].publicKey                       EQUAL
+binding[0].keySig.value                    EQUAL
+binding[1].publicKey                       EQUAL
+binding[1].keySig.value                    EQUAL
+wrap[0].kemCiphertext                      EQUAL
+wrap[0].wrapped                            EQUAL
+wrap[1].kemCiphertext                      EQUAL
+wrap[1].wrapped                            EQUAL
+TOTAL                                      ALL EQUAL
