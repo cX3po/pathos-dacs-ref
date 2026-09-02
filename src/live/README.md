@@ -44,6 +44,9 @@ and is never interpreted as an absent party anchor.
 - axiom-side bridge: `~/axiom/tools/organ_answer.py` (organ answer + keyed commitment)
 
 ## Honest scope
+
+The reusable `agreement-commitment.ts` and `bundle-finalizer.ts` adapters now expose the DACS-3 finality-commitment and DACS-5 EBFAB flows behind an injected CORE §5.1 `receiptProvider`. This live gateway is intentionally not wired to them yet: `storage.ts` can show inclusion/read-back but cannot authenticate all receipt/finality fields, so a live Demos receipt provider and gateway migration remain a follow-up rather than treating SDK inclusion as protocol finality.
+
 - cci primary claims are per-run ed25519 keys recorded in the anchored artifacts;
   durable gateway identities + listing discovery/indexing are the next slice.
 - Dry-run artifacts are self-labelled (`organ-gw-dry-…` jobIds, `dry-…` locators,

@@ -16,11 +16,11 @@
  * Two-sided anchoring / divergence (§10.4.2/§10.4.3) is a cross-bundle concern handled by
  * the caller comparing two single-side verdicts; this function verifies ONE bundle.
  */
-import type { AttestationBundleV1, BundleOutcome, BundleParty, BundleSignature } from '../types/bundle.js';
+import type { AttestationBundleV1, BundleOutcome, BundleParty, BundleSignature, CurrentAttestationBundle } from '../types/bundle.js';
 import type { ClaimRef } from '../types/identity.js';
 import type { AttestationRef } from '../types/verify-result.js';
 import { verify } from './sign.js';
-import { DOMAIN_SEPARATORS } from '../domain-sep.js';
+import { DOMAIN_SEPARATORS, ADDITIVE_DOMAIN_SEPARATORS } from '../domain-sep.js';
 import { jcsCanonical } from '../jcs.js';
 import { bundleSignedScopeHashV1 } from './bundle-signed-scope-v1.js';
 import { sha256 } from '@noble/hashes/sha2';
@@ -175,7 +175,9 @@ function structuralErrors(b: unknown): string[] {
   const e: string[] = [];
   const x = b as Record<string, unknown>;
   const intGe0 = (n: unknown) => typeof n === 'number' && Number.isInteger(n) && n >= 0;
-  if (x.bundleVersion !== '1') e.push('bundleVersion must be "1"');
+  const discriminators = [x.bundleVersion === '1', x.faultBundleVersion === '1', x.evidenceBoundFaultBundleVersion === '1'].filter(Boolean).length;
+  if (discriminators !== 1) e.push('exactly one supported bundle discriminator must equal "1"');
+  if (x.bundleVersion === undefined && x.faultBundleVersion === undefined && x.evidenceBoundFaultBundleVersion === undefined) e.push('bundle discriminator missing');
   if (typeof x.jobId !== 'string' || !x.jobId) e.push('jobId missing');
   if (typeof x.outcome !== 'string' || !KNOWN_OUTCOMES.has(x.outcome)) e.push(`unknown outcome "${String(x.outcome)}" (§10.4)`);
   // §10.4 (R4-B): anchoredByRole is required, a known role, and must match a listed party's role.
@@ -214,6 +216,15 @@ function structuralErrors(b: unknown): string[] {
       if (!isHash(p?.bundleHash)) e.push(`party[${i}].bundleHash invalid`);
     });
   }
+  if (x.faultBundleVersion === '1' || x.evidenceBoundFaultBundleVersion === '1') {
+    const roles = new Set(Array.isArray(parties) ? parties.map((p) => p?.role) : []);
+    const role = x.anchoredByRole;
+    const fault = x.faultedParty;
+    const permitted = (x.outcome === 'completed' || x.outcome === 'failed-substrate') ? fault === 'none'
+      : (x.outcome === 'failed-perm' || x.outcome === 'aborted-by-self') ? fault === role
+        : typeof fault === 'string' && fault !== 'none' && fault !== role && roles.has(fault);
+    if (!permitted) e.push('faultedParty contradicts outcome/anchoredByRole (§10.4.1)');
+  }
   const sigs = x.signatures;
   if (!Array.isArray(sigs) || sigs.length === 0) {
     e.push('signatures missing');
@@ -237,7 +248,7 @@ function structuralErrors(b: unknown): string[] {
  * `cryptographicallyVerified` reports the real crypto status regardless of mode.
  */
 export function verifyBundleV1(
-  bundle: AttestationBundleV1,
+  bundle: AttestationBundleV1 | CurrentAttestationBundle,
   opts: { requireSignatures?: boolean } = {},
 ): BundleV1Verdict {
   const requireSignatures = opts.requireSignatures ?? true;
@@ -283,17 +294,21 @@ export function verifyBundleV1(
   }
 
   // Signature verification — only attempt ed25519 verify for ed25519-labelled sigs over a resolvable key.
+  const domain = 'evidenceBoundFaultBundleVersion' in bundle
+    ? ADDITIVE_DOMAIN_SEPARATORS.EVIDENCE_BOUND_FAULT_BUNDLE
+    : 'faultBundleVersion' in bundle ? DOMAIN_SEPARATORS.FAULT_BUNDLE : DOMAIN_SEPARATORS.BUNDLE;
+  const currentStrictEncoding = 'evidenceBoundFaultBundleVersion' in bundle || 'faultBundleVersion' in bundle;
   const signatureChecks: SigCheck[] = signatures.map((s: BundleSignature): SigCheck => {
     const party = claimKey(s.party)!;
     if (s.algorithm !== 'ed25519') return { party, decision: 'unverifiable', reason: `unsupported algorithm "${s.algorithm}"` };
     // Encoding validity is independent of key resolution — reject a malformed value even for a DID signer.
-    const sig = decodeEd25519Sig(s.value);
+    const sig = currentStrictEncoding && s.value.includes('=') ? null : decodeEd25519Sig(s.value);
     if (!sig) return { party, decision: 'fail', reason: 'signature value is not a valid 64-byte base64/base64url ed25519 signature' };
     const kb = keyBytes(s.party);
     if (!kb) return { party, decision: 'unverifiable', reason: 'claim identifier is not a 32-byte ed25519 key (e.g. placeholder DID)' };
     let ok = false;
-    try { ok = verify(DOMAIN_SEPARATORS.BUNDLE, sig, enc.encode(bundleHash), kb); } catch { ok = false; }
-    return { party, decision: ok ? 'pass' : 'fail', reason: ok ? undefined : 'does not verify over dacs-bundle:v1: || bundleHash' };
+    try { ok = verify(domain, sig, enc.encode(bundleHash), kb); } catch { ok = false; }
+    return { party, decision: ok ? 'pass' : 'fail', reason: ok ? undefined : `does not verify over ${domain} || bundleHash` };
   });
 
   const anyHardFail = signatureChecks.some((c) => c.decision === 'fail');
