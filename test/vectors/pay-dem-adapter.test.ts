@@ -136,6 +136,9 @@ function sdkWith(overrides: Partial<DemosSdkFunctions> = {}): DemosSdkFunctions 
   };
 }
 
+const authorizeProceed = async () => ({ verdict: 'PROCEED' as const, nowIso: new Date().toISOString() });
+const authorizedHooks = { authorizeTransfer: authorizeProceed };
+
 test('demosdk wiring journals signed identity before confirmation and broadcast', async () => {
   const calls: string[] = [];
   const sdk = sdkWith({
@@ -152,9 +155,10 @@ test('demosdk wiring journals signed identity before confirmation and broadcast'
     async journalPreparedTransfer(prepared) {
       calls.push(`journal:${prepared.txHash}:${prepared.nonce}`);
     },
+    async journalTransferOutcome(outcome) { calls.push(`outcome:${outcome.outcome}`); },
   });
-  const result = await client.transfer({ to: PAYEE, amountOs: 5n });
-  assert.deepEqual(calls, ['pay', 'sign', 'journal:signed-hash:7', 'confirm', 'broadcastAndWait']);
+  const result = await client.transfer({ to: PAYEE, amountOs: 5n, authorizationNowIso: new Date().toISOString() });
+  assert.deepEqual(calls, ['pay', 'sign', 'journal:signed-hash:7', 'confirm', 'outcome:broadcast-attempted', 'broadcastAndWait']);
   assert.deepEqual(result, { ok: true, hash: 'signed-hash', state: 'included', blockNumber: 42 });
 });
 
@@ -169,6 +173,8 @@ test('settlePayDem journals one signed preparation carrying core recovery contex
     phaseIndex: 3,
     network: 'demos-devnet',
     sdk: sdkWith(),
+    authorizeTransfer: authorizeProceed,
+    async journalTransferOutcome() {},
     async journal(prepared) { records.push(prepared); },
   });
   assert.equal(result.ok, true);
@@ -210,8 +216,11 @@ test('demosdk wiring converts pay, sign, confirm, and broadcast failures to clos
   ];
   for (const failure of failures) {
     await t.test(failure.name, async () => {
-      const result = await createDemosNativeClient(stubHandle, { sdk: sdkWith(failure.override) })
-        .transfer({ to: PAYEE, amountOs: 1n });
+      const result = await createDemosNativeClient(stubHandle, {
+        sdk: sdkWith(failure.override),
+        async journalTransferOutcome() {},
+      })
+        .transfer({ to: PAYEE, amountOs: 1n, authorizationNowIso: new Date().toISOString() });
       assert.equal(result.ok, false);
       assert.equal(result.hash, failure.expectedHash);
       assert.equal(result.state, undefined);
@@ -229,8 +238,8 @@ test('a broadcast timeout remains failed while retaining signed hash and last-se
       });
     },
   });
-  const result = await createDemosNativeClient(stubHandle, { sdk })
-    .transfer({ to: PAYEE, amountOs: 1n });
+  const result = await createDemosNativeClient(stubHandle, { sdk, async journalTransferOutcome() {} })
+    .transfer({ to: PAYEE, amountOs: 1n, authorizationNowIso: new Date().toISOString() });
   assert.equal(result.ok, false);
   assert.equal(result.hash, 'signed-hash');
   assert.equal(result.state, 'pending');
@@ -251,6 +260,7 @@ test('exact included state with block witness returns success evidence', async (
   const outcome = await settlePayDemCore(
     params(),
     clientWith({ ok: true, hash: 'hash-123', state: 'included', blockNumber: 42 }),
+    authorizedHooks,
   );
   assert.equal(outcome.ok, true);
   if (!outcome.ok) return;
@@ -266,6 +276,7 @@ test('alternate pre-inclusion state fails without evidence', async () => {
   const outcome = await settlePayDemCore(
     params(),
     clientWith({ ok: true, hash: 'h', state: ['con', 'firmed'].join(''), blockNumber: 7 }),
+    authorizedHooks,
   );
   assert.deepEqual(outcome, { ok: false, reason: 'pay-dem did not observe included state (state=confirmed)' });
   assert.equal('evidence' in outcome, false);
@@ -275,19 +286,20 @@ test('alternate post-inclusion alias fails without evidence', async () => {
   const outcome = await settlePayDemCore(
     params(),
     clientWith({ ok: true, hash: 'h', state: ['final', 'ized'].join(''), blockNumber: 7 }),
+    authorizedHooks,
   );
   assert.equal(outcome.ok, false);
   assert.equal('evidence' in outcome, false);
 });
 
 test('missing state fails without evidence', async () => {
-  const outcome = await settlePayDemCore(params(), clientWith({ ok: true, hash: 'h', blockNumber: 7 }));
+  const outcome = await settlePayDemCore(params(), clientWith({ ok: true, hash: 'h', blockNumber: 7 }), authorizedHooks);
   assert.equal(outcome.ok, false);
   assert.equal('evidence' in outcome, false);
 });
 
 test('missing block number fails without evidence', async () => {
-  const outcome = await settlePayDemCore(params(), clientWith({ ok: true, hash: 'h', state: 'included' }));
+  const outcome = await settlePayDemCore(params(), clientWith({ ok: true, hash: 'h', state: 'included' }), authorizedHooks);
   assert.equal(outcome.ok, false);
   assert.equal('evidence' in outcome, false);
 });
@@ -296,6 +308,7 @@ test('client failure returns failure without evidence', async () => {
   const outcome = await settlePayDemCore(
     params(),
     clientWith({ ok: false, hash: '', message: 'rejected' }),
+    authorizedHooks,
   );
   assert.deepEqual(outcome, { ok: false, reason: 'rejected' });
   assert.equal('evidence' in outcome, false);
@@ -314,6 +327,7 @@ test('recovery context is journaled exactly before transfer', async () => {
   };
   let journaled: unknown;
   const outcome = await settlePayDemCore(params(), client, {
+    authorizeTransfer: authorizeProceed,
     async journalPreparedTransfer(prepared) {
       calls.push('journal');
       journaled = prepared;
@@ -349,6 +363,7 @@ test('mutable params cannot change recipient or amount after settlement starts',
     },
   };
   const pending = settlePayDemCore(mutable, client, {
+    authorizeTransfer: authorizeProceed,
     async journalPreparedTransfer() { await journalGate; },
   });
   mutable.recipient = 'mutated-payee';
@@ -365,6 +380,7 @@ test('evidence amount and currency exactly describe the moved OS', async () => {
   const outcome = await settlePayDemCore(
     params({ amountDemCanonical: '12.345678901', amountOs: 12_345_678_901n }),
     clientWith({ ok: true, hash: 'h', state: 'included', blockNumber: 10 }),
+    authorizedHooks,
   );
   assert.equal(outcome.ok, true);
   if (!outcome.ok) return;
@@ -429,7 +445,7 @@ test('pure core has no demosdk import and gateway uses demosdk wiring with a jou
   assert.equal(existsSync(join(root, 'src/live/pay-dem.ts')), false);
   const gateway = readFileSync(join(root, 'src/live/organ-gateway.mts'), 'utf8');
   assert.match(gateway, /import\('\.\.\/adapters\/dacs\/pay-dem-demosdk\.js'\)/);
-  assert.match(gateway, /payDemJournal = createPayDemJsonlJournal\(process\.env\.DACS_PAYDEM_JOURNAL\)/);
+  assert.match(gateway, /payDemJournal = createPayDemJsonlJournal\(payDemJournalPath\)/);
   assert.match(gateway, /journal:\s*payDemJournal/);
   assert.ok(gateway.indexOf('payDemJournal = createPayDemJsonlJournal') < gateway.indexOf("log('DACS-1'"), 'journal is built in preflight, before DACS-1');
   const core = readFileSync(join(root, 'src/adapters/dacs/pay-dem.ts'), 'utf8');

@@ -40,6 +40,13 @@ export interface PayDemSettlementRecoveryContext {
   amountOs: string;
 }
 
+export interface PayDemAuthorizationAbortContext extends PayDemSettlementRecoveryContext {
+  abort: {
+    rule: string;
+    reason: string;
+  };
+}
+
 export interface DemosTransferResult {
   ok: boolean;
   hash: string;
@@ -50,9 +57,11 @@ export interface DemosTransferResult {
 
 export interface DemosNativeClient {
   address: string;
+  rpcUrl?: string;
   transfer(args: {
     to: string;
     amountOs: bigint;
+    authorizationNowIso: string;
     recovery?: Readonly<PayDemSettlementRecoveryContext>;
   }): Promise<DemosTransferResult>;
 }
