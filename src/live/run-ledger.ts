@@ -3,10 +3,12 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -14,7 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, hostname } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import {
   DEMOS_WRITE_JOURNAL_VERSION,
@@ -30,7 +32,10 @@ import {
 
 const DIR_MODE = 0o700;
 const FILE_MODE = 0o600;
-const DEFAULT_LOCK_STALE_MS = 30_000;
+// An unparsable lock can only be judged by mtime. Keep its stale threshold
+// below the default acquisition timeout so crash debris is reclaimable by a
+// single acquire attempt.
+const DEFAULT_LOCK_STALE_MS = 5_000;
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
 const LOCK_RETRY_MS = 10;
 
@@ -73,14 +78,6 @@ function validOptionalString(value: unknown): boolean {
   return value === undefined || nonEmpty(value);
 }
 
-function validatePathPart(value: string, label: string): void {
-  // Keys are directory names in the frozen on-disk layout, so separators and
-  // traversal components must be rejected rather than escaped ambiguously.
-  if (!nonEmpty(value) || value === '.' || value === '..' || /[\\/\0]/.test(value)) {
-    throw new Error(`Demos write journal ${label} is not a safe path component`);
-  }
-}
-
 function gitAncestor(path: string): string | undefined {
   let current = resolve(path);
   for (;;) {
@@ -96,17 +93,58 @@ function gitAncestor(path: string): string | undefined {
   }
 }
 
-export function resolveRunLedgerDir(env: NodeJS.ProcessEnv = process.env): string {
-  const configured = env.DACS_RUN_LEDGER_DIR;
-  const dir = resolve(configured && configured.trim().length > 0
-    ? configured
-    : join(homedir(), '.pathos-dacs-ref', 'run-ledger'));
-  const ancestor = gitAncestor(dir);
+function realpathWithMissingTail(path: string): string {
+  let existing = resolve(path);
+  const tail: string[] = [];
+  while (!existsSync(existing)) {
+    const parent = dirname(existing);
+    if (parent === existing) break;
+    tail.push(basename(existing));
+    existing = parent;
+  }
+  return join(realpathSync(existing), ...tail.reverse());
+}
+
+function refuseGitLedger(path: string): void {
+  const ancestor = gitAncestor(path);
   if (ancestor) {
     throw new Error(
-      `DACS run ledger directory ${dir} is inside git working tree ${ancestor}; choose DACS_RUN_LEDGER_DIR outside the checkout`,
+      `DACS run ledger directory ${path} is inside git working tree ${ancestor}; choose DACS_RUN_LEDGER_DIR outside the checkout`,
     );
   }
+}
+
+function prepareLedgerRoot(path: string): string {
+  const candidate = realpathWithMissingTail(path);
+  refuseGitLedger(candidate);
+  mkdirSync(candidate, { recursive: true, mode: DIR_MODE });
+  const created = realpathSync(candidate);
+  refuseGitLedger(created);
+  return created;
+}
+
+function containedBy(parent: string, child: string): boolean {
+  const remainder = relative(parent, child);
+  return remainder === '' || (!isAbsolute(remainder) && remainder !== '..' && !remainder.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`));
+}
+
+function createContainedDirectory(parent: string, name: string): string {
+  const parentReal = realpathSync(parent);
+  const path = join(parentReal, name);
+  mkdirSync(path, { recursive: true, mode: DIR_MODE });
+  const pathReal = realpathSync(path);
+  if (!containedBy(parentReal, pathReal)) {
+    throw new Error(`Demos write journal directory ${path} resolves outside ${parentReal}`);
+  }
+  return pathReal;
+}
+
+export function resolveRunLedgerDir(env: NodeJS.ProcessEnv = process.env): string {
+  const configured = env.DACS_RUN_LEDGER_DIR;
+  const dir = realpathWithMissingTail(configured && configured.trim().length > 0
+    ? configured
+    : join(homedir(), '.pathos-dacs-ref', 'run-ledger'));
+  refuseGitLedger(dir);
   return dir;
 }
 
@@ -123,7 +161,7 @@ function syncDirectory(path: string): void {
   }
 }
 
-function atomicWriteJson(path: string, value: unknown): void {
+function atomicWriteJson(path: string, value: unknown, beforeRename?: () => void): void {
   mkdirSync(dirname(path), { recursive: true, mode: DIR_MODE });
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
   let fd: number | undefined;
@@ -133,6 +171,7 @@ function atomicWriteJson(path: string, value: unknown): void {
     fsyncSync(fd);
     closeSync(fd);
     fd = undefined;
+    beforeRename?.();
     renameSync(temporary, path);
     syncDirectory(dirname(path));
   } finally {
@@ -284,28 +323,69 @@ function readLock(path: string): LockOwner | undefined {
 }
 
 function tryCreateLock(path: string, owner: LockOwner): boolean {
-  let fd: number | undefined;
+  const temporary = `${path}.${process.pid}.${owner.token}.tmp`;
+  let claimFd: number | undefined;
+  let ownerFd: number | undefined;
+  let claimed = false;
   try {
-    fd = openSync(path, 'wx', FILE_MODE);
-    writeFileSync(fd, JSON.stringify(owner), 'utf8');
-    fsyncSync(fd);
+    claimFd = openSync(path, 'wx', FILE_MODE);
+    claimed = true;
+    closeSync(claimFd);
+    claimFd = undefined;
+    ownerFd = openSync(temporary, 'wx', FILE_MODE);
+    writeFileSync(ownerFd, JSON.stringify(owner), 'utf8');
+    fsyncSync(ownerFd);
+    closeSync(ownerFd);
+    ownerFd = undefined;
+    renameSync(temporary, path);
+    syncDirectory(dirname(path));
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    if (!claimed && (error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    if (claimed) {
+      try { unlinkSync(path); } catch (cleanupError) {
+        if ((cleanupError as NodeJS.ErrnoException).code !== 'ENOENT') throw cleanupError;
+      }
+    }
     throw error;
   } finally {
-    if (fd !== undefined) closeSync(fd);
+    if (claimFd !== undefined) closeSync(claimFd);
+    if (ownerFd !== undefined) closeSync(ownerFd);
+    rmSync(temporary, { force: true });
   }
 }
 
 function releaseOwnedLock(path: string, token: string): void {
-  if (readLock(path)?.token !== token) return;
+  const quarantine = `${path}.${randomUUID()}.release`;
   try {
-    unlinkSync(path);
+    renameSync(path, quarantine);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  if (readLock(quarantine)?.token === token) {
+    unlinkSync(quarantine);
+    syncDirectory(dirname(path));
+    return;
+  }
+  try {
+    // link(2) supplies the no-replace restore that rename(2) lacks on POSIX.
+    // If a contender filled the live name, its lock remains untouched.
+    linkSync(quarantine, path);
+    unlinkSync(quarantine);
     syncDirectory(dirname(path));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    unlinkSync(quarantine);
   }
+}
+
+function journalKeyDigest(key: DemosWriteJournalKey): string {
+  return createHash('sha256')
+    .update(key.chainIdentity)
+    .update('\0')
+    .update(key.wallet)
+    .digest('hex');
 }
 
 function wait(ms: number): Promise<void> {
@@ -326,16 +406,20 @@ export function createFsDemosWriteJournal(opts: {
   if (!Number.isFinite(lockTimeoutMs) || lockTimeoutMs <= 0) {
     throw new Error('Demos write journal lockTimeoutMs must be positive');
   }
-  const journalDir = join(resolve(opts.dir), 'journal');
-  mkdirSync(journalDir, { recursive: true, mode: DIR_MODE });
+  if (lockStaleMs > lockTimeoutMs) {
+    throw new Error('Demos write journal lockStaleMs must not exceed lockTimeoutMs');
+  }
+  const rootDir = prepareLedgerRoot(opts.dir);
+  const journalDir = createContainedDirectory(rootDir, 'journal');
 
   return {
     async acquire(input) {
-      validatePathPart(input.chainIdentity, 'chainIdentity');
-      validatePathPart(input.wallet, 'wallet');
+      if (!nonEmpty(input.chainIdentity) || !nonEmpty(input.wallet)) {
+        throw new Error('Demos write journal key requires chainIdentity and wallet');
+      }
       const key = Object.freeze({ chainIdentity: input.chainIdentity, wallet: input.wallet });
-      const walletDir = join(journalDir, key.chainIdentity, key.wallet);
-      mkdirSync(walletDir, { recursive: true, mode: DIR_MODE });
+      const digest = journalKeyDigest(key);
+      const walletDir = createContainedDirectory(journalDir, digest);
       const snapshotPath = join(walletDir, 'snapshot.json');
       const lockPath = join(walletDir, 'lock.json');
       const token = randomUUID();
@@ -350,8 +434,14 @@ export function createFsDemosWriteJournal(opts: {
           try { reclaim = Date.now() - statSync(lockPath).mtimeMs >= lockStaleMs; } catch { reclaim = false; }
         }
         if (reclaim) {
-          try { unlinkSync(lockPath); } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          const quarantine = `${lockPath}.${randomUUID()}.reclaim`;
+          try {
+            renameSync(lockPath, quarantine);
+            rmSync(quarantine, { force: true });
+            syncDirectory(dirname(lockPath));
+          } catch (error) {
+            const code = (error as NodeJS.ErrnoException).code;
+            if (code !== 'ENOENT' && code !== 'EEXIST') throw error;
           }
           continue;
         }
@@ -365,21 +455,28 @@ export function createFsDemosWriteJournal(opts: {
       try {
         const prior = readSnapshot(snapshotPath, key);
         const generation = (prior?.generation ?? 0) + 1;
-        let current: DemosWriteJournalSnapshot = {
+        const initial: DemosWriteJournalSnapshot = {
           version: DEMOS_WRITE_JOURNAL_VERSION,
           ...key,
           generation,
           records: structuredClone(prior?.records ?? []),
         };
-        atomicWriteJson(snapshotPath, current);
+        const noLongerCurrent = (): never => {
+          throw new Error(`Demos write journal fence ${generation} is no longer current`);
+        };
+        const assertFence = (expectedDiskGeneration: number): void => {
+          const diskGeneration = readSnapshot(snapshotPath, key)?.generation ?? 0;
+          if (diskGeneration !== expectedDiskGeneration || readLock(lockPath)?.token !== token) {
+            noLongerCurrent();
+          }
+        };
+        atomicWriteJson(snapshotPath, initial, () => assertFence(prior?.generation ?? 0));
+        let current = initial;
         let putTail = Promise.resolve();
 
         const assertCurrent = async (): Promise<void> => {
           if (released) throw new Error(`Demos write journal fence ${generation} was released`);
-          const disk = readSnapshot(snapshotPath, key);
-          if (disk?.generation !== generation || readLock(lockPath)?.token !== token) {
-            throw new Error(`Demos write journal fence ${generation} is no longer current`);
-          }
+          assertFence(generation);
         };
 
         return {
@@ -400,7 +497,7 @@ export function createFsDemosWriteJournal(opts: {
                 .map((candidate) => structuredClone(candidate));
               records.push(checked);
               const next = { ...current, records };
-              atomicWriteJson(snapshotPath, next);
+              atomicWriteJson(snapshotPath, next, () => assertFence(generation));
               current = next;
             });
             putTail = operation.catch(() => undefined);
@@ -455,8 +552,8 @@ function validateOutcome(value: unknown, path: string): SettleResult {
 
 export function createFsSettlementLog(opts: { dir: string }): SettlementLog {
   if (!opts || !nonEmpty(opts.dir)) throw new Error('filesystem settlement log requires a directory');
-  const settlementDir = join(resolve(opts.dir), 'settlement');
-  mkdirSync(settlementDir, { recursive: true, mode: DIR_MODE });
+  const rootDir = prepareLedgerRoot(opts.dir);
+  const settlementDir = createContainedDirectory(rootDir, 'settlement');
   const paths = (key: string) => {
     const hash = keyHash(key);
     return {
@@ -479,8 +576,14 @@ export function createFsSettlementLog(opts: { dir: string }): SettlementLog {
       }
     },
     async putOutcome(key, res) {
-      const path = paths(key).outcome;
+      const { outcome: path, intent } = paths(key);
       atomicWriteJson(path, validateOutcome(res, path));
+      try {
+        unlinkSync(intent);
+        syncDirectory(settlementDir);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
     },
     async claimIntent(key) {
       const { hash, intent } = paths(key);
@@ -559,7 +662,7 @@ export function openRunLedger(env: NodeJS.ProcessEnv = process.env): {
   idempotency: SettlementIdempotencyStore;
 } {
   const dir = resolveRunLedgerDir(env);
-  mkdirSync(dir, { recursive: true, mode: DIR_MODE });
+  prepareLedgerRoot(dir);
   const journal = createFsDemosWriteJournal({ dir });
   const settlementLog = createFsSettlementLog({ dir });
   return { dir, journal, settlementLog, idempotency: createIdempotencyStore(settlementLog) };
@@ -580,26 +683,36 @@ function childDirectories(path: string): string[] {
 export function reconcile(dir: string): ReconcileReport {
   const root = resolve(dir);
   const journals: ReconcileReport['journals'] = [];
-  for (const chainIdentity of childDirectories(join(root, 'journal'))) {
-    for (const wallet of childDirectories(join(root, 'journal', chainIdentity))) {
-      const path = join(root, 'journal', chainIdentity, wallet, 'snapshot.json');
-      const snapshot = readSnapshot(path, { chainIdentity, wallet });
-      if (!snapshot) continue;
-      const byStage: Partial<Record<DemosWriteStage, number>> = {};
-      const unresolved: ReconcileReport['journals'][number]['unresolved'] = [];
-      for (const record of snapshot.records) {
-        byStage[record.stage] = (byStage[record.stage] ?? 0) + 1;
-        if (record.stage !== 'canonical-failed' && record.stage !== 'index-visible') {
-          unresolved.push({
-            writeId: record.writeId,
-            stage: record.stage,
-            nonce: record.nonce,
-            ...(record.txRef === undefined ? {} : { txRef: record.txRef }),
-          });
-        }
-      }
-      journals.push({ chainIdentity, wallet, generation: snapshot.generation, byStage, unresolved });
+  for (const digest of childDirectories(join(root, 'journal'))) {
+    const path = join(root, 'journal', digest, 'snapshot.json');
+    let identity: unknown;
+    try { identity = JSON.parse(readFileSync(path, 'utf8')) as unknown; } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      if (error instanceof SyntaxError) throw new Error(`Demos write journal snapshot ${path} contains invalid JSON`);
+      throw error;
     }
+    if (!isObject(identity) || !nonEmpty(identity.chainIdentity) || !nonEmpty(identity.wallet)) {
+      throw new Error(`Demos write journal snapshot ${path} has invalid key fields`);
+    }
+    const snapshot = readSnapshot(path, {
+      chainIdentity: identity.chainIdentity,
+      wallet: identity.wallet,
+    });
+    if (!snapshot) continue;
+    const byStage: Partial<Record<DemosWriteStage, number>> = {};
+    const unresolved: ReconcileReport['journals'][number]['unresolved'] = [];
+    for (const record of snapshot.records) {
+      byStage[record.stage] = (byStage[record.stage] ?? 0) + 1;
+      if (record.stage !== 'canonical-failed' && record.stage !== 'index-visible') {
+        unresolved.push({
+          writeId: record.writeId,
+          stage: record.stage,
+          nonce: record.nonce,
+          ...(record.txRef === undefined ? {} : { txRef: record.txRef }),
+        });
+      }
+    }
+    journals.push({ chainIdentity: snapshot.chainIdentity, wallet: snapshot.wallet, generation: snapshot.generation, byStage, unresolved });
   }
   const settlementDir = join(root, 'settlement');
   let names: string[] = [];
@@ -618,8 +731,10 @@ export function reconcile(dir: string): ReconcileReport {
     validateOutcome(value, path);
   }
   const outcomes = outcomeNames.length;
+  const outcomeHashes = new Set(outcomeNames.map((name) => name.slice(0, -'.outcome.json'.length)));
   const openIntents = names
     .filter((name) => /^[a-f0-9]{64}\.intent$/.test(name))
-    .map((name) => name.slice(0, -'.intent'.length));
+    .map((name) => name.slice(0, -'.intent'.length))
+    .filter((hash) => !outcomeHashes.has(hash));
   return { journals, settlements: { outcomes, openIntents } };
 }
