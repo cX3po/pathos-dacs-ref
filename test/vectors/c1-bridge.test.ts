@@ -217,7 +217,9 @@ test("C1 bridge workflow: token gate runs before the private checkout, refs pin 
   for (const step of steps) assert.doesNotMatch(step.run, /\$\{\{\s*(inputs|secrets)\./, `${step.name}: expression in run:`);
   assert.equal(steps[standard]!.withKeys.get("ref"), `\${{ inputs.standard_ref || '${STANDARD_PIN}' }}`);
   assert.equal(steps[standard]!.withKeys.get("fetch-depth"), "0");
-  assert.equal(steps[sdk]!.withKeys.get("ref"), "${{ inputs.sdk_ref || 'main' }}");
+  // The SDK ref must be a commit that pins the same Standard as the bridge; main moved on to a newer pin.
+  assert.equal(steps[sdk]!.withKeys.get("ref"), "${{ inputs.sdk_ref || '12c5ad358800b4ddc6e732405366035b6a2ac955' }}");
+  assert.doesNotMatch(text, /sdk_ref \|\| 'main'/);
   assert.equal(steps[sdk]!.withKeys.get("token"), "${{ secrets.DACS_SDK_TOKEN }}");
   assert.equal(steps[sdk]!.withKeys.get("persist-credentials"), "false");
   assert.deepEqual(steps.filter((s) => s.withKeys.has("token")).map((s) => s.withKeys.get("repository")), ["DACS-Agent-commerce/dacs-sdk"]);

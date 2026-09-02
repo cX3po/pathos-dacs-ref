@@ -67,8 +67,10 @@ runs:
       run: |
         set -euo pipefail
         fail() {
-          # Every non-execution exits through here: red job AND the reason in the summary.
+          # Every non-execution exits through here: red job, the reason in the summary, and the
+          # bridge's own stderr in the job log as well (the summary is not readable through the API).
           echo "::error::$1"
+          if [ -n "${2:-}" ] && [ -s "$2" ]; then echo "--- bridge stderr ---"; cat "$2"; echo "--- end bridge stderr ---"; fi
           { echo "## DACS C1 conformance bridge — FAIL"; echo; echo "$1"; if [ -n "${2:-}" ] && [ -s "$2" ]; then echo; echo '```'; cat "$2"; echo '```'; fi; } >> "$GITHUB_STEP_SUMMARY"
           exit 1
         }
