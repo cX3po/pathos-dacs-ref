@@ -80,6 +80,10 @@ We close §11.3's gap (the verifier CLI is this repo's `src/cli/verify.ts`). We 
 
 ## Architecture
 
+### Agent identities (CCI)
+
+[`src/adapters/demos/identity.ts`](src/adapters/demos/identity.ts) is the only module allowed to import `@kynesyslabs/demosdk/identity`; all other code uses its typed adapter surface. Start from [`config/dacs-agents.example.json`](config/dacs-agents.example.json) and keep the local `config/dacs-agents.json` gitignored. Agent credentials are read only from the named environment variables. The adapter accepts testnet configuration only; use faucet DEM only.
+
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Short version:
 
 ```

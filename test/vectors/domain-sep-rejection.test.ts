@@ -80,7 +80,7 @@ test('§B.7 — verify() returns false for unknown separator (does NOT throw)', 
   assert.equal(result, false);
 });
 
-test('§B.7 — registry separator count (13 registry + 12 dacs-x extension)', () => {
+test('§B.7 — registry separator count (13 registry + 13 dacs-x extension)', () => {
   // v0.1 §B.7 alignment 2026-06-07 (dacs-repin cutover): the 6 drifted strings were renamed
   // to their canonical §B.7 form, the legacy `dacs5-bundle:v1:` was folded into `dacs-bundle:v1:`,
   // and the 7 residual non-registry kinds moved to the SIG-4 `dacs-x-` extension map.
@@ -97,16 +97,19 @@ test('§B.7 — registry separator count (13 registry + 12 dacs-x extension)', (
   // 2026-07-24 #248 registry alignment: +3 §B.7 registry kinds (BUNDLE_BINDING, FAULT_BUNDLE,
   // FAULT_BUNDLE_POINTER) — added to the CORE §B.7 table by #248 and previously only defined locally
   // in src/lib/bundle-binding-v1.ts; now centralized into DOMAIN_SEPARATORS → 10 → 13.
+  // 2026-09-01 CCI agent identity adapter: +1 dacs-x kind (AGENT_IDENTITY) binding agent payloads
+  // signed through the CCI adapter (src/adapters/demos/identity.ts) → 12 → 13.
   assert.equal(Object.keys(DOMAIN_SEPARATORS).length, 13,
     `expected 13 §B.7-registry separators, got ${Object.keys(DOMAIN_SEPARATORS).length}`);
-  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 12,
-    `expected 12 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
+  assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 13,
+    `expected 13 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
   assert.equal(Object.keys(PATHOS_EXTENSION_SEPARATORS).length, 4,
     `expected 4 PATH-OS extension separators, got ${Object.keys(PATHOS_EXTENSION_SEPARATORS).length}`);
   // Pin the exact canonical strings — a count check alone can't catch a remove-one/add-one substitution.
   assert.equal(DOMAIN_SEPARATORS.BUNDLE_BINDING, 'dacs-bundle-binding:v1:');
   assert.equal(DOMAIN_SEPARATORS.FAULT_BUNDLE, 'dacs-fault-bundle:v1:');
   assert.equal(DOMAIN_SEPARATORS.FAULT_BUNDLE_POINTER, 'dacs-fault-bundle-pointer:v1:');
+  assert.equal(DACS_X_EXTENSION_SEPARATORS.AGENT_IDENTITY, 'dacs-x-agent-identity:v1:');
 });
 
 test('dacs-disclose — CLAIM_COMMIT/CLAIM_REVEAL are known AND emittable (SIG-4 dacs-x)', () => {

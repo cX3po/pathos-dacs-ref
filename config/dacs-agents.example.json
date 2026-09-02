@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "network": "testnet",
+  "rpc": "https://demosnode.discus.sh/",
+  "agents": {
+    "cairn": {
+      "role": "buyer-reviewer",
+      "mnemonicEnv": "DACS_CAIRN_MNEMONIC",
+      "claimRef": "demos:0x0000000000000000000000000000000000000000000000000000000000000001",
+      "notes": "Example address; fill in the operator address after first run."
+    },
+    "test-seller": {
+      "role": "seller",
+      "mnemonicEnv": "DACS_TEST_SELLER_MNEMONIC",
+      "claimRef": null,
+      "notes": "Example is unset; fill in the operator address after first run."
+    }
+  }
+}

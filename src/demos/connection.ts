@@ -50,8 +50,11 @@ export function newMnemonic(): string {
 }
 
 /** Load mnemonic from an environment variable. Throws if absent. */
-export function mnemonicFromEnv(envVarName: string): string {
-  const m = process.env[envVarName];
+export function mnemonicFromEnv(
+  envVarName: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string {
+  const m = env[envVarName];
   if (!m) {
     throw new Error(`Environment variable ${envVarName} is not set`);
   }
