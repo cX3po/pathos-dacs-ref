@@ -1,0 +1,130 @@
+name: 'DACS C1 conformance bridge'
+description: 'Replay the pinned DACS-Standard walkthrough through the shipped SDK and compare it with pathos-dacs-ref; upload the JSON report byte-for-byte and print its sha256.'
+author: 'PATH-OS Labs'
+branding:
+  icon: 'git-merge'
+  color: 'blue'
+
+inputs:
+  standard-dir:
+    description: 'Path to a DACS-Standard git checkout that contains the pinned commit (fetch-depth 0).'
+    required: true
+  sdk-dir:
+    description: 'Path to a dacs-sdk git checkout whose dist/ has been built (npm ci && npm run build).'
+    required: true
+  standard-ref:
+    description: 'Ref in the Standard checkout to run; it must resolve exactly to the bridge pin or the run fails.'
+    required: false
+    default: ''
+  report-path:
+    description: 'Where to write the JSON report (relative to the workspace).'
+    required: false
+    default: 'c1-bridge-report.json'
+  artifact-name:
+    description: 'Name of the uploaded workflow artifact holding the report.'
+    required: false
+    default: 'c1-bridge-report'
+  node-version:
+    description: 'Node version to run the bridge under.'
+    required: false
+    default: '20'
+
+outputs:
+  report-path:
+    description: 'Absolute path of the JSON report that was hashed and uploaded.'
+    value: ${{ steps.run.outputs.report-path }}
+  report-sha256:
+    description: 'sha256 of the uploaded report bytes.'
+    value: ${{ steps.run.outputs.report-sha256 }}
+  status:
+    description: 'OK when the bridge reported no divergences, PARTIAL when it executed with divergences.'
+    value: ${{ steps.run.outputs.status }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install pathos-dacs-ref
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      run: npm ci
+
+    - name: Run the C1 bridge
+      id: run
+      shell: bash
+      # Inputs reach the script only through env. `${{ inputs.* }}` expands before bash
+      # parses, so inline use would let a crafted value execute in the caller's CI.
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        STANDARD_DIR: ${{ inputs.standard-dir }}
+        SDK_DIR: ${{ inputs.sdk-dir }}
+        STANDARD_REF: ${{ inputs.standard-ref }}
+        REPORT_PATH: ${{ inputs.report-path }}
+      run: |
+        set -euo pipefail
+        fail() {
+          # Every non-execution exits through here: red job AND the reason in the summary.
+          echo "::error::$1"
+          { echo "## DACS C1 conformance bridge — FAIL"; echo; echo "$1"; if [ -n "${2:-}" ] && [ -s "$2" ]; then echo; echo '```'; cat "$2"; echo '```'; fi; } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        }
+        workspace="$(pwd)"
+        standard_dir="$(realpath -m "$STANDARD_DIR")"
+        sdk_dir="$(realpath -m "$SDK_DIR")"
+        report="$(realpath -m "$REPORT_PATH")"
+        for dir in "$standard_dir" "$sdk_dir"; do
+          if [ ! -d "$dir/.git" ] && [ ! -f "$dir/.git" ]; then fail "not a git checkout: $dir"; fi
+        done
+        if [ ! -f "$sdk_dir/dist/index.js" ]; then fail "SDK dist/index.js is missing in $sdk_dir; build the SDK before running the bridge"; fi
+        rm -f "$report"
+        args=(--json --ablate "--standard-dir=$standard_dir" "--sdk-dir=$sdk_dir" "--out=$report")
+        if [ -n "$STANDARD_REF" ]; then args+=("--standard-ref=$STANDARD_REF"); fi
+        stderr_log="$(mktemp)"
+        cd "$ACTION_PATH/../../.."
+        if ! npx tsx conformance/c1-bridge.mts "${args[@]}" > /dev/null 2> "$stderr_log"; then
+          fail "the C1 bridge did not complete" "$stderr_log"
+        fi
+        cd "$workspace"
+        if [ ! -s "$report" ]; then fail "the bridge finished without writing $report"; fi
+        # upload-artifact glob-expands its path; hash and upload one glob-free copy.
+        case "$report" in *[\*\?\[]*) fail "report-path must not contain glob metacharacters: $report" ;; esac
+        safe="${RUNNER_TEMP:-$(mktemp -d)}/c1-bridge-report.json"
+        cp -f "$report" "$safe" || fail "could not copy $report to $safe"
+        report="$safe"
+        sha="$(sha256sum "$report" | cut -d' ' -f1)" || fail "could not hash $report"
+        summary_json="$(node -e '
+          const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+          if (typeof r.ok !== "boolean" || !Array.isArray(r.divergences) || typeof r.pins !== "object" || r.pins === null) {
+            throw new Error("not a C1 bridge report: ok, divergences[] and pins are required");
+          }
+          const p = r.pins;
+          process.stdout.write(JSON.stringify({ status: r.ok ? "OK" : "PARTIAL", divergences: r.divergences.length,
+            pins: `implementation ${p.implementationCommit || "?"} · Standard ${p.standardResolved || "?"} · SDK ${p.sdkCommit || "?"}` }));
+        ' "$report" 2> "$stderr_log")" || fail "the report is not a C1 bridge report: $report" "$stderr_log"
+        ok="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).status)' "$summary_json")"
+        divergences="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).divergences))' "$summary_json")"
+        pins="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).pins)' "$summary_json")"
+        {
+          echo "## DACS C1 conformance bridge — $ok"
+          echo
+          echo "- report: \`$report\` (sha256 \`$sha\`)"
+          echo "- divergences: $divergences"
+          echo "- pins: $pins"
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "report-path=$report" >> "$GITHUB_OUTPUT"
+        echo "report-sha256=$sha" >> "$GITHUB_OUTPUT"
+        echo "status=$ok" >> "$GITHUB_OUTPUT"
+
+    - name: Upload the report unchanged
+      # The uploaded path is the glob-free copy that was hashed, never the raw input.
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.run.outputs.report-path }}
+        if-no-files-found: error
+        compression-level: 0
+        include-hidden-files: true

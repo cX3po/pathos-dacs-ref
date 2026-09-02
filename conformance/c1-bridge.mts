@@ -508,11 +508,55 @@ function textReport(report: BridgeReport): string {
   ].join("\n");
 }
 
+export interface CliArgs {
+  json: boolean;
+  ablate: boolean;
+  standardDir?: string;
+  sdkDir?: string;
+  standardRef?: string;
+  out?: string;
+}
+
+const VALUE_FLAGS: Record<string, "standardDir" | "sdkDir" | "standardRef" | "out"> = {
+  "--standard-dir": "standardDir",
+  "--sdk-dir": "sdkDir",
+  "--standard-ref": "standardRef",
+  "--out": "out",
+};
+
+/** Pure argv parser. Flags override the DACS_* environment variables; `--out` also writes the JSON report. */
+export function parseCliArgs(argv: readonly string[]): CliArgs {
+  const args: CliArgs = { json: false, ablate: false };
+  for (const arg of argv) {
+    if (arg === "--json") { args.json = true; continue; }
+    if (arg === "--ablate") { args.ablate = true; continue; }
+    const eq = arg.indexOf("=");
+    const flag = eq === -1 ? arg : arg.slice(0, eq);
+    const key = VALUE_FLAGS[flag];
+    assert(key !== undefined, `unknown argument: ${arg}`);
+    const value = eq === -1 ? "" : arg.slice(eq + 1);
+    assert(value.length > 0, `${flag} requires a value: ${flag}=<value>`);
+    args[key] = value;
+  }
+  return args;
+}
+
 async function main(): Promise<void> {
-  const args = new Set(process.argv.slice(2));
-  for (const arg of args) assert(["--json", "--ablate"].includes(arg), `unknown argument: ${arg}`);
-  const report = await runBridge({ json: args.has("--json"), ablate: args.has("--ablate") });
-  process.stdout.write(args.has("--json") ? `${JSON.stringify(report, null, 2)}\n` : `${textReport(report)}\n`);
+  const args = parseCliArgs(process.argv.slice(2));
+  const report = await runBridge({
+    json: args.json,
+    ablate: args.ablate,
+    standardDir: args.standardDir,
+    sdkDir: args.sdkDir,
+    standardRef: args.standardRef,
+  });
+  const jsonText = `${JSON.stringify(report, null, 2)}\n`;
+  if (args.out !== undefined) {
+    const outPath = resolve(args.out);
+    await mkdir(dirname(outPath), { recursive: true });
+    await writeFile(outPath, jsonText);
+  }
+  process.stdout.write(args.json ? jsonText : `${textReport(report)}\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
