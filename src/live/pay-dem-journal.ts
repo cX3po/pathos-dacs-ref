@@ -45,7 +45,11 @@ export function resolvePayDemJournalPath(path: string): string {
   const absolute = isAbsolute(path) ? resolve(path) : resolve(process.cwd(), path);
   const resolved = canonicalPotentialPath(absolute);
   const workTree = gitWorkTreeRoot(dirname(resolved));
-  if (workTree !== undefined) {
+  // Refuse a journal inside any checkout, with one deliberate exception: a dotfiles repository
+  // rooted at the home directory itself, which would otherwise make the default path unusable.
+  const currentCheckout = gitWorkTreeRoot(process.cwd());
+  const homeRoot = (() => { try { return realpathSync(homedir()); } catch { return homedir(); } })();
+  if (workTree !== undefined && (workTree === currentCheckout || workTree !== homeRoot)) {
     throw new Error(`pay-dem journal path must be outside a Git working tree: ${workTree}`);
   }
   return resolved;

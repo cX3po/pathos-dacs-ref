@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -398,6 +398,25 @@ test('JSONL journal appends exactly one line per signed preparation', async () =
   }
 });
 
+test('JSONL journal allows the default under a dotfiles repository rooted at home', () => {
+  const fakeHome = mkdtempSync(join(tmpdir(), 'paydem-home-'));
+  const savedHome = process.env.HOME;
+  try {
+    mkdirSync(join(fakeHome, '.git'), { recursive: true });
+    writeFileSync(join(fakeHome, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+    process.env.HOME = fakeHome;
+    const resolved = resolvePayDemJournalPath(join(fakeHome, '.pathos-dacs-ref', 'pay-dem-journal.jsonl'));
+    assert.ok(resolved.startsWith(realpathSync(fakeHome)));
+    const nested = join(fakeHome, 'project');
+    mkdirSync(join(nested, '.git'), { recursive: true });
+    writeFileSync(join(nested, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+    assert.throws(() => resolvePayDemJournalPath(join(nested, 'journal.jsonl')), /outside a Git working tree/);
+  } finally {
+    process.env.HOME = savedHome;
+    rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
 test('JSONL journal refuses a path inside the checkout', () => {
   assert.throws(
     () => resolvePayDemJournalPath(join(process.cwd(), 'pay-dem-journal.jsonl')),
@@ -410,7 +429,9 @@ test('pure core has no demosdk import and gateway uses demosdk wiring with a jou
   assert.equal(existsSync(join(root, 'src/live/pay-dem.ts')), false);
   const gateway = readFileSync(join(root, 'src/live/organ-gateway.mts'), 'utf8');
   assert.match(gateway, /import\('\.\.\/adapters\/dacs\/pay-dem-demosdk\.js'\)/);
-  assert.match(gateway, /journal:\s*createPayDemJsonlJournal/);
+  assert.match(gateway, /payDemJournal = createPayDemJsonlJournal\(process\.env\.DACS_PAYDEM_JOURNAL\)/);
+  assert.match(gateway, /journal:\s*payDemJournal/);
+  assert.ok(gateway.indexOf('payDemJournal = createPayDemJsonlJournal') < gateway.indexOf("log('DACS-1'"), 'journal is built in preflight, before DACS-1');
   const core = readFileSync(join(root, 'src/adapters/dacs/pay-dem.ts'), 'utf8');
   assert.doesNotMatch(core, /@kynesyslabs\/demosdk/);
 

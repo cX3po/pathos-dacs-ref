@@ -51,6 +51,9 @@ const PRICE_OS = 1_000_000_000n;
 const SPEND_CAP_DEM = Number(process.env.GATEWAY_SPEND_CAP_DEM ?? '50');
 // Env config for running this gateway against your own setup:
 //   DACS_ENV_PATH  path to the dotenv file holding DEMOS_MNEMONIC / DEMOS_SELLER_MNEMONIC (default: .env)
+//   DACS_PAYDEM_JOURNAL  append-only JSONL journal of signed pay-dem preparations, outside the checkout
+//                        (default: ~/.pathos-dacs-ref/pay-dem-journal.jsonl); built in LIVE preflight so a
+//                        refused path fails before any SR-2 write
 //   AXIOM_PY       interpreter for the deliverable generator                              (default: python3)
 //   ORGAN_CLI      deliverable-generator CLI that prints the answer text on stdout        (default: organ_answer.py)
 // The generator is pluggable — point AXIOM_PY/ORGAN_CLI at any interpreter + CLI. ORGAN_CLI is resolved by
@@ -105,12 +108,16 @@ const handles = LIVE ? await connectLive() : null;
 // run whose parameters match a dry-run you actually passed (Codex note, 2026-07-09).
 const paramHash = jcsHashHex({ v: 'organ-gateway-params:1', organ: ORGAN, query: QUERY, priceDem: PRICE_DEM, capDem: SPEND_CAP_DEM });
 
+let payDemJournal: ReturnType<typeof createPayDemJsonlJournal> | undefined;
 // PREFLIGHT (LIVE only) — a live session anchors ~7 SR-2 writes + 1 pay-dem transfer, all DEM.
 // The fail-closed gate refuses to spend unless: the estimate is under the cap, the buyer wallet
 // is funded, an explicit operator go is set, and the run is bound to a verified dry-run hash.
 // Dry-run mode spends nothing, so it skips the gate entirely.
 if (LIVE && handles) {
   const { preflight } = await import('./spend-preflight.js');
+  // The pay-dem journal is resolved here, before DACS-1, so a refused path stops the run
+  // before any DEM moves or any SR-2 anchor is written.
+  payDemJournal = createPayDemJsonlJournal(process.env.DACS_PAYDEM_JOURNAL);
   const suppliedHash = process.env.GATEWAY_DRYRUN_HASH ?? null;
   // Match-gate: the operator's dry-run hash MUST equal this run's recomputed paramHash. A mismatch
   // (price/query/cap/organ changed since the dry-run) fails closed BEFORE the balance query.
@@ -253,7 +260,7 @@ if (LIVE && handles) {
   const pay = await settlePayDem({
     buyer: handles.buyer, sellerAddress: handles.seller.address,
     amountOs: PRICE_OS, amountDemCanonical: PRICE_DEM, jobId, phaseIndex: SETTLE_PHASE_INDEX,
-    journal: createPayDemJsonlJournal(process.env.DACS_PAYDEM_JOURNAL),
+    journal: payDemJournal ?? createPayDemJsonlJournal(process.env.DACS_PAYDEM_JOURNAL),
   });
   if (!pay.ok) throw new Error(`pay-dem settlement aborted: ${pay.reason}`);
   payEvidence = pay.evidence;
