@@ -38,8 +38,8 @@ than assumed — worth considering for future sets (opaque case ids).
 | `artifact-reference-shapes-v0.1` | 23 | 23/23 | 23/23 |
 | `sb3-eip3009-nonce-v0.1` | 14 | 14/14 | 14/14 |
 | `x402-receipt-hash-v0.1` | 12 | 11/12 | 12/12 |
-| `transcript-suite-mlkem768-v0.1` | 21 | 21/21 | 21/21 |
-| **total** | **80** | **79/80** | **80/80** |
+| `transcript-suite-mlkem768-v0.1` | 30 | 30/30 | 30/30 |
+| **total** | **89** | **88/89** | **89/89** |
 
 The transcript run also reproduces the upstream deterministic envelope field by
 field. Its source is `kynesyslabs/sdks` PR #130 at commit
@@ -85,11 +85,15 @@ python3 impl/eval_transcript_suite_mlkem768.py \
 python3 impl/eval_transcript_suite_mlkem768.py \
         blind/transcript-suite-mlkem768-v0.1.json \
         --out runs/run-pathos-transcript-suite-mlkem768-v0.1.json
+python3 scripts/build_transcript_suite_blind_set.py --check
+python3 -m unittest discover -s . -p 'test_*.py'
 python3 verify_independence.py
 ```
 
 The blind runners rewrite their run files from vector data alone; the transcript
-reproduction command separately reads the pinned upstream fixture.
+reproduction command separately reads the pinned upstream fixture. The transcript
+generator derives every blind vector and answer entry from that fixture, while the
+evaluator never imports or reads the generator.
 Then, from a DACS-Standard checkout:
 
 ```sh

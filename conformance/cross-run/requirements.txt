@@ -1,2 +1,2 @@
 kyber-py==1.2.0
-cryptography>=42
+cryptography>=42,<47

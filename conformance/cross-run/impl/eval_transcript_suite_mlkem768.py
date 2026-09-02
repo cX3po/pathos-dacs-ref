@@ -451,6 +451,19 @@ def evaluate(vector: dict[str, Any]) -> dict[str, Any]:
                         vector["inputs"]["randomness"], authority)
         hashes = {key: envelope[key] for key in
                   ("memberSetHash", "recipientBindingsHash", "plaintextHash", "contentHash")}
+        open_results = []
+        for label, ed_seed_hex in vector["inputs"]["ed25519Seeds"].items():
+            member = "cci:" + _ed_public(bytes.fromhex(ed_seed_hex)).hex()
+            _, secret_key = derive_kem_keypair(vector["inputs"]["mlKemSeeds"][label])
+            open_results.append(open_envelope(
+                envelope, {"member": member, "keyId": vector["keyId"],
+                           "secretKeyHex": secret_key.hex()}, authority))
+        first_failure = next((result for result in open_results
+                              if result["outcome"] != "pass"), None)
+        if first_failure:
+            return {"outcome": "fail", "step": first_failure["step"],
+                    "code": "SEALED_ENVELOPE_NOT_OPENABLE",
+                    "envelope": envelope, "hashes": hashes}
         return {"outcome": "pass", "step": 8, "code": "SEALED",
                 "envelope": envelope, "hashes": hashes}
     if kind == "open":
@@ -494,8 +507,13 @@ def _run_blind(input_path: Path, output_path: Path) -> None:
     results = []
     for vector in blind["vectors"]:
         evaluated = evaluate(vector)
-        results.append({"name": vector.get("name"), "outcome": evaluated["outcome"],
-                        "step": evaluated["step"], "code": evaluated["code"]})
+        result = {"name": vector.get("name"), "outcome": evaluated["outcome"],
+                  "step": evaluated["step"], "code": evaluated["code"]}
+        if vector.get("kind") == "seal" and "envelope" in evaluated:
+            result["outputs"] = {field: evaluated["envelope"][field] for field in (
+                "memberSetHash", "recipientBindingsHash", "plaintextHash", "contentHash",
+                "ciphertext", "tag")}
+        results.append(result)
     run = {"set": blind["set"], "impl": "pathos-dacs-ref@cross-run-2",
            "results": results}
     output_path.write_text(json.dumps(run, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

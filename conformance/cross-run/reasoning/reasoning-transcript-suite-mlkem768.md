@@ -66,6 +66,52 @@ are recomputed, the envelope alone contains no external copy of the fixed roster
 The pure verifier therefore discovers the absent requested coordinate at step 5.
 It does not infer a roster from vector names or from unrelated authority keys.
 
+## Blind-vector step coverage
+
+Every vector is derived by `scripts/build_transcript_suite_blind_set.py` from the
+pinned fixture inputs. For mutations that must pass content authentication, the
+generator uses the profile seal helpers and pinned deterministic CEK/IV to re-seal
+the altered header or transcript. `--check` compares both generated files byte for
+byte with their committed forms.
+
+| Vector | Outcome | Step | Code | Coverage |
+|---|---:|---:|---|---|
+| `seal-golden-inputs` | pass | 8 | `SEALED` | Reproduces six pinned seal outputs and opens for both members. |
+| `exact-open-member-a` | pass | 8 | `OPENED` | Complete open as member A. |
+| `exact-open-member-b` | pass | 8 | `OPENED` | Complete open as member B. |
+| `wrong-recipient-coordinate` | fail | 5 | `RECIPIENT_NOT_FOUND` | Exact coordinate lookup. |
+| `wrong-mlkem-secret` | fail | 5 | `CEK_WRAP_AUTHENTICATION_FAILED` | ML-KEM implicit rejection and wrap authentication. |
+| `ciphertext-tamper-stale-content-hash` | fail | 4 | `CONTENT_HASH_MISMATCH` | Public commitment detects ciphertext mutation. |
+| `ciphertext-tamper-recomputed-content-hash` | fail | 6 | `CONTENT_AUTHENTICATION_FAILED` | Content AEAD detects mutation after rehashing. |
+| `wrap-tamper-stale-content-hash` | fail | 4 | `CONTENT_HASH_MISMATCH` | Public commitment detects wrap mutation. |
+| `wrap-tamper-recomputed-content-hash` | fail | 5 | `CEK_WRAP_AUTHENTICATION_FAILED` | Wrap AEAD detects mutation after rehashing. |
+| `channel-id-change-recomputed-content-hash` | fail | 6 | `CONTENT_AUTHENTICATION_FAILED` | Exact header AAD binds channel ID. |
+| `modified-key-signature` | fail | 2 | `BAD_KEY_SIGNATURE` | Binding authorization signature. |
+| `revoked-key` | fail | 2 | `KEY_REVOKED` | Authenticated revocation decision. |
+| `unavailable-key-status` | indeterminate | 2 | `KEY_STATUS_UNAVAILABLE` | Four-value authority behavior. |
+| `expired-key` | fail | 2 | `KEY_OUTSIDE_VALIDITY_WINDOW` | Exclusive expiry boundary. |
+| `unsupported-suite-id` | error | 1 | `MALFORMED_ENVELOPE` | Closed suite ID. |
+| `unsupported-suite-version` | error | 1 | `MALFORMED_ENVELOPE` | Closed suite version. |
+| `missing-recipient-binding` | fail | 5 | `RECIPIENT_NOT_FOUND` | Absent opener after self-consistent roster removal. |
+| `duplicate-recipient` | error | 1 | `MALFORMED_ENVELOPE` | Duplicate-free roster. |
+| `reordered-bindings` | error | 1 | `MALFORMED_ENVELOPE` | Canonical member-byte order. |
+| `noncanonical-base64url-tag` | error | 1 | `MALFORMED_ENVELOPE` | Canonical unpadded Base64URL. |
+| `wrap-binding-coordinate-mismatch` | error | 1 | `MALFORMED_ENVELOPE` | Positional binding/wrap bijection. |
+| `stale-member-set-hash-resealed-content` | fail | 3 | `MEMBER_SET_HASH_MISMATCH` | Isolated member-set commitment check. |
+| `stale-recipient-bindings-hash-resealed-content` | fail | 3 | `RECIPIENT_BINDINGS_HASH_MISMATCH` | Isolated signed-binding commitment check. |
+| `member-b-revoked-open-member-a` | fail | 2 | `KEY_REVOKED` | All bindings authorized, not only opener. |
+| `member-b-bad-key-signature-open-member-a` | fail | 2 | `BAD_KEY_SIGNATURE` | All binding signatures verified, with later bytes consistent. |
+| `wrong-plaintext-hash-resealed-content` | fail | 7 | `PLAINTEXT_HASH_MISMATCH` | Content authenticates before isolated plaintext hash failure. |
+| `transcript-member-order-mismatch-resealed-content` | fail | 8 | `TRANSCRIPT_ROSTER_MISMATCH` | Correct plaintext hash precedes roster-order comparison. |
+| `malformed-plus-revoked-key` | error | 1 | `MALFORMED_ENVELOPE` | Step 1 precedes step 2. |
+| `bad-key-signature-plus-stale-content-hash` | fail | 2 | `BAD_KEY_SIGNATURE` | Step 2 precedes step 4. |
+| `stale-member-set-hash-plus-stale-content-hash` | fail | 3 | `MEMBER_SET_HASH_MISMATCH` | Step 3 precedes step 4. |
+
+The table covers every verifier step: malformed shape at 1; all-binding
+authorization at 2; both roster hashes at 3; the public commitment at 4;
+recipient unwrap at 5; content authentication at 6; plaintext hashing at 7;
+and transcript/envelope roster equality at 8.
+
 ## Reproduction
 
 The pinned fixture SHA-256 is

@@ -55,8 +55,12 @@ class TranscriptSuiteTests(unittest.TestCase):
             with self.subTest(vector=vector["name"]):
                 got = suite.evaluate(vector)
                 want = answers[vector["name"]]
-                self.assertEqual((want["outcome"], want["step"]),
-                                 (got["outcome"], got["step"]))
+                self.assertEqual((want["outcome"], want["step"], want["code"]),
+                                 (got["outcome"], got["step"], got["code"]))
+                if vector["kind"] == "seal":
+                    self.assertEqual(want["outputs"], {
+                        field: got["envelope"][field] for field in want["outputs"]
+                    })
 
     def test_step_1_precedes_revocation(self):
         blind = json.loads(BLIND_PATH.read_text(encoding="utf-8"))
