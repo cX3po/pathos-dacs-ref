@@ -485,3 +485,25 @@ test('journal EACCES and kill-switch EACCES block during pre-connect policy eval
   assert.equal(killDenied.status, 2, killDenied.stderr);
   assert.match(killDenied.stderr, /EACCES|permission denied/i);
 });
+
+test('a kill switch that appears after authorization blocks the pre-broadcast path and releases the lease', async () => {
+  let killSwitch = false;
+  let released = 0;
+  const written: string[] = [];
+  const gate = testAuthorizationGate({
+    acquireLock: () => ({ release() { released += 1; } }),
+    killSwitchPresent: () => killSwitch,
+    durableOutcomeJournal: async (outcome) => { written.push(outcome.outcome); },
+  });
+  const authorization = await gate.authorize({ amountOs: 1n, rpcUrl: authorizationInput.rpcUrl });
+  assert.equal(authorization.verdict, 'PROCEED');
+  if (authorization.verdict !== 'PROCEED') return;
+  killSwitch = true;
+  await assert.rejects(
+    gate.journalOutcome({ timestamp: authorization.nowIso, amountOs: '1', outcome: 'broadcast-attempted' }),
+    /kill switch is present/,
+  );
+  assert.deepEqual(written, []);
+  assert.equal(released, 1);
+  await assert.rejects(gate.beforeBroadcast({ authorizationNowIso: authorization.nowIso }), /kill switch is present/);
+});
