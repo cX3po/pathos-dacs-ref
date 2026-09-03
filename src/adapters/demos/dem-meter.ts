@@ -8,12 +8,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,
+  existsSync,
   fsyncSync,
   ftruncateSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
@@ -320,8 +323,40 @@ function processIsAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
+    const code = (error as NodeJS.ErrnoException).code;
+    // EPERM means the process exists but belongs to an identity we cannot signal.
+    if (code === 'ESRCH') return false;
+    if (code === 'EPERM') return true;
+    return true;
   }
+}
+
+function lockOwnerIsStale(owner: MeterLockOwner, now: number): boolean {
+  const age = now - owner.createdAt;
+  return !processIsAlive(owner.pid) || age >= LOCK_STALE_MS || age < -LOCK_STALE_MS;
+}
+
+function lockFileIsStale(path: string, now: number): boolean {
+  try {
+    const age = now - statSync(path).mtimeMs;
+    return age >= LOCK_STALE_MS || age < -LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+function restoreQuarantinedLock(quarantinePath: string, lockPath: string): void {
+  try {
+    // link(2) restores without replacing a lock that another contender created.
+    // Filesystems without hard-link support fail closed instead of risking two holders.
+    linkSync(quarantinePath, lockPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  try { unlinkSync(quarantinePath); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  syncDirectory(dirname(lockPath));
 }
 
 function acquireMeterLock(path: string): { release(): void } {
@@ -338,13 +373,37 @@ function acquireMeterLock(path: string): { release(): void } {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       const existing = readLockOwner(lockPath);
-      const stale = existing !== undefined &&
-        (!processIsAlive(existing.pid) || Date.now() - existing.createdAt > LOCK_STALE_MS);
+      const observedStat = (() => { try { return statSync(lockPath); } catch { return undefined; } })();
+      const stale = existing === undefined
+        ? lockFileIsStale(lockPath, Date.now())
+        : lockOwnerIsStale(existing, Date.now());
       if (stale && !staleRecoveryAttempted) {
         staleRecoveryAttempted = true;
-        try { unlinkSync(lockPath); } catch (unlinkError) {
+        const quarantinePath = `${lockPath}.${randomUUID()}.stale`;
+        try {
+          renameSync(lockPath, quarantinePath);
+        } catch (renameError) {
+          const code = (renameError as NodeJS.ErrnoException).code;
+          if (code !== 'ENOENT' && code !== 'EEXIST') throw renameError;
+          continue;
+        }
+        const taken = readLockOwner(quarantinePath);
+        const takenStat = (() => { try { return statSync(quarantinePath); } catch { return undefined; } })();
+        const sameObservedLock = existing !== undefined
+          ? taken?.token === existing.token
+          : observedStat !== undefined && takenStat !== undefined &&
+            observedStat.dev === takenStat.dev && observedStat.ino === takenStat.ino;
+        const stillStale = taken === undefined
+          ? lockFileIsStale(quarantinePath, Date.now())
+          : lockOwnerIsStale(taken, Date.now());
+        if (!sameObservedLock || !stillStale) {
+          restoreQuarantinedLock(quarantinePath, lockPath);
+          continue;
+        }
+        try { unlinkSync(quarantinePath); } catch (unlinkError) {
           if ((unlinkError as NodeJS.ErrnoException).code !== 'ENOENT') throw unlinkError;
         }
+        syncDirectory(dirname(lockPath));
         continue;
       }
       if (Date.now() >= deadline) fail('meter-busy', 'dem meter lock could not be acquired');
@@ -356,10 +415,15 @@ function acquireMeterLock(path: string): { release(): void } {
     fsyncSync(fd);
   } catch (error) {
     closeSync(fd);
-    try { unlinkSync(lockPath); } catch { /* best-effort cleanup */ }
+    // A partial owner record is left for bounded mtime-based recovery. Unlinking the
+    // live name here could remove a replacement created after our inode was quarantined.
     throw error;
   }
   closeSync(fd);
+  syncDirectory(dirname(lockPath));
+  if (readLockOwner(lockPath)?.token !== owner.token) {
+    fail('meter-busy', 'dem meter lock ownership was lost during acquisition');
+  }
   let released = false;
   return { release() {
     if (released) return;
@@ -489,6 +553,15 @@ export function createDemMeter(opts: {
   const now = opts.now ?? (() => new Date().toISOString());
   const headPath = `${path}.head`;
 
+  const initialLease = acquireMeterLock(path);
+  try {
+    if (!existsSync(path) && !existsSync(headPath)) {
+      writeHeadAtomically(path, { rowCount: 0, meterHead: null });
+    }
+  } finally {
+    initialLease.release();
+  }
+
   function readUnlocked(): MeterRow[] {
     const rows = parseRows(jsonLines(readMeterBytes(path)).values);
     verifyHead(rows, parseHead(headPath));
@@ -582,7 +655,16 @@ export function createDemMeter(opts: {
       const parsed = jsonLines(bytes, hasPartialTail);
       const rows = parseRows(parsed.values);
       const head = parseHead(headPath);
-      if (head === undefined) fail('meter-invalid', 'dem meter repair requires a valid head file');
+      if (head === undefined) {
+        const initialHead = { rowCount: 0, meterHead: null };
+        if (bytes.length === 0) {
+          writeHeadAtomically(path, initialHead);
+          return initialHead;
+        }
+        rewriteLogAtomically(path, Buffer.alloc(0));
+        writeHeadAtomically(path, initialHead);
+        return { repaired: 'uncommitted-tail', removedRows: rows.length };
+      }
 
       if (hasPartialTail) {
         if (head.rowCount !== rows.length || head.meterHead !== (rows.at(-1)?.rowHash ?? null)) {

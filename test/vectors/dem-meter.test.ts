@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
@@ -42,6 +50,15 @@ test('record/read round trip writes JCS rows linked by hashes', (t) => {
   }
 });
 
+test('fresh meter creates its initial sidecar before any record', (t) => {
+  const { path } = temporaryMeter(t);
+  assert.deepEqual(JSON.parse(readFileSync(`${path}.head`, 'utf8')), {
+    rowCount: 0,
+    meterHead: null,
+  });
+  assert.equal(existsSync(path), false);
+});
+
 test('read detects an edited line', (t) => {
   const { path, meter } = temporaryMeter(t);
   meter.record({ kind: 'seat-call', os: '7' });
@@ -68,12 +85,23 @@ test('read detects reordered rows, suffix truncation, blank lines, and mixed-cas
     assert.throws(() => meter.read(), (error: unknown) =>
       (error as { code?: string }).code === 'head-mismatch');
   });
-  await t.test('missing head', (t) => {
+  await t.test('missing head after first append', (t) => {
     const { path, meter } = temporaryMeter(t);
     meter.record({ kind: 'seat-call', os: '7' });
     rmSync(`${path}.head`);
-    assert.throws(() => meter.read(), (error: unknown) =>
-      (error as { code?: string }).code === 'head-missing');
+    for (const operation of [() => meter.read(), () => meter.record({ kind: 'tool-call', os: '8' })]) {
+      assert.throws(operation, (error: unknown) =>
+        (error as { code?: string }).code === 'head-missing');
+    }
+    assert.deepEqual(meter.repair(), { repaired: 'uncommitted-tail', removedRows: 1 });
+    assert.equal(readFileSync(path).length, 0);
+    assert.deepEqual(JSON.parse(readFileSync(`${path}.head`, 'utf8')), {
+      rowCount: 0,
+      meterHead: null,
+    });
+    const next = meter.record({ kind: 'tool-call', os: '8' });
+    assert.equal(next.prevRowHash, undefined);
+    assert.deepEqual(meter.read(), [next]);
   });
   await t.test('blank line', (t) => {
     const { path, meter } = temporaryMeter(t);
@@ -131,6 +159,26 @@ test('repair refuses a complete tail when the committed prefix does not match th
     (error: unknown) => (error as { code?: string }).code === 'meter-invalid');
 });
 
+test('repair initializes a missing head for an empty or absent log', async (t) => {
+  await t.test('absent log', (t) => {
+    const { path, meter } = temporaryMeter(t);
+    rmSync(`${path}.head`);
+    assert.deepEqual(meter.repair(), { rowCount: 0, meterHead: null });
+    assert.deepEqual(JSON.parse(readFileSync(`${path}.head`, 'utf8')), {
+      rowCount: 0, meterHead: null,
+    });
+  });
+  await t.test('empty log', (t) => {
+    const { path, meter } = temporaryMeter(t);
+    writeFileSync(path, '');
+    rmSync(`${path}.head`);
+    assert.deepEqual(meter.repair(), { rowCount: 0, meterHead: null });
+    assert.deepEqual(JSON.parse(readFileSync(`${path}.head`, 'utf8')), {
+      rowCount: 0, meterHead: null,
+    });
+  });
+});
+
 test('meter lock recovers an old owner record', (t) => {
   const { path, meter } = temporaryMeter(t);
   writeFileSync(`${path}.lock`, JSON.stringify({
@@ -138,6 +186,72 @@ test('meter lock recovers an old owner record', (t) => {
   }));
   assert.deepEqual(meter.read(), []);
   assert.equal(existsSync(`${path}.lock`), false);
+});
+
+test('meter lock recovers an aged empty crash lock by mtime', (t) => {
+  const { path, meter } = temporaryMeter(t);
+  writeFileSync(`${path}.lock`, '');
+  const old = new Date(Date.now() - 30_001);
+  utimesSync(`${path}.lock`, old, old);
+  assert.deepEqual(meter.read(), []);
+  assert.equal(existsSync(`${path}.lock`), false);
+});
+
+test('meter lock bounds future owner clock skew', (t) => {
+  const { path, meter } = temporaryMeter(t);
+  writeFileSync(`${path}.lock`, JSON.stringify({
+    pid: process.pid, createdAt: Date.now() + 60_000, token: 'future-owner',
+  }));
+  assert.deepEqual(meter.read(), []);
+  assert.equal(existsSync(`${path}.lock`), false);
+});
+
+test('meter lock treats EPERM while probing a pid as live', (t) => {
+  const { path, meter } = temporaryMeter(t);
+  writeFileSync(`${path}.lock`, JSON.stringify({
+    pid: process.pid + 1, createdAt: Date.now(), token: 'other-user-owner',
+  }));
+  const originalKill = process.kill;
+  process.kill = (() => {
+    const error = new Error('not permitted') as NodeJS.ErrnoException;
+    error.code = 'EPERM';
+    throw error;
+  }) as typeof process.kill;
+  try {
+    assert.throws(() => meter.read(),
+      (error: unknown) => (error as { code?: string }).code === 'meter-busy');
+  } finally {
+    process.kill = originalKill;
+  }
+  assert.equal((JSON.parse(readFileSync(`${path}.lock`, 'utf8')) as { token: string }).token,
+    'other-user-owner');
+});
+
+test('two processes racing stale-lock reclaim serialize their records', async (t) => {
+  const { path, meter } = temporaryMeter(t);
+  writeFileSync(`${path}.lock`, '');
+  const old = new Date(Date.now() - 30_001);
+  utimesSync(`${path}.lock`, old, old);
+  const source = [
+    "const { createDemMeter } = await import('./src/adapters/demos/dem-meter.ts');",
+    'const meter = createDemMeter({ path: process.argv[1], agent: process.argv[2],',
+    "  now: () => '2026-09-02T10:00:00.000Z' });",
+    "meter.record({ kind: 'seat-call', os: '1' });",
+  ].join('\n');
+  const run = (agent: string) => new Promise<{ code: number | null; error?: NodeJS.ErrnoException }>((resolve) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', source, path, agent], {
+      cwd: process.cwd(), stdio: 'ignore',
+    });
+    child.once('error', (error) => resolve({ code: null, error }));
+    child.once('close', (code) => resolve({ code }));
+  });
+  const results = await Promise.all([run('seat-one'), run('seat-two')]);
+  if (results.some((result) => result.error?.code === 'EPERM')) {
+    t.skip('sandbox forbids child-process creation from node:test');
+    return;
+  }
+  assert.deepEqual(results.map((result) => result.code), [0, 0]);
+  assert.equal(meter.read().length, 2);
 });
 
 test('meter lock keeps a live foreign owner and fails with meter-busy', (t) => {
