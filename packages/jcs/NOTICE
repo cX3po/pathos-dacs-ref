@@ -1,0 +1,13 @@
+THIRD-PARTY AND PROJECT NOTICES
+
+The package source, generated distribution files, metadata, documentation, and
+the copied PATH-OS partner-kit vector file are covered by the PATH-OS MIT notice
+in LICENSE.
+
+The implementation uses canonicalize (Apache-2.0), @noble/ed25519 (MIT), and
+@noble/hashes (MIT) as declared runtime dependencies. Their source code is not
+included in this package.
+
+RFC 8785 (JSON Canonicalization Scheme) is an IETF specification. DACS is
+specified separately by the DACS-Standard project; this package is not a
+DACS-Standard publication.
