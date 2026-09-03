@@ -302,3 +302,19 @@ test('PC-2: rail segment comes from the projected rail parameter and is percent-
   assert.equal(paymentLogicalAddress('01JOB', 'pay-evm-erc20:base:usdc', 2), 'dacs4:payment:01JOB:pay-evm-erc20%3Abase%3Ausdc:2');
   assert.equal(paymentLogicalAddress('01JOB', 'pay-x402', 0), 'dacs4:payment:01JOB:pay-x402:0');
 });
+
+test('SEB never treats two distinct unparseable signer claims as equal', async () => {
+  const state = setup(); const input = await session(state); const phase = input.phaseResults[2]!; const logical = phase.evidenceLogicalAddress!;
+  const evidence = structuredClone(state.memory.get(phase.evidenceRef!.anchor.locator)) as Record<string, any>;
+  evidence.signature.signer = '0xabc';
+  const contentHash = jcsHashHex(evidence);
+  state.memory.set(phase.evidenceRef!.anchor.locator, evidence);
+  phase.evidenceRef = { ...phase.evidenceRef!, contentHash };
+  phase.orchestrator = '0xdef';
+  phase.evidenceAnchor = { ...phase.evidenceAnchor!, writer: '0xdef' };
+  state.receipts.set(logical, {
+    ...state.receipts.get(logical)!, contentHash, writer: '0xdef',
+    evidence: { kind: 'stored-bytes-base64url', value: Buffer.from(jcsCanonical(evidence)).toString('base64url') },
+  });
+  await assert.rejects(finalizeBundle(input, { ...state.deps, verifySignature: async () => true }), /evidence signer is not/);
+});

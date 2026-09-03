@@ -239,7 +239,11 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     if (evidence.jobId !== input.jobId || evidence.phase !== phase.kind || evidence.phaseIndex !== phase.index) throw new BundleFinalizationError('seb-binding', `evidence does not bind phase (${phase.index},${phase.kind})`);
     if ((evidence.outcome === 'success') !== (phase.outcome === 'ok')) throw new BundleFinalizationError('seb-outcome', `evidence outcome contradicts phase ${phase.index}`);
     const signature = object(evidence.signature);
-    if (claimKey(signature.signer) !== claimKey(phase.orchestrator)) throw new BundleFinalizationError('seb-authorship', `evidence signer is not phase ${phase.index}'s authenticated orchestrator`);
+    const signerKey = claimKey(signature.signer), orchestratorSignerKey = claimKey(phase.orchestrator);
+    const sameSigner = signerKey !== null && orchestratorSignerKey !== null
+      ? signerKey === orchestratorSignerKey
+      : typeof signature.signer === 'string' && typeof phase.orchestrator === 'string' && signature.signer === phase.orchestrator;
+    if (!sameSigner) throw new BundleFinalizationError('seb-authorship', `evidence signer is not phase ${phase.index}'s authenticated orchestrator`);
     const unsigned = { ...evidence }; delete unsigned.signature;
     if (!await signatureValid(deps, DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, jcsHashHex(unsigned), signature)) throw new BundleFinalizationError('seb-signature', `evidence signature invalid for phase ${phase.index}`);
     const railId = phase.kind.startsWith('pay-') ? paymentRailId(phase) : undefined;
