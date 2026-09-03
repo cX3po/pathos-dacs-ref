@@ -52,11 +52,13 @@ both bundle copies. Its dependency `capabilityPreflight` is intentionally a no-o
 
 Exit 0 means both cold verifiers passed. Exit 1 means a phase failed or either
 verifier failed or was indeterminate. Exit 2 means usage, configuration, payment
-policy, spend preflight, or LIVE capability refusal. After loading payment policy
-and resolving its journal, LIVE checks operator approval and the exact dry-run hash,
-then exits 2 at the CORE §5.1 capability check, before dotenv or credentials are
-loaded, because this repository has no provider that authenticates all finalized-
-receipt fields. A node storage read can report stored
+policy, spend preflight, or LIVE capability refusal. With no `DACS_PAY_POLICY`, LIVE
+exits 2 with reason `policy`. With an allowing testnet policy, LIVE resolves its
+journal, completes native-payment authorization, constructs the durable journals
+and authorization gate, checks the exact dry-run hash, then exits 2 with reason
+`capability` at the CORE §5.1 check, before dotenv or credentials are loaded,
+because this repository has no provider that authenticates all finalized-receipt
+fields. A node storage read can report stored
 content and creation metadata, but its finality observation remains
 `indeterminate`; it is not converted into a finalized receipt.
 

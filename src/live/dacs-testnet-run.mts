@@ -154,7 +154,11 @@ const defaultLiveSettlementSeams = (): LiveSettlementSeams => ({
   },
   async resolveJournalPath(env) {
     const journal = await import('./pay-dem-journal.js');
-    return journal.resolvePayDemJournalPath(env.DACS_PAYDEM_JOURNAL ?? journal.DEFAULT_PAY_DEM_JOURNAL);
+    try {
+      return journal.resolvePayDemJournalPath(env.DACS_PAYDEM_JOURNAL ?? journal.DEFAULT_PAY_DEM_JOURNAL);
+    } catch {
+      throw new DacsTestnetRefusal('config', 'pay-dem journal path configuration was refused');
+    }
   },
   async readJournal(path) { return (await import('./pay-dem-journal.js')).readPayDemJournalOrEmpty(path); },
   async killSwitchPresent(path) { return (await import('./pay-dem-journal.js')).payKillSwitchPresent(path); },
@@ -193,16 +197,7 @@ export async function createLiveSettlementDependency(
   if ('verdict' in policyResult) throw new DacsTestnetRefusal('policy', 'pay-dem policy refused the session');
   const journalPath = await seams.resolveJournalPath(env);
 
-  // (2) Operator authorization and exact dry-run binding precede every node balance read.
-  const suppliedHash = env.GATEWAY_DRYRUN_HASH ?? null;
-  if (env.GATEWAY_LIVE_APPROVED !== '1' || suppliedHash !== parameterHash(config)) {
-    throw new DacsTestnetRefusal('spend', 'LIVE operator or dry-run hash gate refused the session');
-  }
-
-  // (3), then (4): the capability boundary is inside connect and is checked before dotenv/env credentials.
-  const wiring = await seams.connect(config, env, receiptProvider);
-
-  // (5) Apply the same initial policy authorization and durable authorization gate as the gateway.
+  // (2) Apply the complete native-payment policy before capability, credentials, or RPC connection.
   const nowIso = new Date().toISOString();
   const amountOs = (await import('../adapters/dacs/pay-dem.js')).demToOs(config.priceDem);
   const authorization = await seams.authorizeTransfer(policyResult, {
@@ -214,20 +209,29 @@ export async function createLiveSettlementDependency(
   });
   if (authorization.verdict !== 'PROCEED') throw new DacsTestnetRefusal('policy', 'pay-dem policy refused the transfer');
   const journal = await import('./pay-dem-journal.js');
-  const durableOutcomeJournal = await seams.createOutcomeJournal(journalPath);
   const paymentJournal = await seams.createJournal(journalPath);
+  const durableOutcomeJournal = await seams.createOutcomeJournal(journalPath);
   const gate = await seams.createAuthorizationGate({
     policy: policyResult, journalPath, acquireLock: journal.acquirePayDemJournalLock,
     readJournal: journal.readPayDemJournalOrEmpty, killSwitchPresent: journal.payKillSwitchPresent,
     resolveKillSwitchPath: expandHome, durableOutcomeJournal,
   });
 
+  // (3) Bind the LIVE request to the exact dry run before capability and credentials.
+  const suppliedHash = env.GATEWAY_DRYRUN_HASH ?? null;
+  if (suppliedHash !== parameterHash(config)) {
+    throw new DacsTestnetRefusal('spend', 'LIVE dry-run hash gate refused the session');
+  }
+
+  // (4), then (5): connect checks capability before loading dotenv/env credentials.
+  const wiring = await seams.connect(config, env, receiptProvider);
+
   // (6) Only now query balance and run the gateway-equivalent spend estimate.
   const balanceDem = await seams.balance(wiring.handles.buyer);
   const spend = await seams.preflight({
     purpose: `dacs-testnet live session ${config.jobId}`, estWrites: 8, estCostPerWriteDem: 1,
     createCostDem: Number(config.priceDem), maxSpendDem: config.spendCapDem, balanceDem,
-    balanceMarginDem: 2, operatorApproved: true, dryRunHash: suppliedHash,
+    balanceMarginDem: 2, operatorApproved: env.GATEWAY_LIVE_APPROVED === '1', dryRunHash: suppliedHash,
   });
   if (spend.verdict !== 'PROCEED') {
     throw new DacsTestnetRefusal('spend', 'spend preflight refused the session');

@@ -140,11 +140,29 @@ test('createLiveSettlementDependency preserves the gateway pay-dem call order', 
   };
   const live = await createLiveSettlementDependency(run, env, provider, seams);
   await live.settlePayment({} as never, run);
-  assert.deepEqual(calls, ['policy', 'journal-path', 'env:GATEWAY_DRYRUN_HASH', 'env:GATEWAY_LIVE_APPROVED', 'capability', 'credentials',
-    'journal-read', 'kill-switch', 'authorizeTransfer', 'outcome-journal', 'payment-journal', 'authorization-gate', 'balance', 'preflight-margin:2',
+  assert.deepEqual(calls, ['policy', 'journal-path', 'journal-read', 'kill-switch', 'authorizeTransfer', 'payment-journal', 'outcome-journal',
+    'authorization-gate', 'env:GATEWAY_DRYRUN_HASH', 'capability', 'credentials', 'balance', 'env:GATEWAY_LIVE_APPROVED', 'preflight-margin:2',
     'settle-beforeBroadcast', 'anchor']);
   assert.ok(calls.indexOf('env:GATEWAY_DRYRUN_HASH') < calls.indexOf('balance'));
   assert.ok(calls.indexOf('journal-path') < calls.indexOf('credentials'));
+});
+
+test('LIVE policy BLOCK refuses before credential reads or connection', async () => {
+  const run = { ...config, mode: 'live' as const };
+  let credentialReads = 0;
+  let connectCalls = 0;
+  const env = new Proxy({}, {
+    get(target, key, receiver) {
+      if (key === 'DEMOS_MNEMONIC' || key === 'DEMOS_SELLER_MNEMONIC') credentialReads++;
+      return Reflect.get(target, key, receiver);
+    },
+  }) as NodeJS.ProcessEnv;
+  await assert.rejects(createLiveSettlementDependency(run, env, createNodeReceiptProvider(run), {
+    loadPolicy: async () => ({ verdict: 'BLOCK', reason: 'test policy block' }),
+    connect: async () => { connectCalls++; throw new Error('must not connect'); },
+  }), (error: unknown) => error instanceof DacsTestnetRefusal && error.code === 'policy');
+  assert.equal(credentialReads, 0);
+  assert.equal(connectCalls, 0);
 });
 
 test('LIVE dry-run hash mismatch refuses before the balance query', async () => {
@@ -196,10 +214,11 @@ test('dry-run CLI is deterministic, passes both cold checks, and emits no key ma
   assert.doesNotMatch(first.stdout, /mnemonic|seed|private.?key/i);
 });
 
-test('LIVE without operator approval exits 2 and never prints environment values', (t) => {
+test('LIVE with policy unset exits 2 as policy and never prints environment values', (t) => {
   const sentinel = 'ENV-VALUE-MUST-NOT-APPEAR';
   const result = spawn(['--job-id', 'live-refusal', '--json'], { LIVE: '1', DEMOS_MNEMONIC: sentinel, DEMOS_SELLER_MNEMONIC: sentinel, GATEWAY_DRYRUN_HASH: sentinel });
   if (result.error && (result.error as NodeJS.ErrnoException).code === 'EPERM') { t.skip('sandbox refuses nested process creation'); return; }
   assert.equal(result.status, 2);
+  assert.match(result.stderr, /"reason":"policy"/);
   assert.ok(!`${result.stdout}${result.stderr}`.includes(sentinel));
 });

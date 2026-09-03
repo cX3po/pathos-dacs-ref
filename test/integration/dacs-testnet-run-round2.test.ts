@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   DacsTestnetRefusal,
   createLiveAdapterWiring,
@@ -141,19 +144,67 @@ function spawn(args: string[], extraEnv: NodeJS.ProcessEnv = {}) {
   });
 }
 
-test('LIVE CLI with exact approval binding exits 2 without exposing env values', (t) => {
+async function withAllowingPolicy<T>(run: (env: NodeJS.ProcessEnv) => T | Promise<T>): Promise<T> {
+  const directory = mkdtempSync(join(tmpdir(), 'dacs-testnet-policy-'));
+  const policyPath = join(directory, 'policy.json');
+  writeFileSync(policyPath, JSON.stringify({
+    network: 'testnet', rpcHosts: ['demosnode.discus.sh'], perTransactionCapDem: '10',
+    dailyCapDem: '20', killSwitchFile: join(directory, 'kill-switch'),
+  }));
+  try {
+    return await run({ DACS_PAY_POLICY: policyPath, DACS_PAYDEM_JOURNAL: join(directory, 'pay-dem.jsonl') });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+test('LIVE CLI with policy and exact approval binding exits 2 as capability without exposing env values', async (t) => {
   const sentinel = 'ENV-SENTINEL-MUST-STAY-PRIVATE';
   const run = config({ mode: 'live', jobId: 'live-refusal' });
-  const result = spawn(['--job-id', run.jobId, '--json'], {
-    LIVE: '1', GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(run),
+  const result = await withAllowingPolicy((policyEnv) => spawn(['--job-id', run.jobId, '--json'], {
+    ...policyEnv, LIVE: '1', GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(run),
     DEMOS_MNEMONIC: sentinel, DEMOS_SELLER_MNEMONIC: sentinel,
-  });
+  }));
   if (result.error && (result.error as NodeJS.ErrnoException).code === 'EPERM') {
     t.skip('sandbox refuses nested process creation'); return;
   }
   assert.equal(result.status, 2);
   assert.equal(result.stdout, '');
+  assert.match(result.stderr, /"reason":"capability"/);
   assert.ok(!`${result.stdout}${result.stderr}`.includes(sentinel));
+});
+
+test('LIVE main with policy reaches capability, while unset policy refuses as policy', async () => {
+  const run = config({ mode: 'live', jobId: 'live-refusal' });
+  const capture = async (env: NodeJS.ProcessEnv) => {
+    const writes: string[] = [];
+    const original = process.stderr.write;
+    process.stderr.write = ((chunk: string | Uint8Array) => { writes.push(String(chunk)); return true; }) as typeof process.stderr.write;
+    try { assert.equal(await main(['--job-id', run.jobId, '--json'], env), 2); }
+    finally { process.stderr.write = original; }
+    return writes.join('');
+  };
+  const capability = await withAllowingPolicy((policyEnv) => capture({
+    ...policyEnv, LIVE: '1', GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(run),
+  }));
+  assert.match(capability, /"reason":"capability"/);
+  assert.match(await capture({ LIVE: '1' }), /"reason":"policy"/);
+});
+
+test('LIVE main maps a checkout-internal pay-dem journal path to config exit 2', async () => {
+  const run = config({ mode: 'live', jobId: 'live-refusal' });
+  const writes: string[] = [];
+  const original = process.stderr.write;
+  process.stderr.write = ((chunk: string | Uint8Array) => { writes.push(String(chunk)); return true; }) as typeof process.stderr.write;
+  try {
+    const exit = await withAllowingPolicy((policyEnv) => main(['--job-id', run.jobId, '--json'], {
+      ...policyEnv, LIVE: '1', DACS_PAYDEM_JOURNAL: join(process.cwd(), 'pay-dem.jsonl'),
+    }));
+    assert.equal(exit, 2);
+  } finally {
+    process.stderr.write = original;
+  }
+  assert.match(writes.join(''), /"reason":"config"/);
 });
 
 test('--fixture-seed is a usage refusal in LIVE mode', async () => {
