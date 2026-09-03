@@ -32,6 +32,8 @@ jobs:
 
       - name: Check the JCS package is reproducible from the committed sources
         run: node --import tsx scripts/build-jcs-package.mts --check
+      - name: Check the verifier package is reproducible from the committed sources
+        run: node --import tsx scripts/build-verifier-package.mts --check
 
       - name: Run offline test suite
         # DACS_LIVE_NETWORK is intentionally NOT set — CI runs only the deterministic

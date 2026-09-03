@@ -1,0 +1,36 @@
+{
+  "name": "@pathos-labs/dacs-verifier",
+  "version": "0.1.0",
+  "description": "PATH-OS DACS attestation-bundle verifier: stable API, CLI, HTTP service and MCP verify_bundle tool",
+  "type": "module",
+  "license": "MIT",
+  "private": false,
+  "exports": {
+    ".": {
+      "types": "./dist/packages/verifier/src/index.d.ts",
+      "import": "./dist/packages/verifier/src/index.js"
+    }
+  },
+  "bin": {
+    "dacs-verifier": "./dist/packages/verifier/src/cli.js",
+    "dacs-verifier-http": "./dist/packages/verifier/src/http.js",
+    "dacs-verifier-mcp": "./dist/packages/verifier/src/mcp.js"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "provenance.json",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "@kynesyslabs/demosdk": "^4.0.16",
+    "@noble/ed25519": "^2.1.0",
+    "@noble/hashes": "^1.5.0",
+    "canonicalize": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

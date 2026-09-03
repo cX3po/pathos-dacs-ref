@@ -28,3 +28,7 @@ __pycache__/
 !packages/jcs/dist/
 !packages/jcs/dist/**
 .jcs-build-*/
+# the verifier package ships its built dist (reproducible; scripts/build-verifier-package.mts --check)
+!packages/verifier/dist/
+!packages/verifier/dist/**
+.verifier-build-*/

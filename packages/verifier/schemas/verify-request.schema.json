@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cX3po/pathos-dacs-ref/packages/verifier/schemas/verify-request.schema.json",
+  "title": "dacs-verifier verify request",
+  "description": "Body of POST /verify and arguments of the MCP verify_bundle tool.",
+  "type": "object",
+  "properties": {
+    "bundle": { "type": "object", "description": "A DACS AttestationBundle: v0.1 (bundleVersion \"1\") or legacy (v \"dacs-5-bundle:0.1\")." },
+    "offline": { "type": "boolean", "description": "Skip the two-sided anchor lookup. Receipt-archive audit only; without it an unanchored bundle is indeterminate." },
+    "requireSignatures": { "type": "boolean", "description": "v0.1 only. false = fixture mode (placeholder signatures not enforced)." }
+  },
+  "required": ["bundle"],
+  "additionalProperties": false
+}

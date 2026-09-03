@@ -26,63 +26,9 @@
  * THIS IS THE GAP DACS v0.7 §11.3 ACKNOWLEDGES AS REMAINING WORK.
  */
 
-import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import type { AttestationBundle, VerifyVerdict } from '../types/index.js';
-import type { AttestationBundleV1 } from '../types/bundle.js';
-import { verifyBundle, computeAnchorPair } from '../lib/verify-bundle.js';
-import { verifyBundleV1Full, type BundleV1FullVerdict } from '../lib/verify-bundle-v1.js';
-import { fetchAnchored } from '../demos/storage.js';
-
-/**
- * Dual-accept dispatch (§10.4.2 backwards-compat). The DEFAULT verify path is the v0.1
- * AttestationBundleV1 verifier (verifyBundleV1); legacy `dacs-5-bundle:0.1` bundles are still
- * READ via the legacy verifyBundle walk. Discriminated on the bundle's version field:
- *   - bundleVersion === '1'        -> v0.1 path (verifyBundleV1) — DEFAULT for emission too
- *   - v === 'dacs-5-bundle:0.1'    -> legacy read path (verifyBundle)
- */
-type LoadedBundle =
-  | { kind: 'v1'; bundle: AttestationBundleV1 }
-  | { kind: 'legacy'; bundle: AttestationBundle };
-
-function classifyBundle(raw: unknown): LoadedBundle | { error: string } {
-  if (!raw || typeof raw !== 'object') return { error: 'bundle is not a JSON object' };
-  const o = raw as Record<string, unknown>;
-  if (o.bundleVersion === '1') return { kind: 'v1', bundle: raw as AttestationBundleV1 };
-  if (o.v === 'dacs-5-bundle:0.1') return { kind: 'legacy', bundle: raw as AttestationBundle };
-  return {
-    error: `unrecognised bundle shape — expected a v0.1 AttestationBundle (bundleVersion:"1") ` +
-      `or a legacy bundle (v:"dacs-5-bundle:0.1"); got bundleVersion=${String(o.bundleVersion)} v=${String(o.v)}`,
-  };
-}
-
-/** Normalise the full v0.1 verdict (structural+sig + two-sided + §7.5.2 walk) into the CLI's VerifyVerdict shape. */
-function normaliseV1Verdict(jobId: string, v: BundleV1FullVerdict): VerifyVerdict {
-  const steps: VerifyStepLite[] = [
-    { step: 'structural', outcome: v.structurallyValid ? 'pass' : 'fail', detail: v.structurallyValid ? 'v0.1 §10.4 shape valid' : v.reasons.join('; ') },
-    { step: 'signer-rule', outcome: v.signerRuleSatisfied ? 'pass' : 'fail', detail: v.signerRuleSatisfied ? 'required-signer rule satisfied (§10.4.1)' : v.reasons.join('; ') },
-    { step: 'signatures', outcome: v.cryptographicallyVerified ? 'pass' : (v.decision === 'reject' ? 'fail' : 'indeterminate'),
-      detail: v.signatureChecks.map((c) => `${c.party.slice(0, 18)}…:${c.decision}${c.reason ? ` (${c.reason})` : ''}`).join('; ') || 'no signatures' },
-    // §10.4.2/§10.4.3 two-sided anchoring — `skipped` only when --offline was passed (informational).
-    { step: 'two-sided-anchoring',
-      outcome: v.twoSided.outcome === 'skipped' ? 'skipped' : v.twoSided.outcome,
-      detail: v.twoSided.detail },
-    // §7.5.2 AttestationRef walk — one rolled-up step + the real per-ref outcomes are in the count.
-    ...v.attestationSteps.map((s): VerifyStepLite => ({ step: s.ref, outcome: s.outcome, detail: s.detail })),
-  ];
-  return {
-    // §7.5.1 — the CLI verdict is the FULL rollup (any fail → fail; else any indeterminate →
-    // indeterminate; else pass). An unanchored / unwalkable v1 bundle is NOT a default pass.
-    decision: v.rollup,
-    jobId,
-    steps,
-    canonicalBundleHash: v.bundleHash,
-    signersVerified: v.signatureChecks.filter((c) => c.decision === 'pass').map((c) => c.party),
-    attestationsVerified: v.attestationsVerified,
-    attestationsFailed: v.attestationsFailed,
-  };
-}
-type VerifyStepLite = VerifyVerdict['steps'][number];
+import type { VerifyVerdict } from '../types/index.js';
+import { indeterminateVerdict, isLoadError, loadBundleSource, verifyDocument } from '../lib/verify-document.js';
 
 const USAGE = `
 pathos-dacs-verify — DACS-5 envelope-receipt verifier (v0.1)
@@ -166,84 +112,19 @@ function parseCliArgs(): CliArgs {
 }
 
 async function loadBundle(args: CliArgs): Promise<unknown | { error: string }> {
-  if (args.bundleFile) {
-    try {
-      return JSON.parse(readFileSync(args.bundleFile, 'utf-8'));
-    } catch (e) {
-      return { error: `failed to load bundle from ${args.bundleFile}: ${(e as Error).message}` };
-    }
-  }
-  if (args.bundleAnchor) {
-    // Codex M2 round-7 #2: fetch exceptions MUST surface as indeterminate, not crash to exit 3.
-    let fetched;
-    try {
-      fetched = await fetchAnchored(args.rpc, args.bundleAnchor);
-    } catch (e) {
-      return { error: `bundle anchor fetch failed (RPC error): ${(e as Error).message}` };
-    }
-    if (!fetched) return { error: `bundle anchor ${args.bundleAnchor} not found at ${args.rpc}` };
-    // The anchored data IS the bundle JSON
-    const raw = typeof fetched.data === 'string' ? fetched.data : JSON.stringify(fetched.data);
-    try {
-      return JSON.parse(raw);
-    } catch (e) {
-      return { error: `bundle at ${args.bundleAnchor} is not valid JSON: ${(e as Error).message}` };
-    }
-  }
-  if (args.jobId) {
-    // Try both party-specific anchors. Codex round-8 #1: if EITHER fetch throws and
-    // we can't establish a winner from the other side, surface as an explicit RPC error.
-    // We don't want a buyer-RPC-error + seller-not-found to silently report "neither
-    // anchor present" — that's a different signal than what actually happened.
-    const pair = computeAnchorPair(args.jobId);
-    let buyer, seller;
-    let buyerErr: string | undefined;
-    let sellerErr: string | undefined;
-    try { buyer = await fetchAnchored(args.rpc, pair.buyer); } catch (e) { buyerErr = (e as Error).message; }
-    try { seller = await fetchAnchored(args.rpc, pair.seller); } catch (e) { sellerErr = (e as Error).message; }
-    const winner = buyer ?? seller;
-    if (!winner) {
-      // Distinguish "all RPC errors" from "any absence" from "all clear-absent"
-      if (buyerErr || sellerErr) {
-        const parts: string[] = [];
-        if (buyerErr) parts.push(`buyer fetch RPC error: ${buyerErr}`); else parts.push(`buyer anchor absent at ${pair.buyer}`);
-        if (sellerErr) parts.push(`seller fetch RPC error: ${sellerErr}`); else parts.push(`seller anchor absent at ${pair.seller}`);
-        return { error: `bundle-load failed for jobId=${args.jobId} at ${args.rpc}: ${parts.join('; ')}` };
-      }
-      return { error: `neither party anchor present at ${args.rpc} (buyer=${pair.buyer}, seller=${pair.seller})` };
-    }
-    const raw = typeof winner.data === 'string' ? winner.data : JSON.stringify(winner.data);
-    try {
-      return JSON.parse(raw);
-    } catch (e) {
-      return { error: `bundle at ${pair.buyer}/${pair.seller} is not valid JSON: ${(e as Error).message}` };
-    }
-  }
-  return { error: 'unreachable: parseCliArgs already enforces at least one source flag' };
+  // Source resolution is shared with packages/verifier (src/lib/verify-document.ts).
+  return loadBundleSource({ file: args.bundleFile, anchor: args.bundleAnchor, jobId: args.jobId, rpc: args.rpc });
 }
 
 async function main(): Promise<void> {
   const args = parseCliArgs();
 
   const loaded = await loadBundle(args);
-  const loadError =
-    loaded && typeof loaded === 'object' && 'error' in loaded && typeof (loaded as { error: unknown }).error === 'string'
-      ? (loaded as { error: string }).error
-      : null;
+  const loadError = isLoadError(loaded) ? loaded.error : null;
   if (loadError !== null) {
-    // Codex M2 #2: the step outcome MUST match the rollup decision.
-    // Missing-file / unreachable-anchor is "verifier could not reach a verdict" —
-    // that's indeterminate semantically. Use outcome:'indeterminate' so the JSON
-    // is internally consistent (no rule-violating fail-step + indeterminate-verdict).
-    const verdict: VerifyVerdict = {
-      decision: 'indeterminate',
-      jobId: args.jobId ?? 'unknown',
-      steps: [{ step: 'source', outcome: 'indeterminate', detail: loadError }],
-      canonicalBundleHash: '',
-      signersVerified: [],
-      attestationsVerified: 0,
-      attestationsFailed: 0,
-    };
+    // Missing-file / unreachable-anchor is "verifier could not reach a verdict" — indeterminate,
+    // so the JSON stays internally consistent (no fail-step under an indeterminate verdict).
+    const verdict = indeterminateVerdict('source', loadError, args.jobId ?? 'unknown');
     if (!args.json) {
       console.error(`pathos-dacs-verify — DACS-5 verifier v0.2\n`);
       console.error(`  ? source: ${loadError}`);
@@ -253,45 +134,21 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  // Dual-accept dispatch (§10.4.2). DEFAULT verify path = v0.1 verifyBundleV1; legacy bundles
-  // are still READ via the legacy walk.
-  const classified = classifyBundle(loaded);
-  if ('error' in classified) {
-    const verdict: VerifyVerdict = {
-      decision: 'indeterminate',
-      jobId: args.jobId ?? 'unknown',
-      steps: [{ step: 'classify', outcome: 'indeterminate', detail: classified.error }],
-      canonicalBundleHash: '', signersVerified: [], attestationsVerified: 0, attestationsFailed: 0,
-    };
-    if (!args.json) {
-      console.error(`pathos-dacs-verify — DACS verifier v0.1\n`);
-      console.error(`  ? classify: ${classified.error}`);
-      console.error(`\nverdict: INDETERMINATE\n`);
-    }
+  // Dual-accept dispatch (§10.4.2), verdict normalisation and the exit-code mapping live in
+  // src/lib/verify-document.ts, shared with packages/verifier. Without --offline an unanchored
+  // local bundle is indeterminate, never a default pass.
+  const result = await verifyDocument(loaded, {
+    rpc: args.rpc,
+    offline: args.offline,
+    jobId: args.jobId,
+  });
+  const verdict: VerifyVerdict = result.verdict;
+  if (result.bundleKind === 'unrecognised' && !args.json) {
+    console.error(`pathos-dacs-verify — DACS verifier v0.1\n`);
+    console.error(`  ? classify: ${verdict.steps[0]?.detail ?? 'unrecognised bundle'}`);
+    console.error(`\nverdict: INDETERMINATE\n`);
     console.log(JSON.stringify(verdict, null, 2));
     process.exit(2);
-  }
-
-  let verdict: VerifyVerdict;
-  if (classified.kind === 'v1') {
-    // v0.1 path — SAME contract as legacy (Codex BLOCKERs 1 + 2): structural+signature check
-    // PLUS §10.4.2/§10.4.3 two-sided anchoring PLUS the §7.5.2 AttestationRef walk. --offline
-    // opts out of the two-sided lookup exactly like the legacy path; without it, an unanchored
-    // local v1 bundle is indeterminate, NOT a default pass.
-    const v1 = await verifyBundleV1Full(classified.bundle, {
-      rpc: args.rpc,
-      skipTwoSidedLookup: args.offline,
-    });
-    verdict = normaliseV1Verdict(classified.bundle.jobId ?? (args.jobId ?? 'unknown'), v1);
-  } else {
-    // Codex M2 round-7 #1: only skip two-sided lookup when explicitly opted in via --offline.
-    // Default --bundle-file verification still attempts the chain lookup, binding the local
-    // file to one of the two anchors. This enforces the local-bundle binding invariant for
-    // file-based verifies too.
-    verdict = await verifyBundle(classified.bundle, {
-      rpc: args.rpc,
-      skipTwoSidedLookup: args.offline,
-    });
   }
 
   if (!args.json) {
