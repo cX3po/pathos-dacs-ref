@@ -3,9 +3,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import * as ed25519 from '@noble/ed25519';
+import { sha256 } from '@noble/hashes/sha2';
 import {
   createPrivateChannel,
   membershipBindingBytes,
+  PrivateChannelManifestError,
   verifyChannelTranscript,
   type ChannelMember,
   type ChannelTranscript,
@@ -15,6 +17,9 @@ import {
 import {
   InProcessPrivateChannelTransport,
   L2psPrivateChannelTransport,
+  PrivateChannelRefusalError,
+  type ProvisionedSubnetEncryptor,
+  type StructuralMessagingPeer,
 } from '../../src/adapters/demos/private-channel-transport.js';
 import {
   claimRefFor,
@@ -224,6 +229,183 @@ test('live mode is exact-flag gated and still refuses a missing injected peer', 
   }
 });
 
+interface FakePeerDelivery {
+  from: string;
+  encrypted: unknown;
+  messageHash: string;
+}
+
+function fakePeerPair(
+  ids: readonly [string, string],
+  sentAs: readonly [string, string] = ids,
+): {
+  peers: [StructuralMessagingPeer, StructuralMessagingPeer];
+  deliveries: [FakePeerDelivery[], FakePeerDelivery[]];
+  inject(side: 0 | 1, delivery: FakePeerDelivery): void;
+} {
+  const handlers: Array<((payload: FakePeerDelivery) => void) | undefined> = [undefined, undefined];
+  const pending: [FakePeerDelivery[], FakePeerDelivery[]] = [[], []];
+  const deliveries: [FakePeerDelivery[], FakePeerDelivery[]] = [[], []];
+  function deliver(side: 0 | 1, payload: FakePeerDelivery): void {
+    deliveries[side].push(payload);
+    const handler = handlers[side];
+    if (handler) handler(payload);
+    else pending[side].push(payload);
+  }
+  function peer(side: 0 | 1): StructuralMessagingPeer {
+    const other = side === 0 ? 1 : 0;
+    return Object.freeze({
+      send: async (to: string, encrypted: unknown, messageHash: string) => {
+        assert.equal(to, ids[other]);
+        deliver(other, { from: sentAs[side], encrypted, messageHash });
+      },
+      onMessage: (handler: (payload: FakePeerDelivery) => void) => {
+        handlers[side] = handler;
+        for (const payload of pending[side].splice(0)) handler(payload);
+      },
+    });
+  }
+  return {
+    peers: [peer(0), peer(1)],
+    deliveries,
+    inject: deliver,
+  };
+}
+
+function testEncryptor(): ProvisionedSubnetEncryptor {
+  return Object.freeze({
+    encryptBytes: async (bytes: Uint8Array) => Uint8Array.from(bytes, (byte) => byte ^ 0xa5),
+    decryptBytes: async (encrypted: unknown) => Uint8Array.from(encrypted as Uint8Array, (byte) => byte ^ 0xa5),
+  });
+}
+
+function liveFixture(options: { differentManifest?: boolean; sentAs?: [string, string] } = {}) {
+  const alice = makeAgent('buyer');
+  const bob = makeAgent('seller');
+  alice.member.peerId = 'peer-alice';
+  bob.member.peerId = 'peer-bob';
+  const aliceManifest = makeManifest([alice, bob]);
+  const bobManifest = options.differentManifest
+    ? makeManifest([bob, alice])
+    : aliceManifest;
+  const fake = fakePeerPair(['peer-alice', 'peer-bob'], options.sentAs);
+  const aliceTransport = new L2psPrivateChannelTransport({
+    encryptor: testEncryptor(),
+    peer: fake.peers[0],
+    recipient: 'peer-bob',
+  });
+  const bobTransport = new L2psPrivateChannelTransport({
+    encryptor: testEncryptor(),
+    peer: fake.peers[1],
+    recipient: 'peer-alice',
+  });
+  const aliceChannel = createPrivateChannel({ identity: alice.handle, membership: aliceManifest, transport: aliceTransport, mode: 'l2ps-live' });
+  const bobChannel = createPrivateChannel({ identity: bob.handle, membership: bobManifest, transport: bobTransport, mode: 'l2ps-live' });
+  return { alice, bob, fake, aliceChannel, bobChannel };
+}
+
+async function withLiveFlag(run: () => Promise<void>): Promise<void> {
+  const prior = process.env.PATHOS_L2PS_LIVE;
+  process.env.PATHOS_L2PS_LIVE = '1';
+  try {
+    await run();
+  } finally {
+    if (prior === undefined) delete process.env.PATHOS_L2PS_LIVE;
+    else process.env.PATHOS_L2PS_LIVE = prior;
+  }
+}
+
+test('live peers authenticate a shared channel and ignore foreign post-bind frames', async () => {
+  await withLiveFlag(async () => {
+    const pair = liveFixture();
+    await Promise.all([
+      pair.aliceChannel.open([pair.alice.member, pair.bob.member]),
+      pair.bobChannel.open([pair.bob.member, pair.alice.member]),
+    ]);
+    assert.equal(pair.aliceChannel.transcript().channelId, pair.bobChannel.transcript().channelId);
+
+    pair.fake.inject(1, { from: 'foreign-peer', encrypted: Object.freeze({ malformed: true }), messageHash: 'foreign' });
+    await pair.aliceChannel.send(new TextEncoder().encode('bound hello'));
+    assert.equal(new TextDecoder().decode((await pair.bobChannel.receive()).bytes), 'bound hello');
+
+    for (const delivery of pair.fake.deliveries.flat()) {
+      if (delivery.encrypted instanceof Uint8Array) {
+        assert.equal(delivery.messageHash, Buffer.from(sha256(delivery.encrypted)).toString('hex'));
+      }
+    }
+    await Promise.all([pair.aliceChannel.close(), pair.bobChannel.close()]);
+    assert.equal(await verifyChannelTranscript(pair.aliceChannel.transcript()), true);
+  });
+});
+
+test('live open refuses manifest and peer-identity mismatches with typed errors', async (t) => {
+  await t.test('manifest mismatch', async () => withLiveFlag(async () => {
+    const pair = liveFixture({ differentManifest: true });
+    await assert.rejects(Promise.all([
+      pair.aliceChannel.open([pair.alice.member, pair.bob.member]),
+      pair.bobChannel.open([pair.bob.member, pair.alice.member]),
+    ]), PrivateChannelRefusalError);
+  }));
+  await t.test('wrong peer identity', async () => withLiveFlag(async () => {
+    const pair = liveFixture({ sentAs: ['wrong-peer', 'peer-bob'] });
+    await assert.rejects(Promise.all([
+      pair.aliceChannel.open([pair.alice.member, pair.bob.member]),
+      pair.bobChannel.open([pair.bob.member, pair.alice.member]),
+    ]), PrivateChannelRefusalError);
+  }));
+});
+
+test('membership manifests refuse any member count other than two', () => {
+  const agents = [makeAgent('buyer'), makeAgent('seller'), makeAgent('auditor')];
+  const manifest = makeManifest(agents);
+  const [transport] = InProcessPrivateChannelTransport.pair();
+  assert.throws(
+    () => createPrivateChannel({ identity: agents[0]!.handle, membership: manifest, transport, mode: 'local' }),
+    PrivateChannelManifestError,
+  );
+});
+
+test('a failed transport send rejects, makes the session fatal, and reserves no sequence', async () => {
+  const alice = makeAgent('buyer');
+  const bob = makeAgent('seller');
+  const manifest = makeManifest([alice, bob]);
+  let attempts = 0;
+  const transport = {
+    mode: 'local' as const,
+    open: async (request: { nonce: Uint8Array }) => request.nonce.slice(),
+    send: async () => { attempts += 1; throw new Error('injected send failure'); },
+    receive: async () => { throw new Error('unused'); },
+    close: async () => undefined,
+  };
+  const channel = createPrivateChannel({ identity: alice.handle, membership: manifest, transport, mode: 'local' });
+  await channel.open([alice.member, bob.member]);
+  await assert.rejects(channel.send(Uint8Array.of(1)), /injected send failure/);
+  await assert.rejects(channel.send(Uint8Array.of(2)), /not open/);
+  assert.equal(attempts, 1);
+  assert.deepEqual(channel.transcript().envelopes, []);
+  assert.deepEqual(channel.transcript().finalCounters, []);
+});
+
+test('close drains an unread message into a cold-verifiable shared transcript', async () => {
+  const pair = await openPair();
+  await pair.aliceChannel.send(new TextEncoder().encode('unread before close'));
+  await Promise.all([pair.aliceChannel.close(), pair.bobChannel.close()]);
+  assert.deepEqual(pair.aliceChannel.transcript(), pair.bobChannel.transcript());
+  assert.equal(pair.aliceChannel.transcript().envelopes.some((envelope) => envelope.kind === 'agent-message'), true);
+  assert.equal(await verifyChannelTranscript(pair.aliceChannel.transcript()), true);
+});
+
+test('a send already in flight when close starts is drained and remains receivable during close', async () => {
+  const pair = await openPair();
+  const sending = pair.aliceChannel.send(new TextEncoder().encode('concurrent close'));
+  const aliceClosing = pair.aliceChannel.close();
+  const bobClosing = pair.bobChannel.close();
+  const drained = pair.bobChannel.receive();
+  assert.equal(new TextDecoder().decode((await drained).bytes), 'concurrent close');
+  await Promise.all([sending, aliceClosing, bobClosing]);
+  assert.equal(await verifyChannelTranscript(pair.bobChannel.transcript()), true);
+});
+
 test('private-channel local import graph stays inside the non-value boundary', () => {
   const roots = [
     resolve('src/adapters/demos/private-channel.ts'),
@@ -235,7 +417,7 @@ test('private-channel local import graph stays inside the non-value boundary', (
     if (visited.has(file)) return;
     visited.add(file);
     const source = readFileSync(file, 'utf8');
-    assert.doesNotMatch(source, /(?:from\s+|import\()\s*['"]@kynesyslabs\/demosdk['"]/);
+    assert.doesNotMatch(source, /(?:from\s+|import\()\s*['"]@kynesyslabs(?:\/[^'"]*)?['"]/);
     assert.doesNotMatch(source, /(?:from\s+|import\()\s*['"][^'"]*(?:pay-dem|escrow|storage(?:\/|\.)anchor|settlement|transaction)[^'"]*['"]/i);
     assert.doesNotMatch(source, /\.(?:anchor|sendTransaction|submitTransaction|createTransaction)\s*\(/i);
     for (const match of source.matchAll(localImport)) {

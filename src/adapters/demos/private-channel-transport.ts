@@ -8,12 +8,23 @@
 
 import { randomBytes } from 'node:crypto';
 import { sha256 } from '@noble/hashes/sha2';
+import { jcsCanonical } from '../../jcs.js';
 
 export type PrivateChannelMode = 'local' | 'l2ps-live';
 
 export interface PrivateChannelOpenRequest {
   manifestHash: string;
   nonce: Uint8Array;
+  sender: PrivateChannelOpenMember;
+  peer: PrivateChannelOpenMember;
+  signEnvelopeHash(hash: string): Promise<Uint8Array>;
+  verifyEnvelopeHash(claim: string, hash: string, signature: Uint8Array): boolean | Promise<boolean>;
+}
+
+export interface PrivateChannelOpenMember {
+  seatId: string;
+  claim: string;
+  peerId?: string;
 }
 
 export interface PrivateChannelTransport {
@@ -25,7 +36,7 @@ export interface PrivateChannelTransport {
 }
 
 interface HandshakeSide {
-  request?: PrivateChannelOpenRequest;
+  request?: Pick<PrivateChannelOpenRequest, 'manifestHash' | 'nonce'>;
   resolve?: (nonce: Uint8Array) => void;
   reject?: (error: Error) => void;
 }
@@ -39,6 +50,7 @@ class ByteMailbox {
   private readonly queued: Uint8Array[] = [];
   private readonly waiting: Array<{ resolve: (frame: Uint8Array) => void; reject: (error: Error) => void }> = [];
   private ended = false;
+  private failure?: Error;
 
   push(frame: Uint8Array): void {
     if (this.ended) throw new Error('Private-channel mailbox is closed');
@@ -51,13 +63,21 @@ class ByteMailbox {
   next(): Promise<Uint8Array> {
     const frame = this.queued.shift();
     if (frame) return Promise.resolve(frame.slice());
-    if (this.ended) return Promise.reject(new Error('Private-channel mailbox is closed'));
+    if (this.ended) return Promise.reject(this.failure ?? new Error('Private-channel mailbox is closed'));
     return new Promise((resolve, reject) => this.waiting.push({ resolve, reject }));
   }
 
   end(): void {
     this.ended = true;
     for (const waiter of this.waiting.splice(0)) waiter.reject(new Error('Private-channel mailbox is closed'));
+  }
+
+  fail(error: Error): void {
+    if (this.ended) return;
+    this.failure = error;
+    this.ended = true;
+    this.queued.length = 0;
+    for (const waiter of this.waiting.splice(0)) waiter.reject(error);
   }
 }
 
@@ -143,24 +163,115 @@ export interface L2psPrivateChannelTransportOptions {
   recipient: string;
 }
 
-const LIVE_CAPABILITIES = new Set(['encryptBytes', 'decryptBytes']);
-const PEER_CAPABILITIES = new Set(['send', 'onMessage']);
-
-function ownAndPrototypeFunctionNames(value: object): string[] {
-  const names = new Set<string>();
-  let cursor: object | null = value;
-  while (cursor && cursor !== Object.prototype) {
-    for (const name of Object.getOwnPropertyNames(cursor)) {
-      if (name !== 'constructor' && typeof (value as Record<string, unknown>)[name] === 'function') names.add(name);
-    }
-    cursor = Object.getPrototypeOf(cursor) as object | null;
-  }
-  return [...names];
+interface ChannelOpenPayload {
+  kind: 'channel-open';
+  v: 'pathos-private-channel-open:1';
+  manifestHash: string;
+  nonceShare: string;
+  sender: { seatId: string; claim: string };
+  peerId: string;
 }
 
-function assertMinimalCapabilities(value: object, allowed: ReadonlySet<string>, label: string): void {
-  const extras = ownAndPrototypeFunctionNames(value).filter((name) => !allowed.has(name));
-  if (extras.length > 0) throw new Error(`${label} exposes capabilities outside the private-channel allowlist`);
+interface SignedChannelOpen {
+  payload: ChannelOpenPayload;
+  signature: string;
+}
+
+export class PrivateChannelRefusalError extends Error {
+  override readonly name = 'PrivateChannelRefusalError';
+}
+
+export class PrivateChannelFatalError extends Error {
+  override readonly name = 'PrivateChannelFatalError';
+}
+
+const LIVE_CAPABILITIES = ['encryptBytes', 'decryptBytes'] as const;
+const PEER_CAPABILITIES = ['send', 'onMessage'] as const;
+const OPEN_VERSION = 'pathos-private-channel-open:1' as const;
+const enc = new TextEncoder();
+const dec = new TextDecoder('utf-8', { fatal: true });
+
+function bytesToBase64(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString('base64');
+}
+
+function base64ToBytes(value: unknown, length: number, label: string): Uint8Array {
+  if (typeof value !== 'string') throw new PrivateChannelRefusalError(`${label} is invalid`);
+  const bytes = new Uint8Array(Buffer.from(value, 'base64'));
+  if (bytes.length !== length || bytesToBase64(bytes) !== value) {
+    throw new PrivateChannelRefusalError(`${label} is invalid`);
+  }
+  return bytes;
+}
+
+function assertExactCapabilities(value: object, allowed: readonly string[], label: string): void {
+  const ownKeys = Reflect.ownKeys(value);
+  const actual = ownKeys.filter((key): key is string => typeof key === 'string').sort();
+  const expected = [...allowed].sort();
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (ownKeys.length !== expected.length || actual.length !== expected.length
+    || actual.some((name, index) => name !== expected[index])
+    || expected.some((name) => descriptors[name]?.get !== undefined || typeof descriptors[name]?.value !== 'function')) {
+    throw new PrivateChannelRefusalError(`${label} does not match the private-channel capability allowlist`);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+function parseSignedOpen(frame: Uint8Array): SignedChannelOpen {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(dec.decode(frame)) as unknown;
+  } catch {
+    throw new PrivateChannelRefusalError('Live channel-open frame is invalid');
+  }
+  if (!isRecord(raw) || !exactKeys(raw, ['payload', 'signature']) || !isRecord(raw.payload)
+    || !exactKeys(raw.payload, ['kind', 'v', 'manifestHash', 'nonceShare', 'sender', 'peerId'])
+    || !isRecord(raw.payload.sender) || !exactKeys(raw.payload.sender, ['seatId', 'claim'])
+    || raw.payload.kind !== 'channel-open' || raw.payload.v !== OPEN_VERSION
+    || typeof raw.payload.manifestHash !== 'string' || typeof raw.payload.peerId !== 'string'
+    || typeof raw.payload.sender.seatId !== 'string' || typeof raw.payload.sender.claim !== 'string'
+    || typeof raw.signature !== 'string') {
+    throw new PrivateChannelRefusalError('Live channel-open frame is invalid');
+  }
+  base64ToBytes(raw.payload.nonceShare, 32, 'Live channel-open nonce share');
+  base64ToBytes(raw.signature, 64, 'Live channel-open signature');
+  return raw as unknown as SignedChannelOpen;
+}
+
+function ciphertextBytes(encrypted: unknown): Uint8Array {
+  if (encrypted instanceof Uint8Array) return encrypted;
+  if (typeof encrypted === 'string') return enc.encode(encrypted);
+  if (encrypted instanceof ArrayBuffer) return new Uint8Array(encrypted);
+  if (ArrayBuffer.isView(encrypted)) {
+    return new Uint8Array(encrypted.buffer, encrypted.byteOffset, encrypted.byteLength);
+  }
+  return enc.encode(JSON.stringify(encrypted));
+}
+
+function hashBytes(bytes: Uint8Array): string {
+  return Buffer.from(sha256(bytes)).toString('hex');
+}
+
+function compareBytes(a: Uint8Array, b: Uint8Array): number {
+  return Buffer.compare(Buffer.from(a), Buffer.from(b));
+}
+
+async function sendEncrypted(
+  options: L2psPrivateChannelTransportOptions,
+  frame: Uint8Array,
+): Promise<void> {
+  if (!options.peer) throw new Error('Live private-channel transport is not open');
+  const encrypted = await options.encryptor.encryptBytes(frame.slice());
+  await options.peer.send(options.recipient, encrypted, hashBytes(ciphertextBytes(encrypted)));
 }
 
 /** Live encrypted-byte delivery; it cannot create or connect a messaging peer. */
@@ -168,6 +279,8 @@ export class L2psPrivateChannelTransport implements PrivateChannelTransport {
   readonly mode = 'l2ps-live' as const;
   private readonly inbox = new ByteMailbox();
   private started = false;
+  private opening = false;
+  private failure?: Error;
 
   constructor(private readonly options: L2psPrivateChannelTransportOptions) {}
 
@@ -176,39 +289,112 @@ export class L2psPrivateChannelTransport implements PrivateChannelTransport {
       throw new Error('Live private channels require PATHOS_L2PS_LIVE=1');
     }
     if (!this.options.peer) throw new Error('Live private channels require an injected messaging peer');
-    assertMinimalCapabilities(this.options.encryptor, LIVE_CAPABILITIES, 'Subnet encryptor');
-    assertMinimalCapabilities(this.options.peer, PEER_CAPABILITIES, 'Messaging peer');
-
-    // Deliberately delayed until after flag and peer checks. This is the sole SDK import.
-    const sdk = await import('@kynesyslabs/demosdk/l2ps');
-    const capabilities = Object.keys(sdk).sort();
-    if (capabilities.join(',') !== ['L2PS', 'anchor', 'binding', 'channel'].sort().join(',')) {
-      throw new Error('Loaded L2PS namespace does not match the reviewed capability inventory');
+    if (this.started || this.opening) throw new PrivateChannelRefusalError('Live private-channel transport cannot be opened');
+    assertExactCapabilities(this.options.encryptor, LIVE_CAPABILITIES, 'Subnet encryptor');
+    assertExactCapabilities(this.options.peer, PEER_CAPABILITIES, 'Messaging peer');
+    if (request.nonce.length !== 32) throw new PrivateChannelRefusalError('Live channel-open nonce share must be 32 bytes');
+    if (!request.sender.peerId || !request.peer.peerId || this.options.recipient !== request.peer.peerId) {
+      throw new PrivateChannelRefusalError('Live private-channel peer identity is not bound by the manifest');
     }
-    this.options.peer.onMessage((payload) => {
-      void this.options.encryptor.decryptBytes(payload.encrypted)
-        .then((frame) => this.inbox.push(frame))
-        .catch(() => this.inbox.end());
+
+    this.opening = true;
+    let resolveOpen!: (nonce: Uint8Array) => void;
+    let rejectOpen!: (error: Error) => void;
+    const opened = new Promise<Uint8Array>((resolve, reject) => {
+      resolveOpen = resolve;
+      rejectOpen = reject;
     });
-    this.started = true;
-    return request.nonce.slice();
+    this.options.peer.onMessage((payload) => {
+      if (payload.from !== request.peer.peerId) {
+        if (this.opening) {
+          this.opening = false;
+          rejectOpen(new PrivateChannelRefusalError('Live channel-open peer identity does not match the manifest'));
+        }
+        return;
+      }
+      void this.options.encryptor.decryptBytes(payload.encrypted)
+        .then(async (frame) => {
+          if (this.opening) {
+            try {
+              const handshake = parseSignedOpen(frame);
+              const expectedSender = request.peer;
+              if (handshake.payload.manifestHash !== request.manifestHash) {
+                throw new PrivateChannelRefusalError('Live channel-open membership manifests differ');
+              }
+              if (handshake.payload.sender.seatId !== expectedSender.seatId
+                || handshake.payload.sender.claim !== expectedSender.claim
+                || handshake.payload.peerId !== expectedSender.peerId) {
+                throw new PrivateChannelRefusalError('Live channel-open sender does not match the other manifest member');
+              }
+              const valid = await request.verifyEnvelopeHash(
+                expectedSender.claim,
+                hashBytes(jcsCanonical(handshake.payload)),
+                base64ToBytes(handshake.signature, 64, 'Live channel-open signature'),
+              );
+              if (!valid) throw new PrivateChannelRefusalError('Live channel-open CCI signature is invalid');
+              const remoteNonce = base64ToBytes(handshake.payload.nonceShare, 32, 'Live channel-open nonce share');
+              const shares = [request.nonce.slice(), remoteNonce].sort(compareBytes);
+              const combined = new Uint8Array(64);
+              combined.set(shares[0]!, 0);
+              combined.set(shares[1]!, 32);
+              this.opening = false;
+              this.started = true;
+              resolveOpen(combined);
+            } catch (error) {
+              this.opening = false;
+              rejectOpen(error instanceof Error ? error : new PrivateChannelRefusalError('Live channel-open was refused'));
+            }
+            return;
+          }
+          if (this.started) this.inbox.push(frame);
+        })
+        .catch(() => {
+          const error = new PrivateChannelFatalError('Live private-channel ciphertext could not be decrypted');
+          this.failure = error;
+          if (this.opening) {
+            this.opening = false;
+            rejectOpen(error);
+          } else {
+            this.started = false;
+            this.inbox.fail(error);
+          }
+        });
+    });
+
+    const openPayload: ChannelOpenPayload = {
+      kind: 'channel-open',
+      v: OPEN_VERSION,
+      manifestHash: request.manifestHash,
+      nonceShare: bytesToBase64(request.nonce),
+      sender: { seatId: request.sender.seatId, claim: request.sender.claim },
+      peerId: request.sender.peerId,
+    };
+    try {
+      const signature = await request.signEnvelopeHash(hashBytes(jcsCanonical(openPayload)));
+      const frame = jcsCanonical({ payload: openPayload, signature: bytesToBase64(signature) });
+      await sendEncrypted(this.options, frame);
+    } catch (error) {
+      this.opening = false;
+      throw error;
+    }
+    return opened;
   }
 
   async send(frame: Uint8Array): Promise<void> {
-    if (!this.started || !this.options.peer) throw new Error('Live private-channel transport is not open');
-    const copy = frame.slice();
-    const encrypted = await this.options.encryptor.encryptBytes(copy);
-    const messageHash = Buffer.from(sha256(copy)).toString('hex');
-    await this.options.peer.send(this.options.recipient, encrypted, messageHash);
+    if (this.failure) throw this.failure;
+    if (!this.started) throw new Error('Live private-channel transport is not open');
+    await sendEncrypted(this.options, frame);
   }
 
   receive(): Promise<Uint8Array> {
+    if (this.failure) return Promise.reject(this.failure);
     if (!this.started) return Promise.reject(new Error('Live private-channel transport is not open'));
     return this.inbox.next();
   }
 
   async close(): Promise<void> {
     this.started = false;
+    this.opening = false;
     this.inbox.end();
   }
 }

@@ -7,25 +7,35 @@
  * off unless explicitly enabled. Opaque payloads remain inert message bytes.
  */
 
-import { sha256 } from '@noble/hashes/sha2';
+import { sha256, sha512 } from '@noble/hashes/sha2';
+import * as ed25519 from '@noble/ed25519';
 import { jcsCanonical, jcsHashHex } from '../../jcs.js';
 import {
+  assertEmittableSeparator,
+  assertKnownSeparator,
+  buildSignedBytes,
   DACS_X_EXTENSION_SEPARATORS,
   REVIEWED_DACS_X_EXTENSION_SEPARATORS,
   type DomainSeparator,
 } from '../../domain-sep.js';
 import {
-  signDomainHashAsAgent,
-  verifyAgentSignature,
-  verifyDomainHashAgentSignature,
-  type ClaimReference,
-  type UnlockedAgent,
-} from './identity.js';
-import {
   freshPrivateChannelNonce,
   type PrivateChannelMode,
   type PrivateChannelTransport,
 } from './private-channel-transport.js';
+
+export type ClaimReference = `${string}:${string}`;
+
+export interface PrivateChannelIdentity {
+  claim: ClaimReference;
+  demos: {
+    readonly walletConnected: boolean;
+    getEd25519Address(): Promise<string>;
+    crypto: {
+      sign(algorithm: string, payload: Uint8Array): Promise<{ signature: Uint8Array | ArrayLike<number> }>;
+    };
+  };
+}
 
 export type PrivateChannelContentKind =
   | 'agent-message'
@@ -35,6 +45,7 @@ export type PrivateChannelContentKind =
 export interface ChannelMember {
   seatId: string;
   claim: ClaimReference;
+  peerId?: string;
 }
 
 export interface MembershipBinding extends ChannelMember {
@@ -102,7 +113,7 @@ export interface ChannelTranscriptVerifier {
 }
 
 export interface CreatePrivateChannelOptions {
-  identity: UnlockedAgent;
+  identity: PrivateChannelIdentity;
   membership: MembershipManifest;
   transport: PrivateChannelTransport;
   mode: PrivateChannelMode;
@@ -121,6 +132,13 @@ const KINDS: ReadonlySet<string> = new Set([
 const EMPTY = new Uint8Array();
 const enc = new TextEncoder();
 const dec = new TextDecoder('utf-8', { fatal: true });
+
+ed25519.etc.sha512Sync = (...messages: Uint8Array[]): Uint8Array =>
+  sha512(ed25519.etc.concatBytes(...messages));
+
+export class PrivateChannelManifestError extends Error {
+  override readonly name = 'PrivateChannelManifestError';
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -161,13 +179,73 @@ function parseMember(value: unknown, label: string): ChannelMember {
   };
 }
 
+function normalizedDemosAddress(value: string): string {
+  const hex = value.replace(/^0x/i, '');
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) throw new Error('Private-channel CCI claim is invalid');
+  return `0x${hex.toLowerCase()}`;
+}
+
+function publicKeyForClaim(claim: ClaimReference): Uint8Array {
+  const colon = claim.indexOf(':');
+  if (colon < 1 || claim.slice(0, colon) !== 'demos') throw new Error('Private-channel CCI claim is unsupported');
+  return new Uint8Array(Buffer.from(normalizedDemosAddress(claim.slice(colon + 1)).slice(2), 'hex'));
+}
+
+function domainHashBytes(domain: DomainSeparator, hash: string, signing: boolean): Uint8Array {
+  if (signing) assertEmittableSeparator(domain);
+  else assertKnownSeparator(domain);
+  return buildSignedBytes(domain, enc.encode(hash));
+}
+
+async function signDomainHash(
+  identity: PrivateChannelIdentity,
+  domain: DomainSeparator,
+  hash: string,
+): Promise<Uint8Array> {
+  if (!identity.demos.walletConnected) throw new Error('Private-channel CCI wallet is not connected');
+  const connected = normalizedDemosAddress(await identity.demos.getEd25519Address());
+  const claimed = normalizedDemosAddress(identity.claim.slice(identity.claim.indexOf(':') + 1));
+  if (!identity.claim.startsWith('demos:') || connected !== claimed) {
+    throw new Error('Private-channel CCI claim does not match the connected wallet');
+  }
+  const signed = await identity.demos.crypto.sign('ed25519', domainHashBytes(domain, hash, true));
+  return signed.signature instanceof Uint8Array ? signed.signature : Uint8Array.from(signed.signature);
+}
+
+function verifyDomainHash(
+  claim: ClaimReference,
+  domain: DomainSeparator,
+  hash: string,
+  signature: Uint8Array,
+): boolean {
+  try {
+    return ed25519.verify(signature, domainHashBytes(domain, hash, false), publicKeyForClaim(claim));
+  } catch {
+    return false;
+  }
+}
+
+function verifyMembershipSignature(claim: ClaimReference, bytes: Uint8Array, signature: Uint8Array): boolean {
+  try {
+    return ed25519.verify(
+      signature,
+      buildSignedBytes(DACS_X_EXTENSION_SEPARATORS.AGENT_IDENTITY, bytes),
+      publicKeyForClaim(claim),
+    );
+  } catch {
+    return false;
+  }
+}
+
 function unsignedMembershipBinding(manifest: MembershipManifest, binding: ChannelMember): object {
-  return {
+  const unsigned: Record<string, unknown> = {
     v: manifest.v,
     coordinatorClaim: manifest.coordinatorClaim,
     seatId: binding.seatId,
     claim: binding.claim,
   };
+  if (binding.peerId !== undefined) unsigned.peerId = binding.peerId;
+  return unsigned;
 }
 
 /** Canonical membership bytes members sign through the CCI identity boundary. */
@@ -181,13 +259,19 @@ function assertFrozenManifest(manifest: MembershipManifest): void {
   }
   if (manifest.v !== 'pathos-private-channel-membership:1') throw new Error('Unsupported membership manifest version');
   requireString(manifest.coordinatorClaim, 'Membership coordinatorClaim');
-  if (manifest.members.length < 2) throw new Error('Private-channel membership requires at least two members');
+  if (manifest.members.length !== 2) throw new PrivateChannelManifestError('Private-channel membership requires exactly two members');
   const seats = new Set<string>();
   const claims = new Set<string>();
+  const peerIds = new Set<string>();
   for (const member of manifest.members) {
     if (!Object.isFrozen(member)) throw new Error('Private-channel membership bindings must be frozen');
     requireString(member.seatId, 'Membership seatId');
     requireString(member.claim, 'Membership claim');
+    if (member.peerId !== undefined) {
+      requireString(member.peerId, 'Membership peerId');
+      if (peerIds.has(member.peerId)) throw new Error('Membership peer identities must be unique');
+      peerIds.add(member.peerId);
+    }
     base64ToBytes(member.signature, 'Membership signature');
     if (seats.has(member.seatId) || claims.has(member.claim)) throw new Error('Membership seats and claims must be unique');
     seats.add(member.seatId);
@@ -296,9 +380,9 @@ function transcriptCommitment(transcript: ChannelTranscript): object {
 
 function defaultVerifier(): Required<ChannelTranscriptVerifier> {
   return {
-    verifyMembershipSignature: (claim, bytes, signature) => verifyAgentSignature(claim, bytes, signature),
+    verifyMembershipSignature,
     verifyDomainSignature: (claim, domain, hash, signature) =>
-      verifyDomainHashAgentSignature(claim, domain, hash, signature),
+      verifyDomainHash(claim, domain, hash, signature),
   };
 }
 
@@ -372,7 +456,12 @@ export function createPrivateChannel(options: CreatePrivateChannelOptions): {
   const accepted = new Map<ClaimReference, number>();
   const envelopes: PrivateChannelEnvelope[] = [];
   const closingSignatures: ClosingSignature[] = [];
-  let sendTail: Promise<void> = Promise.resolve();
+  let sendTail: Promise<unknown> = Promise.resolve();
+  const drainedMessages: ReceivedMessage[] = [];
+  const drainWaiters: Array<{
+    resolve: (message: ReceivedMessage) => void;
+    reject: (error: Error) => void;
+  }> = [];
 
   function snapshot(): ChannelTranscript {
     return {
@@ -389,30 +478,37 @@ export function createPrivateChannel(options: CreatePrivateChannelOptions): {
 
   async function emitNow(kind: PrivateChannelContentKind, payload: Uint8Array): Promise<PrivateChannelEnvelope> {
     if (!own) throw new Error('Channel identity does not own a membership seat');
+    const nextSequence = sendSequence + 1;
     const unsigned: UnsignedEnvelope = {
       v: ENVELOPE_VERSION,
       channelId,
       kind,
       sender: { seatId: own.seatId, claim: own.claim },
-      sequence: ++sendSequence,
+      sequence: nextSequence,
       payloadBase64: bytesToBase64(payload),
       sentAt: new Date().toISOString(),
     };
-    const signature = await signDomainHashAsAgent(
-      options.identity,
-      REVIEWED_DACS_X_EXTENSION_SEPARATORS.CHANNEL_ENVELOPE,
-      envelopeHash(unsigned),
-    );
-    const envelope = { ...unsigned, signature: bytesToBase64(signature) };
-    await options.transport.send(jcsCanonical(envelope));
-    envelopes.push(envelope);
-    accepted.set(envelope.sender.claim, envelope.sequence);
-    return envelope;
+    try {
+      const signature = await signDomainHash(
+        options.identity,
+        REVIEWED_DACS_X_EXTENSION_SEPARATORS.CHANNEL_ENVELOPE,
+        envelopeHash(unsigned),
+      );
+      const envelope = { ...unsigned, signature: bytesToBase64(signature) };
+      await options.transport.send(jcsCanonical(envelope));
+      sendSequence = nextSequence;
+      envelopes.push(envelope);
+      accepted.set(envelope.sender.claim, envelope.sequence);
+      return envelope;
+    } catch (error) {
+      state = 'fatal';
+      throw error;
+    }
   }
 
   function emit(kind: PrivateChannelContentKind, payload: Uint8Array): Promise<PrivateChannelEnvelope> {
     const operation = sendTail.then(() => emitNow(kind, payload));
-    sendTail = operation.then(() => undefined, () => undefined);
+    sendTail = operation;
     return operation;
   }
 
@@ -422,7 +518,7 @@ export function createPrivateChannel(options: CreatePrivateChannelOptions): {
       if (envelope.channelId !== channelId) throw new Error('Envelope channelId does not match this channel');
       const listed = findManifestMember(membership, envelope.sender);
       if (!listed) throw new Error('Envelope sender is not a listed seat and claim');
-      const signatureValid = verifyDomainHashAgentSignature(
+      const signatureValid = verifyDomainHash(
         envelope.sender.claim,
         REVIEWED_DACS_X_EXTENSION_SEPARATORS.CHANNEL_ENVELOPE,
         envelopeHash(unsignedEnvelope(envelope)),
@@ -446,6 +542,26 @@ export function createPrivateChannel(options: CreatePrivateChannelOptions): {
     }
   }
 
+  function receivedMessage(envelope: PrivateChannelEnvelope): ReceivedMessage {
+    return {
+      bytes: base64ToBytes(envelope.payloadBase64, 'Envelope payloadBase64'),
+      sender: { ...envelope.sender },
+      sequence: envelope.sequence,
+      sentAt: envelope.sentAt,
+    };
+  }
+
+  function drain(envelope: PrivateChannelEnvelope): void {
+    const message = receivedMessage(envelope);
+    const waiter = drainWaiters.shift();
+    if (waiter) waiter.resolve(message);
+    else drainedMessages.push(message);
+  }
+
+  function endDrain(error: Error): void {
+    for (const waiter of drainWaiters.splice(0)) waiter.reject(error);
+  }
+
   return {
     async open(members): Promise<void> {
       if (state !== 'new') throw new Error('Private channel has already been opened');
@@ -456,7 +572,24 @@ export function createPrivateChannel(options: CreatePrivateChannelOptions): {
       if (!own) throw new Error('Channel identity does not own a membership seat');
       if (!await verifyManifest(membership, defaultVerifier())) throw new Error('Membership CCI signature verification failed');
       const proposed = freshPrivateChannelNonce();
-      nonce = await options.transport.open({ manifestHash: jcsHashHex(membership), nonce: proposed });
+      const peer = membership.members.find((member) => member.claim !== own.claim)!;
+      nonce = await options.transport.open({
+        manifestHash: jcsHashHex(membership),
+        nonce: proposed,
+        sender: { seatId: own.seatId, claim: own.claim, peerId: own.peerId },
+        peer: { seatId: peer.seatId, claim: peer.claim, peerId: peer.peerId },
+        signEnvelopeHash: (hash) => signDomainHash(
+          options.identity,
+          REVIEWED_DACS_X_EXTENSION_SEPARATORS.CHANNEL_ENVELOPE,
+          hash,
+        ),
+        verifyEnvelopeHash: (claim, hash, signature) => verifyDomainHash(
+          claim as ClaimReference,
+          REVIEWED_DACS_X_EXTENSION_SEPARATORS.CHANNEL_ENVELOPE,
+          hash,
+          signature,
+        ),
+      });
       if (nonce.length < 16) throw new Error('Private-channel nonce is too short');
       channelId = channelIdFor(nonce, membership);
       state = 'open';
@@ -469,67 +602,82 @@ export function createPrivateChannel(options: CreatePrivateChannelOptions): {
     },
 
     async receive(): Promise<ReceivedMessage> {
+      const buffered = drainedMessages.shift();
+      if (buffered) return buffered;
+      if (state === 'closing') {
+        return new Promise((resolve, reject) => drainWaiters.push({ resolve, reject }));
+      }
       if (state !== 'open') throw new Error('Private channel is not open');
       const envelope = await accept('agent-message');
-      return {
-        bytes: base64ToBytes(envelope.payloadBase64, 'Envelope payloadBase64'),
-        sender: { ...envelope.sender },
-        sequence: envelope.sequence,
-        sentAt: envelope.sentAt,
-      };
+      return receivedMessage(envelope);
     },
 
     async close(): Promise<void> {
       if (state !== 'open') throw new Error('Private channel is not open');
       state = 'closing';
-      await emit('channel-close', EMPTY);
-      await accept('channel-close');
-      const beforeClosingSignature = snapshot();
-      const transcriptHash = jcsHashHex(transcriptCommitment(beforeClosingSignature));
-      const signatureBytes = await signDomainHashAsAgent(
-        options.identity,
-        DACS_X_EXTENSION_SEPARATORS.SESSION_RECORD,
-        transcriptHash,
-      );
-      const localSignature: ClosingSignature = {
-        sender: { seatId: own!.seatId, claim: own!.claim },
-        transcriptHash,
-        signature: bytesToBase64(signatureBytes),
-      };
-      closingSignatures.push(localSignature);
-      await emit('transcript-signature', jcsCanonical(localSignature));
-      const peerEnvelope = await accept('transcript-signature');
-      let peerSignature: unknown;
       try {
-        peerSignature = JSON.parse(dec.decode(base64ToBytes(peerEnvelope.payloadBase64, 'Transcript-signature payload')));
-      } catch {
+        await emit('channel-close', EMPTY);
+        for (;;) {
+          const envelope = await accept();
+          if (envelope.kind === 'agent-message') {
+            drain(envelope);
+            continue;
+          }
+          if (envelope.kind !== 'channel-close') {
+            throw new Error('Expected channel-close control envelope');
+          }
+          break;
+        }
+        const beforeClosingSignature = snapshot();
+        const transcriptHash = jcsHashHex(transcriptCommitment(beforeClosingSignature));
+        const signatureBytes = await signDomainHash(
+          options.identity,
+          DACS_X_EXTENSION_SEPARATORS.SESSION_RECORD,
+          transcriptHash,
+        );
+        const localSignature: ClosingSignature = {
+          sender: { seatId: own!.seatId, claim: own!.claim },
+          transcriptHash,
+          signature: bytesToBase64(signatureBytes),
+        };
+        closingSignatures.push(localSignature);
+        await emit('transcript-signature', jcsCanonical(localSignature));
+        const peerEnvelope = await accept('transcript-signature');
+        let peerSignature: unknown;
+        try {
+          peerSignature = JSON.parse(dec.decode(base64ToBytes(peerEnvelope.payloadBase64, 'Transcript-signature payload')));
+        } catch {
+          throw new Error('Transcript-signature payload is invalid');
+        }
+        if (!isRecord(peerSignature)) throw new Error('Transcript-signature payload is invalid');
+        exactKeys(peerSignature, ['sender', 'transcriptHash', 'signature'], 'Closing signature');
+        const parsed: ClosingSignature = {
+          sender: parseMember(peerSignature.sender, 'Closing signature sender'),
+          transcriptHash: requireString(peerSignature.transcriptHash, 'Closing signature transcriptHash'),
+          signature: requireString(peerSignature.signature, 'Closing signature signature'),
+        };
+        if (memberKey(parsed.sender) !== memberKey(peerEnvelope.sender) || parsed.transcriptHash !== transcriptHash) {
+          throw new Error('Closing signature does not commit to this transcript');
+        }
+        if (!verifyDomainHash(
+          parsed.sender.claim,
+          DACS_X_EXTENSION_SEPARATORS.SESSION_RECORD,
+          transcriptHash,
+          base64ToBytes(parsed.signature, 'Closing signature'),
+        )) {
+          throw new Error('Closing transcript signature is invalid');
+        }
+        closingSignatures.push(parsed);
+        closingSignatures.sort((a, b) => a.sender.claim.localeCompare(b.sender.claim));
+        state = 'closed';
+        endDrain(new Error('Private channel is closed'));
+        await options.transport.close();
+      } catch (error) {
         state = 'fatal';
-        throw new Error('Transcript-signature payload is invalid');
+        const fatal = error instanceof Error ? error : new Error('Private-channel close failed');
+        endDrain(fatal);
+        throw fatal;
       }
-      if (!isRecord(peerSignature)) throw new Error('Transcript-signature payload is invalid');
-      exactKeys(peerSignature, ['sender', 'transcriptHash', 'signature'], 'Closing signature');
-      const parsed: ClosingSignature = {
-        sender: parseMember(peerSignature.sender, 'Closing signature sender'),
-        transcriptHash: requireString(peerSignature.transcriptHash, 'Closing signature transcriptHash'),
-        signature: requireString(peerSignature.signature, 'Closing signature signature'),
-      };
-      if (memberKey(parsed.sender) !== memberKey(peerEnvelope.sender) || parsed.transcriptHash !== transcriptHash) {
-        state = 'fatal';
-        throw new Error('Closing signature does not commit to this transcript');
-      }
-      if (!verifyDomainHashAgentSignature(
-        parsed.sender.claim,
-        DACS_X_EXTENSION_SEPARATORS.SESSION_RECORD,
-        transcriptHash,
-        base64ToBytes(parsed.signature, 'Closing signature'),
-      )) {
-        state = 'fatal';
-        throw new Error('Closing transcript signature is invalid');
-      }
-      closingSignatures.push(parsed);
-      closingSignatures.sort((a, b) => a.sender.claim.localeCompare(b.sender.claim));
-      state = 'closed';
-      await options.transport.close();
     },
 
     transcript: snapshot,

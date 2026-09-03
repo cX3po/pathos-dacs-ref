@@ -13,10 +13,22 @@ mode as `local`.
 
 Live mode accepts an already provisioned subnet byte encryptor and an already
 connected, structurally typed messaging peer. The operator must set
-`PATHOS_L2PS_LIVE=1` exactly. The flag is checked before the SDK subpath is loaded
-or the transport can connect or consult credentials. A missing peer is always an
-error. The adapter does not create a peer and exposes no value-transfer or
-persistence API.
+`PATHOS_L2PS_LIVE=1` exactly. A missing peer is always an error. The adapter does
+not load the SDK in any mode, does not create a peer, and exposes no
+value-transfer or persistence API. Both injected objects must have the exact
+reviewed own-property capability set; objects carrying any additional method are
+refused.
+
+Live open performs a signed two-message handshake. Each member contributes a
+32-byte nonce share and binds it to the manifest hash, its seat and CCI claim,
+and its manifest `peerId` (the field is optional for local mode and required for
+live mode). The peer-level sender must match that declared identifier. The two
+sorted shares and manifest hash determine the
+shared channel identifier. Foreign peer frames after binding are ignored;
+failure to decrypt a bound peer frame is fatal.
+
+This version supports exactly two members. Manifests with any other member count
+are refused before opening.
 
 ## Transcript
 
@@ -42,7 +54,7 @@ CCI-signed and sequence-checked.
 ## Deliberately unavailable
 
 Live subnet negotiation, legacy-ciphertext acceptance, transcript publication,
-and SDK negotiation/finalization helpers remain unavailable. They stay off until
-the SDK provides a directly exported, audited messaging subpath suitable for this
-narrow adapter boundary. The current live transport can only wrap capabilities
-that an operator provisions and injects beforehand.
+and SDK negotiation/finalization helpers remain unavailable. Wiring a real
+subnet peer is the operator's step and stays off until an audited messaging
+subpath exists. The current live transport can only wrap capabilities that an
+operator provisions and injects beforehand.
