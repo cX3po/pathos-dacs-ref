@@ -3,8 +3,9 @@
  *
  * Recommended defaults selected where the design leaves a choice: dry-run is the
  * explicit default; ambiguous writes/payments fail closed without retry; the existing
- * pay-dem JSONL path remains the settlement journal; and LIVE refuses during capability
- * preflight until a genuine CORE §5.1 finalized-receipt provider is available.
+ * pay-dem JSONL path remains the settlement journal. LIVE loads that policy/journal,
+ * checks operator/hash authorization, then refuses at its CORE §5.1 capability check
+ * before credentials are loaded. Dry-run's dependency capabilityPreflight is a no-op.
  * `organ-gateway.mts` is deliberately neither imported nor modified.
  */
 
@@ -18,6 +19,10 @@ import type { AdapterSigner } from '../adapters/dacs/agreement-commitment.js';
 import type { CompletedSessionEvidence, FinalizedBundleSet } from '../adapters/dacs/bundle-finalizer.js';
 import type { SettlementEvidenceV1 } from '../types/settle.js';
 import type { AttestationRef } from '../types/verify-result.js';
+import type { AnchorReceipt, AgreementPartyV1 } from '../types/bundle.js';
+import type { PayPolicy, TransferAuthorization } from './pay-policy.js';
+import type { PayDemAuthorizationGate } from './pay-dem-authorization.js';
+import type { DemosHandle } from '../demos/connection.js';
 
 export const COORDINATOR_PIPELINE = [
   { kind: 'negotiate-fixed-price' },
@@ -105,17 +110,71 @@ export class DacsTestnetRefusal extends Error {
   }
 }
 
-export interface LiveNodeReceiptObservation {
+export interface ReceiptObservation {
   outcome: 'indeterminate';
   detail: string;
   observed?: { nativeAddress: string; writer: string; sizeBytes: number; creationTransaction?: string; creationTime: string; contentHash: string };
 }
 
-type LiveReceiptProvider = (request: {
-  logicalAddress: string;
-  contentHash: string;
-  anchor?: AgreementAnchorResult;
-}) => Promise<import('../types/bundle.js').AnchorReceipt>;
+export type LiveNodeReceiptObservation = ReceiptObservation;
+
+export interface CoreReceiptProvider {
+  describe(): { kind: 'core-5.1-receipts'; provesFinality: boolean; source: string };
+  fetch(request: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult }): Promise<AnchorReceipt | ReceiptObservation>;
+}
+
+interface LiveAdapterWiring {
+  signers: { buyer: AdapterSigner; seller: AdapterSigner; orchestrator: AdapterSigner };
+  handles: { buyer: DemosHandle; seller: DemosHandle };
+  anchor(request: { logicalAddress: string; content: unknown; contentHash: string }): Promise<AgreementAnchorResult>;
+  fetchAnchored(address: string): Promise<unknown>;
+}
+
+export interface LiveSettlementSeams {
+  loadPolicy(env: NodeJS.ProcessEnv): Promise<PayPolicy | { verdict: 'BLOCK'; reason: string }>;
+  resolveJournalPath(env: NodeJS.ProcessEnv): Promise<string>;
+  readJournal(path: string): Promise<unknown[]>;
+  killSwitchPresent(path: string): Promise<boolean>;
+  authorizeTransfer(policy: PayPolicy, input: Parameters<typeof import('./pay-policy.js').authorizeTransfer>[1]): Promise<TransferAuthorization>;
+  createJournal(path: string): Promise<ReturnType<typeof import('./pay-dem-journal.js').createPayDemJsonlJournal>>;
+  createOutcomeJournal(path: string): Promise<ReturnType<typeof import('./pay-dem-journal.js').createPayDemOutcomeJournal>>;
+  createAuthorizationGate(options: Parameters<typeof import('./pay-dem-authorization.js').createPayDemAuthorizationGate>[0]): Promise<PayDemAuthorizationGate>;
+  connect(config: DacsTestnetConfig, env: NodeJS.ProcessEnv, provider: CoreReceiptProvider): Promise<LiveAdapterWiring>;
+  balance(handle: DemosHandle): Promise<number>;
+  preflight(input: import('./spend-preflight.js').PreflightParams): Promise<import('./spend-preflight.js').PreflightResult>;
+  settle(input: Parameters<typeof import('../adapters/dacs/pay-dem-demosdk.js').settlePayDem>[0]): ReturnType<typeof import('../adapters/dacs/pay-dem-demosdk.js').settlePayDem>;
+}
+
+const expandHome = (path: string): string => path === '~' ? homedir() : path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;
+
+const defaultLiveSettlementSeams = (): LiveSettlementSeams => ({
+  async loadPolicy(env) {
+    const { loadPayPolicy } = await import('./pay-policy.js');
+    return loadPayPolicy(env, (path) => readFileSync(path, 'utf8'));
+  },
+  async resolveJournalPath(env) {
+    const journal = await import('./pay-dem-journal.js');
+    return journal.resolvePayDemJournalPath(env.DACS_PAYDEM_JOURNAL ?? journal.DEFAULT_PAY_DEM_JOURNAL);
+  },
+  async readJournal(path) { return (await import('./pay-dem-journal.js')).readPayDemJournalOrEmpty(path); },
+  async killSwitchPresent(path) { return (await import('./pay-dem-journal.js')).payKillSwitchPresent(path); },
+  async authorizeTransfer(policy, input) { return (await import('./pay-policy.js')).authorizeTransfer(policy, input); },
+  async createJournal(path) { return (await import('./pay-dem-journal.js')).createPayDemJsonlJournal(path); },
+  async createOutcomeJournal(path) { return (await import('./pay-dem-journal.js')).createPayDemOutcomeJournal(path); },
+  async createAuthorizationGate(options) { return (await import('./pay-dem-authorization.js')).createPayDemAuthorizationGate(options); },
+  connect: createLiveAdapterWiring,
+  async balance(handle) {
+    const info = await handle.demos.getAddressInfo(handle.address);
+    return Number((info as { balance?: bigint }).balance ?? 0n) / 1e9;
+  },
+  async preflight(input) { return (await import('./spend-preflight.js')).preflight(input); },
+  async settle(input) { return (await import('../adapters/dacs/pay-dem-demosdk.js')).settlePayDem(input); },
+});
+
+export interface LiveSettlementDependency {
+  wiring: LiveAdapterWiring;
+  settlePayment: DacsTestnetDependencies['settlePayment'];
+}
 
 /**
  * Construct the native pay-dem dependency using the gateway's audited policy path.
@@ -123,89 +182,95 @@ type LiveReceiptProvider = (request: {
  */
 export async function createLiveSettlementDependency(
   config: DacsTestnetConfig,
-  handles: { buyer: import('../demos/connection.js').DemosHandle; seller: import('../demos/connection.js').DemosHandle },
-  anchor: (request: { logicalAddress: string; content: unknown; contentHash: string }) => Promise<AgreementAnchorResult>,
-  orchestratorClaim: string,
   env: NodeJS.ProcessEnv = process.env,
-): Promise<DacsTestnetDependencies['settlePayment']> {
-  const { loadPayPolicy, authorizeTransfer, spentTodayFromJournal } = await import('./pay-policy.js');
-  const policyResult = loadPayPolicy(env, (path) => readFileSync(path, 'utf8'));
-  if ('verdict' in policyResult) throw new DacsTestnetRefusal('policy', 'pay-dem policy refused the session');
+  receiptProvider: CoreReceiptProvider = createNodeReceiptProvider(config),
+  seamOverrides: Partial<LiveSettlementSeams> = {},
+): Promise<LiveSettlementDependency> {
+  const seams = { ...defaultLiveSettlementSeams(), ...seamOverrides };
 
-  const journal = await import('./pay-dem-journal.js');
-  const journalPath = journal.resolvePayDemJournalPath(env.DACS_PAYDEM_JOURNAL ?? journal.DEFAULT_PAY_DEM_JOURNAL);
-  const expandHome = (path: string): string => path === '~' ? homedir() : path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;
+  // (1) Match the gateway: policy and durable journal location are selected first.
+  const policyResult = await seams.loadPolicy(env);
+  if ('verdict' in policyResult) throw new DacsTestnetRefusal('policy', 'pay-dem policy refused the session');
+  const journalPath = await seams.resolveJournalPath(env);
+
+  // (2) Operator authorization and exact dry-run binding precede every node balance read.
+  const suppliedHash = env.GATEWAY_DRYRUN_HASH ?? null;
+  if (env.GATEWAY_LIVE_APPROVED !== '1' || suppliedHash !== parameterHash(config)) {
+    throw new DacsTestnetRefusal('spend', 'LIVE operator or dry-run hash gate refused the session');
+  }
+
+  // (3), then (4): the capability boundary is inside connect and is checked before dotenv/env credentials.
+  const wiring = await seams.connect(config, env, receiptProvider);
+
+  // (5) Apply the same initial policy authorization and durable authorization gate as the gateway.
   const nowIso = new Date().toISOString();
   const amountOs = (await import('../adapters/dacs/pay-dem.js')).demToOs(config.priceDem);
-  const authorization = authorizeTransfer(policyResult, {
+  const authorization = await seams.authorizeTransfer(policyResult, {
     amountOs,
     rpcUrl: config.rpc,
-    spentTodayOs: spentTodayFromJournal(journal.readPayDemJournalOrEmpty(journalPath), nowIso),
-    killSwitchPresent: journal.payKillSwitchPresent(expandHome(policyResult.killSwitchFile)),
+    spentTodayOs: (await import('./pay-policy.js')).spentTodayFromJournal(await seams.readJournal(journalPath), nowIso),
+    killSwitchPresent: await seams.killSwitchPresent(expandHome(policyResult.killSwitchFile)),
     nowIso,
   });
   if (authorization.verdict !== 'PROCEED') throw new DacsTestnetRefusal('policy', 'pay-dem policy refused the transfer');
-
-  const durableOutcomeJournal = journal.createPayDemOutcomeJournal(journalPath);
-  const paymentJournal = journal.createPayDemJsonlJournal(journalPath);
-  const { createPayDemAuthorizationGate } = await import('./pay-dem-authorization.js');
-  const gate = createPayDemAuthorizationGate({
+  const journal = await import('./pay-dem-journal.js');
+  const durableOutcomeJournal = await seams.createOutcomeJournal(journalPath);
+  const paymentJournal = await seams.createJournal(journalPath);
+  const gate = await seams.createAuthorizationGate({
     policy: policyResult, journalPath, acquireLock: journal.acquirePayDemJournalLock,
     readJournal: journal.readPayDemJournalOrEmpty, killSwitchPresent: journal.payKillSwitchPresent,
     resolveKillSwitchPath: expandHome, durableOutcomeJournal,
   });
 
-  const addressInfo = await handles.buyer.demos.getAddressInfo(handles.buyer.address);
-  const balanceDem = Number((addressInfo as { balance?: bigint }).balance ?? 0n) / 1e9;
-  const { preflight } = await import('./spend-preflight.js');
-  const spend = preflight({
+  // (6) Only now query balance and run the gateway-equivalent spend estimate.
+  const balanceDem = await seams.balance(wiring.handles.buyer);
+  const spend = await seams.preflight({
     purpose: `dacs-testnet live session ${config.jobId}`, estWrites: 8, estCostPerWriteDem: 1,
     createCostDem: Number(config.priceDem), maxSpendDem: config.spendCapDem, balanceDem,
-    operatorApproved: env.GATEWAY_LIVE_APPROVED === '1', dryRunHash: env.GATEWAY_DRYRUN_HASH ?? null,
+    balanceMarginDem: 2, operatorApproved: true, dryRunHash: suppliedHash,
   });
-  if (spend.verdict !== 'PROCEED' || env.GATEWAY_DRYRUN_HASH !== parameterHash(config)) {
+  if (spend.verdict !== 'PROCEED') {
     throw new DacsTestnetRefusal('spend', 'spend preflight refused the session');
   }
 
-  return async (_agreement, run) => {
-    const { settlePayDem } = await import('../adapters/dacs/pay-dem-demosdk.js');
-    const settled = await settlePayDem({
-      buyer: handles.buyer, sellerAddress: handles.seller.address, amountOs,
+  return { wiring, settlePayment: async (_agreement, run) => {
+    // (7) The real adapter retains authorize, durable outcome, and last-moment beforeBroadcast gates.
+    const settled = await seams.settle({
+      buyer: wiring.handles.buyer, sellerAddress: wiring.handles.seller.address, amountOs,
       amountDemCanonical: run.priceDem, jobId: run.jobId, phaseIndex: 2,
       journal: paymentJournal, authorizeTransfer: gate.authorize,
       journalTransferOutcome: gate.journalOutcome, beforeBroadcast: gate.beforeBroadcast,
     });
     if (!settled.ok) throw new DacsTestnetRefusal('spend', 'pay-dem settlement was refused');
     const logicalAddress = (await import('../adapters/dacs/bundle-finalizer.js')).paymentLogicalAddress(run.jobId, 'pay-dem', 2);
-    const contentHash = jcsHashHex(settled.evidence);
-    const evidenceAnchor = await anchor({ logicalAddress, content: settled.evidence, contentHash });
+    const signatureValue = await wiring.signers.orchestrator.sign((await import('../domain-sep.js')).DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE,
+      (await import('../lib/emit-settlement-evidence-v1.js')).evidenceHashV1(settled.evidence));
+    const evidence = { ...settled.evidence, signature: { algorithm: 'ed25519' as const, signer: String(wiring.signers.orchestrator.claim),
+      value: typeof signatureValue === 'string' ? signatureValue : Buffer.from(signatureValue).toString('base64url') } };
+    const contentHash = jcsHashHex(evidence);
+    const evidenceAnchor = await wiring.anchor({ logicalAddress, content: evidence, contentHash });
     return {
-      evidence: settled.evidence,
+      evidence,
       evidenceRef: { anchor: { substrate: 'demos', locator: evidenceAnchor.nativeAddress }, contentHash,
-        type: 'settlement-evidence', producedAt: new Date(settled.finalityObservedAt).toISOString(), signer: orchestratorClaim },
+        type: 'settlement-evidence', producedAt: new Date(settled.finalityObservedAt).toISOString(), signer: String(wiring.signers.orchestrator.claim) },
       evidenceLogicalAddress: logicalAddress, evidenceAnchor,
     };
-  };
+  } };
 }
 
 /**
- * Lazy LIVE signer/storage wiring. Capability preflight is intentionally performed by
- * `main` before this function can read credentials or expose an anchor capability.
- * The node receipt seam reports only what the storage read establishes and never
- * manufactures finality, a block reference, or a creation nonce.
+ * Lazy LIVE signer/storage wiring. It checks the provider's declared finality
+ * capability before dotenv is loaded or any credential environment property is read.
  */
 export async function createLiveAdapterWiring(
   config: DacsTestnetConfig,
   env: NodeJS.ProcessEnv = process.env,
-  receiptProvider?: LiveReceiptProvider,
-): Promise<{
-  signers: { buyer: AdapterSigner; seller: AdapterSigner; orchestrator: AdapterSigner };
-  anchor(request: { logicalAddress: string; content: unknown; contentHash: string }): Promise<AgreementAnchorResult>;
-  fetchAnchored(address: string): Promise<unknown>;
-  observeNodeReceipt(address: string): Promise<LiveNodeReceiptObservation>;
-}> {
-  // Never expose an SR-2 writer or read credentials without this trust boundary.
-  if (receiptProvider === undefined) {
+  receiptProvider: CoreReceiptProvider = createNodeReceiptProvider(config),
+): Promise<LiveAdapterWiring> {
+  try {
+    const capability = receiptProvider.describe();
+    if (capability.kind !== 'core-5.1-receipts' || capability.provesFinality !== true) throw new Error('not finality proving');
+  } catch {
     throw new DacsTestnetRefusal('capability', 'CORE §5.1 finalized-receipt provider is not configured');
   }
   const { config: loadEnvFile } = await import('dotenv');
@@ -219,20 +284,29 @@ export async function createLiveAdapterWiring(
   const seller = { ...sellerHandle, name: 'seller', role: 'seller' as const, mnemonicEnv: 'DEMOS_SELLER_MNEMONIC', claim: claimRefFor(sellerHandle.address) };
   const asSigner = (handle: typeof buyer | typeof seller): AdapterSigner => ({ claim: handle.claim, sign: (domain, hash) => signDomainHashAsAgent(handle, domain, hash) });
   return {
+    handles: { buyer: buyerHandle, seller: sellerHandle },
     signers: { buyer: asSigner(buyer), seller: asSigner(seller), orchestrator: asSigner(seller) },
     async anchor(request) {
-      const result = await storage.anchor(sellerHandle, request.logicalAddress, request.content as Record<string, unknown> | string);
+      const handle = request.logicalAddress.endsWith(':buyer') ? buyerHandle : sellerHandle;
+      const result = await storage.anchor(handle, request.logicalAddress, request.content as Record<string, unknown> | string);
       if (result.nonce === undefined) throw new DacsTestnetRefusal('capability', 'SR-2 anchor result did not bind a nonce');
       return { logicalAddress: request.logicalAddress, nativeAddress: result.storageAddress,
-        transactionRef: { kind: 'demos', value: result.txHash }, writer: seller.claim, nonce: result.nonce };
+        transactionRef: { kind: 'demos', value: result.txHash }, writer: handle === buyerHandle ? buyer.claim : seller.claim, nonce: result.nonce };
     },
     async fetchAnchored(address) {
       const result = await storage.fetchAnchored(config.rpc, address);
       if (!result) throw new Error('anchor unavailable');
       return result.data;
     },
-    async observeNodeReceipt(address) {
-      const result = await storage.fetchAnchored(config.rpc, address);
+  };
+}
+
+/** The repository's only receipt observer; node read-back does not prove finality. */
+export function createNodeReceiptProvider(config: Pick<DacsTestnetConfig, 'rpc'>): CoreReceiptProvider {
+  return {
+    describe: () => ({ kind: 'core-5.1-receipts', provesFinality: false, source: 'demos-node-storage-observer' }),
+    async fetch(request) {
+      const result = await (await import('../demos/storage.js')).fetchAnchored(config.rpc, request.anchor?.nativeAddress ?? request.logicalAddress);
       if (!result) return { outcome: 'indeterminate', detail: 'node storage record unavailable' };
       return { outcome: 'indeterminate', detail: 'CORE §5.1 finality evidence is unavailable from the node storage read', observed: {
         nativeAddress: result.storageAddress, writer: result.owner, sizeBytes: result.sizeBytes,
@@ -243,13 +317,130 @@ export async function createLiveAdapterWiring(
   };
 }
 
-/** Construct the selected LIVE dependency set; currently refuses before any write. */
+/** Construct the selected LIVE dependency set through the gateway-equivalent pay-dem gate. */
 export async function createLiveDependencies(
   config: DacsTestnetConfig,
   env: NodeJS.ProcessEnv = process.env,
+  receiptProvider: CoreReceiptProvider = createNodeReceiptProvider(config),
+  settlementSeams: Partial<LiveSettlementSeams> = {},
 ): Promise<DacsTestnetDependencies> {
-  await createLiveAdapterWiring(config, env);
-  throw new DacsTestnetRefusal('capability', 'LIVE dependency construction is unavailable');
+  const { wiring, settlePayment } = await createLiveSettlementDependency(config, env, receiptProvider, settlementSeams);
+  const { DOMAIN_SEPARATORS } = await import('../domain-sep.js');
+  const { listingLogicalAddress } = await import('../dacs1/addressing.js');
+  const { commitAgreement, verifyAgreementCommitmentCold } = await import('../adapters/dacs/agreement-commitment.js');
+  const { finalizeBundle, verifyBundleListing, verifyFinalizedBundleCold } = await import('../adapters/dacs/bundle-finalizer.js');
+  const { anchorNames } = await import('./anchor-naming.js');
+  const { emitSettlementEvidenceV1, evidenceHashV1 } = await import('../lib/emit-settlement-evidence-v1.js');
+  const { verifyDomainHashAgentSignature } = await import('../adapters/demos/identity.js');
+  const commitments = new Map<string, import('../adapters/dacs/bundle-finalizer.js').ResolvedCommitment>();
+  const fetchReceipt = async (request: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult }): Promise<AnchorReceipt> => {
+    const result = await receiptProvider.fetch(request);
+    if (!('receiptVersion' in result)) throw new DacsTestnetRefusal('capability', 'receipt provider did not establish CORE §5.1 finality');
+    return result;
+  };
+  const verifySignature = ({ domain, hash, signer, value }: { domain: import('../domain-sep.js').DomainSeparator; hash: string; signer: unknown; algorithm: string; value: string }): boolean => {
+    if (typeof signer !== 'string') return false;
+    try { return verifyDomainHashAgentSignature(signer as `${string}:${string}`, domain, hash, Buffer.from(value, 'base64url')); }
+    catch { return false; }
+  };
+  const signEvidence = async (evidence: SettlementEvidenceV1): Promise<SettlementEvidenceV1> => {
+    const signature = await wiring.signers.orchestrator.sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, evidenceHashV1(evidence));
+    return { ...evidence, signature: { algorithm: 'ed25519', signer: String(wiring.signers.orchestrator.claim),
+      value: typeof signature === 'string' ? signature : Buffer.from(signature).toString('base64url') } };
+  };
+
+  const deps: DacsTestnetDependencies = {
+    mode: 'live',
+    async capabilityPreflight() {
+      try { if (receiptProvider.describe().provesFinality !== true) throw new Error('not finality proving'); }
+      catch { throw new DacsTestnetRefusal('capability', 'CORE §5.1 finalized-receipt provider is unavailable'); }
+    },
+    async publishListing(run) {
+      const listingId = `${run.jobId}-listing`;
+      const logicalAddress = listingLogicalAddress(String(wiring.signers.seller.claim), listingId, 1);
+      const unsigned = {
+        listingId, listingVersion: 1, logical_address: logicalAddress,
+        seller: { primaryClaim: wiring.signers.seller.claim, displayName: 'PATH-OS proof organ' },
+        item: `proof-organ:${run.organ}`,
+        offering: { title: `${run.organ} result`, category: 'proof-organ', tags: [run.organ], deliverable: { deliverableType: 'storage-program' } },
+        pricing: { kind: 'fixed', price: { amount: run.priceDem, currency: 'DEM' } },
+        acceptedRails: [{ railId: 'pay-dem' }], pipeline: COORDINATOR_PIPELINE,
+        terms: { deadlineSecAfterCommit: 3600 }, validity: { notAfter: Date.now() + 7_200_000 },
+      };
+      const contentHash = jcsHashHex(unsigned);
+      const signature = await wiring.signers.seller.sign(DOMAIN_SEPARATORS.LISTING, contentHash);
+      const listing = { ...unsigned, contentHash, signature: { algorithm: 'ed25519', signer: wiring.signers.seller.claim,
+        value: typeof signature === 'string' ? signature : Buffer.from(signature).toString('base64url') } };
+      const anchor = await wiring.anchor({ logicalAddress, content: listing, contentHash: jcsHashHex(listing) });
+      return { listing, listingRef: { listingId, version: 1, contentHash }, anchor };
+    },
+    async vetListing(published) {
+      try { await verifyBundleListing(published.listing, { verifySignature }); return { outcome: 'pass', detail: 'listing signature verified' }; }
+      catch { return { outcome: 'fail', detail: 'listing verification failed' }; }
+    },
+    async emitAgreement(published, run) {
+      const vetRef: AttestationRef = { anchor: { substrate: 'demos', locator: published.anchor.nativeAddress }, contentHash: published.listingRef.contentHash,
+        type: 'listing-vet', producedAt: new Date().toISOString() };
+      const parties: AgreementPartyV1[] = [
+        { role: 'buyer', bundleHash: jcsHashHex({ role: 'buyer', claim: wiring.signers.buyer.claim }), primaryClaim: wiring.signers.buyer.claim, vetRecordRef: vetRef },
+        { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: wiring.signers.seller.claim }), primaryClaim: wiring.signers.seller.claim, vetRecordRef: vetRef },
+      ];
+      const committed = await commitAgreement({ jobId: run.jobId, listing: published.listing, listingRef: published.listingRef, parties,
+        terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: { deliverableType: 'storage-program' }, deadline: Date.now() + 3_600_000 } },
+      { signers: wiring.signers, anchor: wiring.anchor, fetchAnchored: wiring.fetchAnchored, receiptProvider: fetchReceipt });
+      const commitmentRef: AttestationRef = { anchor: { substrate: 'demos', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash,
+        type: 'finality-commitment', producedAt: new Date(committed.committedAt).toISOString() };
+      commitments.set(committed.addresses.commitment.native, { commitment: committed.commitment, agreement: committed.agreement, receipt: committed.receipt,
+        anchor: { logicalAddress: committed.addresses.commitment.logical, nativeAddress: committed.addresses.commitment.native,
+          transactionRef: committed.receipt.transactionRef, writer: committed.receipt.writer, ...(committed.receipt.nonce === undefined ? {} : { nonce: committed.receipt.nonce }) } });
+      return { committed, commitmentRef };
+    },
+    async verifyAgreement(result, published) {
+      return verifyAgreementCommitmentCold({ jobId: config.jobId, listing: published.listing, agreement: result.committed.agreement,
+        agreementHash: result.committed.agreementHash, commitment: result.committed.commitment, commitmentHash: result.committed.commitmentHash,
+        receipt: result.committed.receipt, addresses: result.committed.addresses }, { fetchAnchored: wiring.fetchAnchored, receiptProvider: fetchReceipt, verifySignature });
+    },
+    settlePayment,
+    async deliver(_agreement, run) {
+      const deliverable = { organ: run.organ, query: run.query, producedAt: new Date().toISOString() };
+      const deliverableAnchor = await wiring.anchor({ logicalAddress: anchorNames.deliverable(run.jobId), content: deliverable, contentHash: jcsHashHex(deliverable) });
+      const evidence = await signEvidence(emitSettlementEvidenceV1({ kind: 'delivery', jobId: run.jobId, phase: 'deliver-storage-program', phaseIndex: 3,
+        outcome: 'success', deliverableContentHash: jcsHashHex(deliverable), deliverableAnchorKind: 'storage-program',
+        deliverableAnchorLocator: deliverableAnchor.nativeAddress, observedAt: Date.now() }));
+      const logicalAddress = anchorNames.deliveryEvidence(run.jobId, 3);
+      const contentHash = jcsHashHex(evidence);
+      const evidenceAnchor = await wiring.anchor({ logicalAddress, content: evidence, contentHash });
+      return { evidence, evidenceRef: { anchor: { substrate: 'demos', locator: evidenceAnchor.nativeAddress }, contentHash,
+        type: 'settlement-evidence', producedAt: new Date().toISOString(), signer: String(wiring.signers.orchestrator.claim) },
+        evidenceLogicalAddress: logicalAddress, evidenceAnchor, deliverableAnchor };
+    },
+    async finalize(input) {
+      const agreement = input.agreement.committed;
+      const parties = [
+        { role: 'buyer' as const, bundleHash: jcsHashHex({ role: 'buyer', claim: wiring.signers.buyer.claim }), primaryClaim: wiring.signers.buyer.claim },
+        { role: 'seller' as const, bundleHash: jcsHashHex({ role: 'seller', claim: wiring.signers.seller.claim }), primaryClaim: wiring.signers.seller.claim },
+      ];
+      const phaseResults = [
+        { index: 0, kind: 'negotiate-fixed-price', outcome: 'ok' as const, orchestrator: wiring.signers.orchestrator.claim },
+        { index: 1, kind: 'commit-agreement', outcome: 'ok' as const, orchestrator: wiring.signers.orchestrator.claim },
+        { index: 2, kind: 'pay-dem', outcome: 'ok' as const, orchestrator: wiring.signers.orchestrator.claim, evidenceRef: input.payment.evidenceRef, evidenceLogicalAddress: input.payment.evidenceLogicalAddress, evidenceAnchor: input.payment.evidenceAnchor },
+        { index: 3, kind: 'deliver-storage-program', outcome: 'ok' as const, orchestrator: wiring.signers.orchestrator.claim, evidenceRef: input.delivery.evidenceRef, evidenceLogicalAddress: input.delivery.evidenceLogicalAddress, evidenceAnchor: input.delivery.evidenceAnchor },
+      ];
+      const session: CompletedSessionEvidence = { jobId: input.config.jobId, listing: input.listing.listing, listingRef: input.listing.listingRef,
+        agreementRef: input.agreement.commitmentRef, agreement: agreement.agreement as unknown as Record<string, unknown>, agreementHash: agreement.agreementHash,
+        parties, phaseResults, outcome: 'completed', faultedParty: 'none', recipeRegistryVersion: 1, railRegistryVersion: 1 };
+      const finalized = await finalizeBundle(session, { signers: wiring.signers, anchor: wiring.anchor, fetchAnchored: wiring.fetchAnchored, fetchReceipt,
+        async fetchCommitment(ref) { const value = commitments.get(ref.anchor.locator); if (!value) throw new Error('commitment unavailable'); return value; },
+        verifySignature, projectPaymentRail: (rail) => String(rail.railId) });
+      return { finalized, session };
+    },
+    async verifyBundle(result) {
+      return verifyFinalizedBundleCold({ jobId: config.jobId, ...result.finalized, session: result.session }, { fetchAnchored: wiring.fetchAnchored, fetchReceipt,
+        async fetchCommitment(ref) { const value = commitments.get(ref.anchor.locator); if (!value) throw new Error('commitment unavailable'); return value; },
+        verifySignature, projectPaymentRail: (rail) => String(rail.railId) });
+    },
+  };
+  return deps;
 }
 
 export function parameterHash(config: Pick<DacsTestnetConfig, 'organ' | 'query' | 'priceDem' | 'spendCapDem'>): string {

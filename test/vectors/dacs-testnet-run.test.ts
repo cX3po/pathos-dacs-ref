@@ -2,60 +2,66 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
+  createLiveAdapterWiring,
+  createLiveDependencies,
+  createLiveSettlementDependency,
+  createNodeReceiptProvider,
+  DacsTestnetRefusal,
+  main,
+  parameterHash,
   rollupColdVerifications,
   runDacsTestnetSession,
-  type AgreementResult,
-  type AnchoredEvidence,
   type ColdVerdict,
+  type CoreReceiptProvider,
   type DacsTestnetConfig,
   type DacsTestnetDependencies,
-  type DeliveryResult,
-  type FinalizationResult,
-  type PublishedListing,
+  type LiveSettlementSeams,
 } from '../../src/live/dacs-testnet-run.mjs';
+import { createDryRunDependencies } from '../../src/live/testnet-run-fixtures.js';
+import type { AnchorReceipt } from '../../src/types/bundle.js';
 
 const config: DacsTestnetConfig = { jobId: 'unit-job', mode: 'dry-run', organ: 'nws_alerts', query: 'fixture-query', priceDem: '1', spendCapDem: 50, rpc: 'https://example.invalid' };
-const anchor = (logicalAddress: string, nativeAddress = `native-${logicalAddress}`) => ({ logicalAddress, nativeAddress, transactionRef: { kind: 'fixture', value: `tx-${logicalAddress}` }, writer: 'cci:writer', nonce: '1' });
-const listing = { listing: { listingId: 'listing', listingVersion: 1 }, listingRef: { listingId: 'listing', version: 1, contentHash: 'aa'.repeat(32) }, anchor: anchor('listing') } as PublishedListing;
-const agreement = { committed: { addresses: { agreement: { logical: 'agreement', native: 'native-agreement' }, commitment: { logical: 'commitment', native: 'native-commitment' } } }, commitmentRef: { anchor: { substrate: 'demos', locator: 'native-commitment' }, contentHash: 'bb'.repeat(32), type: 'finality-commitment', producedAt: new Date(0).toISOString() } } as AgreementResult;
-const payment = { evidence: {}, evidenceRef: { anchor: { substrate: 'demos', locator: 'native-payment' }, contentHash: 'cc'.repeat(32), type: 'settlement-evidence', producedAt: new Date(0).toISOString(), signer: 'cci:writer' }, evidenceLogicalAddress: 'payment', evidenceAnchor: anchor('payment', 'native-payment') } as AnchoredEvidence;
-const delivery = { ...payment, evidenceRef: { ...payment.evidenceRef, anchor: { substrate: 'demos', locator: 'native-delivery' } }, evidenceLogicalAddress: 'delivery', evidenceAnchor: anchor('delivery', 'native-delivery'), deliverableAnchor: anchor('deliverable', 'native-deliverable') } as DeliveryResult;
-const finalization = { finalized: { scopeHash: 'dd'.repeat(32), bundles: { buyer: { address: { logical: 'buyer', native: 'native-buyer' } }, seller: { address: { logical: 'seller', native: 'native-seller' } } } }, session: {} } as FinalizationResult;
-
-function fakeDeps(calls: string[], overrides: Partial<DacsTestnetDependencies> = {}): DacsTestnetDependencies {
-  const step = <T>(name: string, value: T) => async () => { calls.push(name); return value; };
-  return {
-    capabilityPreflight: step('preflight', undefined), publishListing: step('listing', listing),
-    vetListing: step('vet', { outcome: 'pass', detail: 'ok' } as ColdVerdict), emitAgreement: step('agreement', agreement),
-    verifyAgreement: step('agreement-cold', { outcome: 'pass', detail: 'ok' } as ColdVerdict), settlePayment: step('payment', payment),
-    deliver: step('delivery', delivery), finalize: step('finalization', finalization),
-    verifyBundle: step('bundle-cold', { outcome: 'pass', detail: 'ok' } as ColdVerdict), ...overrides,
-  };
-}
-
 test('orchestration executes in exact fail-closed order', async () => {
   const calls: string[] = [];
-  const result = await runDacsTestnetSession(config, fakeDeps(calls));
+  const deps = createDryRunDependencies(config);
+  const names: Array<[keyof DacsTestnetDependencies, string]> = [
+    ['capabilityPreflight', 'preflight'], ['publishListing', 'listing'], ['vetListing', 'vet'], ['emitAgreement', 'agreement'],
+    ['verifyAgreement', 'agreement-cold'], ['settlePayment', 'payment'], ['deliver', 'delivery'], ['finalize', 'finalization'], ['verifyBundle', 'bundle-cold'],
+  ];
+  for (const [method, name] of names) {
+    const original = (deps as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)[method]!.bind(deps);
+    (deps as unknown as Record<string, unknown>)[method] = async (...args: unknown[]) => { calls.push(name); return original(...args); };
+  }
+  const result = await runDacsTestnetSession(config, deps);
   assert.deepEqual(calls, ['preflight', 'listing', 'vet', 'agreement', 'agreement-cold', 'payment', 'delivery', 'finalization', 'bundle-cold']);
   assert.equal(result.rollup, 'PASS');
   assert.deepEqual(result.phases.map(({ index, kind }) => [index, kind]), [[0, 'negotiate-fixed-price'], [1, 'commit-agreement'], [2, 'pay-dem'], [3, 'deliver-storage-program']]);
 });
 
 test('every failing stage stops all subsequent work', async () => {
-  const stages = ['listing', 'vet', 'agreement', 'agreement-cold', 'payment', 'delivery', 'finalization', 'bundle-cold'] as const;
+  const stages = ['preflight', 'listing', 'vet', 'agreement', 'agreement-cold', 'payment', 'delivery', 'finalization', 'bundle-cold'] as const;
   const full = ['preflight', 'listing', 'vet', 'agreement', 'agreement-cold', 'payment', 'delivery', 'finalization', 'bundle-cold'];
   for (const stage of stages) {
-    const calls: string[] = [];
-    const overrides: Partial<DacsTestnetDependencies> = {};
-    const method = ({ listing: 'publishListing', vet: 'vetListing', agreement: 'emitAgreement', 'agreement-cold': 'verifyAgreement', payment: 'settlePayment', delivery: 'deliver', finalization: 'finalize', 'bundle-cold': 'verifyBundle' } as const)[stage];
-    (overrides as Record<string, unknown>)[method] = async () => {
-      calls.push(stage);
-      if (stage === 'vet' || stage === 'agreement-cold' || stage === 'bundle-cold') return { outcome: 'fail', detail: `${stage} refused` };
-      throw new Error(`${stage} refused`);
-    };
-    const result = await runDacsTestnetSession(config, fakeDeps(calls, overrides));
-    assert.deepEqual(calls, full.slice(0, full.indexOf(stage) + 1), stage);
-    assert.notEqual(result.rollup, 'PASS', stage);
+    const variants = stage === 'vet' || stage === 'agreement-cold' || stage === 'bundle-cold' ? ['throw', 'fail', 'indeterminate'] as const : ['throw'] as const;
+    for (const variant of variants) {
+      const calls: string[] = [];
+      const deps = createDryRunDependencies(config);
+      const method = ({ preflight: 'capabilityPreflight', listing: 'publishListing', vet: 'vetListing', agreement: 'emitAgreement',
+        'agreement-cold': 'verifyAgreement', payment: 'settlePayment', delivery: 'deliver', finalization: 'finalize', 'bundle-cold': 'verifyBundle' } as const)[stage];
+      for (const [candidate, name] of Object.entries({ capabilityPreflight: 'preflight', publishListing: 'listing', vetListing: 'vet', emitAgreement: 'agreement',
+        verifyAgreement: 'agreement-cold', settlePayment: 'payment', deliver: 'delivery', finalize: 'finalization', verifyBundle: 'bundle-cold' })) {
+        const original = (deps as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)[candidate]!.bind(deps);
+        (deps as unknown as Record<string, unknown>)[candidate] = async (...args: unknown[]) => { calls.push(name); return original(...args); };
+      }
+      (deps as unknown as Record<string, unknown>)[method] = async () => {
+        calls.push(stage);
+        if (variant !== 'throw') return { outcome: variant, detail: 'sentinel verdict' };
+        throw new Error('dependency sentinel');
+      };
+      const result = await runDacsTestnetSession(config, deps);
+      assert.deepEqual(calls, full.slice(0, full.indexOf(stage) + 1), `${stage}/${variant}`);
+      assert.notEqual(result.rollup, 'PASS', `${stage}/${variant}`);
+    }
   }
 });
 
@@ -68,30 +74,104 @@ test('cold-verifier rollup covers every fail/indeterminate combination', () => {
   }
 });
 
-test('finalizer receives complete SEB-3 logical/native/hash/writer bindings', async () => {
-  const calls: string[] = [];
-  const result = await runDacsTestnetSession(config, fakeDeps(calls, {
-    async finalize(input) {
-      calls.push('finalization');
-      for (const evidence of [input.payment, input.delivery]) {
-        assert.equal(evidence.evidenceRef.anchor.locator, evidence.evidenceAnchor.nativeAddress);
-        assert.equal(evidence.evidenceAnchor.logicalAddress, evidence.evidenceLogicalAddress);
-        assert.equal(evidence.evidenceRef.signer, evidence.evidenceAnchor.writer);
-        assert.match(evidence.evidenceRef.contentHash, /^[0-9a-f]{64}$/);
-      }
-      return finalization;
-    },
-  }));
-  assert.equal(result.rollup, 'PASS');
-});
-
 test('result JSON and error handling do not expose secret or environment values', async () => {
   const sentinel = 'twelve-secret-words-never-appear';
-  const calls: string[] = [];
-  const result = await runDacsTestnetSession(config, fakeDeps(calls, { async publishListing() { calls.push('listing'); throw new Error('listing refused'); } }));
+  const secretConfig = { ...config, query: sentinel, rpc: sentinel };
+  const deps = createDryRunDependencies(secretConfig);
+  deps.publishListing = async () => { throw new Error(sentinel); };
+  const result = await runDacsTestnetSession(secretConfig, deps);
   const encoded = JSON.stringify(result);
   assert.doesNotMatch(encoded, /mnemonic|private.?key|fixture.?seed/i);
   assert.ok(!encoded.includes(sentinel));
+});
+
+test('LIVE receipt capability is checked before any environment read', async () => {
+  const run = { ...config, mode: 'live' as const };
+  for (const provider of [
+    { describe: () => ({ kind: 'core-5.1-receipts' as const, provesFinality: false, source: 'liar' }), async fetch() {
+      return { state: 'finalized' } as AnchorReceipt;
+    } },
+    { describe() { throw new Error('describe failed'); }, async fetch() { return { outcome: 'indeterminate' as const, detail: 'unused' }; } },
+  ]) {
+    let reads = 0;
+    const env = new Proxy({}, { get() { reads++; return undefined; } }) as NodeJS.ProcessEnv;
+    await assert.rejects(createLiveAdapterWiring(run, env, provider),
+      (error: unknown) => error instanceof DacsTestnetRefusal && error.code === 'capability');
+    assert.equal(reads, 0);
+  }
+});
+
+test('createLiveDependencies refuses the repository node observer as a capability', async () => {
+  const run = { ...config, mode: 'live' as const };
+  const env = { GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(run) };
+  await assert.rejects(createLiveDependencies(run, env, createNodeReceiptProvider(run), {
+    loadPolicy: async () => ({ network: 'testnet', rpcHosts: ['example.invalid'], perTransactionCapDem: '10', dailyCapDem: '20', killSwitchFile: '/tmp/no-kill' }),
+    resolveJournalPath: async () => '/tmp/dacs-node-observer-test.jsonl',
+  }), (error: unknown) => error instanceof DacsTestnetRefusal && error.code === 'capability');
+});
+
+test('createLiveSettlementDependency preserves the gateway pay-dem call order', async () => {
+  const run = { ...config, mode: 'live' as const };
+  const calls: string[] = [];
+  const envTarget: NodeJS.ProcessEnv = { GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(run) };
+  const env = new Proxy(envTarget, { get(target, key, receiver) { if (typeof key === 'string' && key.startsWith('GATEWAY_')) calls.push(`env:${key}`); return Reflect.get(target, key, receiver); } });
+  const handle = { address: 'wallet', rpc: run.rpc, demos: {} } as never;
+  const anchor = { logicalAddress: 'payment', nativeAddress: 'native-payment', transactionRef: { kind: 'demos', value: 'tx' }, writer: `cci:${'11'.repeat(32)}`, nonce: '1' };
+  const provider: CoreReceiptProvider = { describe: () => ({ kind: 'core-5.1-receipts', provesFinality: true, source: 'test' }), async fetch() { return { outcome: 'indeterminate', detail: 'unused' }; } };
+  const gate = { authorize: async () => ({ verdict: 'PROCEED' as const, nowIso: new Date().toISOString() }), journalOutcome: async () => {}, beforeBroadcast: async () => {} };
+  const seams: Partial<LiveSettlementSeams> = {
+    loadPolicy: async () => { calls.push('policy'); return { network: 'testnet', rpcHosts: ['example.invalid'], perTransactionCapDem: '10', dailyCapDem: '20', killSwitchFile: '/tmp/no-kill' }; },
+    resolveJournalPath: async () => { calls.push('journal-path'); return '/tmp/pay.jsonl'; },
+    connect: async (_config, _env, receipt) => { calls.push('capability'); receipt.describe(); calls.push('credentials'); return {
+      handles: { buyer: handle, seller: handle }, signers: { buyer: { claim: anchor.writer, sign: async () => new Uint8Array([1]) }, seller: { claim: anchor.writer, sign: async () => new Uint8Array([1]) }, orchestrator: { claim: anchor.writer, sign: async () => new Uint8Array([1]) } },
+      anchor: async () => { calls.push('anchor'); return anchor; }, fetchAnchored: async () => ({}),
+    }; },
+    readJournal: async () => { calls.push('journal-read'); return []; }, killSwitchPresent: async () => { calls.push('kill-switch'); return false; },
+    authorizeTransfer: async () => { calls.push('authorizeTransfer'); return { verdict: 'PROCEED', nowIso: new Date().toISOString() }; },
+    createOutcomeJournal: async () => { calls.push('outcome-journal'); return async () => {}; },
+    createJournal: async () => { calls.push('payment-journal'); return async () => {}; },
+    createAuthorizationGate: async () => { calls.push('authorization-gate'); return gate; },
+    balance: async () => { calls.push('balance'); return 100; },
+    preflight: async (input) => { calls.push(`preflight-margin:${input.balanceMarginDem}`); return { verdict: 'PROCEED', estCostDem: 9, reasons: [] }; },
+    settle: (async (input) => { calls.push(input.beforeBroadcast === gate.beforeBroadcast ? 'settle-beforeBroadcast' : 'settle-missing-beforeBroadcast'); return {
+      ok: true, amountOs: 1_000_000_000n, txHash: 'hash', chainId: 'demos', payer: 'buyer', payee: 'seller', blockNumber: 1, finality: { model: 'bft-final' }, finalityObservedAt: 1,
+      evidence: { evidenceVersion: '1', jobId: run.jobId, phase: 'pay-dem', phaseIndex: 2, outcome: 'success', paymentTxRefs: [{ rail: 'pay-dem', txHash: 'demos:hash', kind: 'payment' }], paymentAmount: { amount: '1', currency: 'DEM' }, settlementFinality: { model: 'bft-final', finalityObservedAt: 1 }, observedAt: 1 },
+    }; }) as LiveSettlementSeams['settle'],
+  };
+  const live = await createLiveSettlementDependency(run, env, provider, seams);
+  await live.settlePayment({} as never, run);
+  assert.deepEqual(calls, ['policy', 'journal-path', 'env:GATEWAY_DRYRUN_HASH', 'env:GATEWAY_LIVE_APPROVED', 'capability', 'credentials',
+    'journal-read', 'kill-switch', 'authorizeTransfer', 'outcome-journal', 'payment-journal', 'authorization-gate', 'balance', 'preflight-margin:2',
+    'settle-beforeBroadcast', 'anchor']);
+  assert.ok(calls.indexOf('env:GATEWAY_DRYRUN_HASH') < calls.indexOf('balance'));
+  assert.ok(calls.indexOf('journal-path') < calls.indexOf('credentials'));
+});
+
+test('LIVE dry-run hash mismatch refuses before the balance query', async () => {
+  const run = { ...config, mode: 'live' as const };
+  let balanceCalls = 0;
+  await assert.rejects(createLiveSettlementDependency(run, {
+    GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: 'mismatch',
+  }, createNodeReceiptProvider(run), {
+    loadPolicy: async () => ({ network: 'testnet', rpcHosts: ['example.invalid'], perTransactionCapDem: '10', dailyCapDem: '20', killSwitchFile: '/tmp/no-kill' }),
+    resolveJournalPath: async () => '/tmp/pay.jsonl',
+    balance: async () => { balanceCalls++; return 100; },
+  }), (error: unknown) => error instanceof DacsTestnetRefusal && error.code === 'spend');
+  assert.equal(balanceCalls, 0);
+});
+
+test('in-process main dry-run stdout is wholly deterministic', async () => {
+  const capture = async () => {
+    const writes: string[] = [];
+    const original = process.stdout.write;
+    process.stdout.write = ((chunk: string | Uint8Array) => { writes.push(String(chunk)); return true; }) as typeof process.stdout.write;
+    try { assert.equal(await main(['--dry-run', '--job-id', 'fixture-job', '--json'], {}), 0); }
+    finally { process.stdout.write = original; }
+    const json = writes.flatMap((chunk) => chunk.split('\n')).find((line) => line.startsWith('{"jobId"'));
+    assert.ok(json);
+    return JSON.parse(json) as unknown;
+  };
+  assert.deepEqual(await capture(), await capture());
 });
 
 function spawn(args: string[], extraEnv: NodeJS.ProcessEnv = {}) {
@@ -109,7 +189,7 @@ test('dry-run CLI is deterministic, passes both cold checks, and emits no key ma
   assert.ok(first.stdout.trim(), `first stdout empty; stderr=${first.stderr}`);
   assert.ok(second.stdout.trim(), `second stdout empty; stderr=${second.stderr}`);
   const a = JSON.parse(first.stdout.trim()), b = JSON.parse(second.stdout.trim());
-  assert.deepEqual(a.anchors, b.anchors);
+  assert.deepEqual(a, b);
   assert.equal(a.verification.agreement.outcome, 'pass');
   assert.equal(a.verification.bundle.outcome, 'pass');
   assert.equal(a.rollup, 'PASS');

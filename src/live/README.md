@@ -45,15 +45,18 @@ agreement commitment and bundle finalization to the receipt-enforcing adapters.
 `--dry-run` is the explicit default. It uses public deterministic fixture keys,
 one in-memory store indexed by logical and native address, simulated payment and
 delivery, finalized fixture receipts, and cold verification of the agreement and
-both bundle copies. `LIVE=1` selects LIVE; combining it with `--dry-run`, or using
+both bundle copies. Its dependency `capabilityPreflight` is intentionally a no-op.
+`LIVE=1` selects LIVE; combining it with `--dry-run`, or using
 `--fixture-seed` in LIVE, is a usage error. LIVE also requires
 `GATEWAY_LIVE_APPROVED=1` and the exact parameter hash from a passing dry run.
 
 Exit 0 means both cold verifiers passed. Exit 1 means a phase failed or either
 verifier failed or was indeterminate. Exit 2 means usage, configuration, payment
-policy, spend preflight, or LIVE capability refusal. The current LIVE path exits
-2 before DACS-1 and before payment because no configured provider authenticates
-all CORE §5.1 finalized-receipt fields. A node storage read can report stored
+policy, spend preflight, or LIVE capability refusal. After loading payment policy
+and resolving its journal, LIVE checks operator approval and the exact dry-run hash,
+then exits 2 at the CORE §5.1 capability check, before dotenv or credentials are
+loaded, because this repository has no provider that authenticates all finalized-
+receipt fields. A node storage read can report stored
 content and creation metadata, but its finality observation remains
 `indeterminate`; it is not converted into a finalized receipt.
 
