@@ -24,3 +24,7 @@ conformance/security-vectors/convergence-harness/report.md
 # Python bytecode from the cross-run harness
 __pycache__/
 *.pyc
+# the JCS package ships its built dist (reproducible; scripts/build-jcs-package.mts --check)
+!packages/jcs/dist/
+!packages/jcs/dist/**
+.jcs-build-*/
