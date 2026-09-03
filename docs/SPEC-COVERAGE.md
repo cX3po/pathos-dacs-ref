@@ -35,11 +35,15 @@ This document maps each in-scope DACS section to the file(s) that implement it.
 
 ## DACS-3 Negotiate
 
-**Entire stage out of scope v0.2.** Rationale: §5 of the spec is honest that SR-4 (channel-protocol) is *"trust-property specified only in v1"* and that wire-protocol harmonisation is v2 work. The KyneSys Labs team pre-flagged L2PS gaps and institutional CCI credentials as moving (2026-05-28). Building a ref-impl against a moving target costs both sides.
+| Spec section | Coverage | File | State |
+|---|---|---|---|
+| §8.5 AgreementDocument construction, listing checks and signatures | adapter | `src/adapters/dacs/agreement-commitment.ts` | ✅ `commit-agreement`; payee-bound/replacement typed out of scope |
+| §8.6 FinalityCommitmentRecord, CA-1..CA-9 | adapter + cold verifier | `src/adapters/dacs/agreement-commitment.ts` | ✅ finalized receipt and consensus timestamp required; live receipt provider pending |
+| §8.2–§8.4 negotiation channels/pattern execution | — | — | ❌ adapter consumes the negotiated terms; it does not execute negotiation |
 
 ## DACS-4 Settle
 
-**Entire stage out of scope v0.2.** Same rationale as DACS-3. Cross-chain HTLC (§9.5.4) is the closest to settled, but introducing the HTLC harness pulls in a Solana Anchor program + Base EVM contract that doubles the surface for a v0.2 ref-impl.
+Settlement handlers remain separately scoped. The bundle finalizer consumes and cryptographically verifies terminal §9.7 `SettlementEvidence`, including authenticated phase-orchestrator authorship; it does not initiate settlement.
 
 ## DACS-5 Verify
 
@@ -49,6 +53,9 @@ This document maps each in-scope DACS section to the file(s) that implement it.
 | §10.4.1 Bundle consumer MUST recompute + verify | **verifier CLI** | `src/cli/verify.ts`, `src/lib/verify-bundle.ts` | ✅ **load-bearing — closes §11.3 gap** |
 | §10.4.2 AttestationBundle two-sided anchoring at `stor-{sha256(jobId+"-bundle-"+role)}` | TS type + anchor calc + verifier | `src/types/bundle.ts`, `src/lib/verify-bundle.ts` (computeAnchorPair + verifyTwoSidedAnchoring) | ✅ deterministic + full canonical-bytes binding + signature re-verify on both anchors |
 | §10.4.3 Consumer queries both party-specific addresses; unilateral ⇒ `aborted-by-self` | verifier logic | `src/lib/verify-bundle.ts` (verifyTwoSidedAnchoring) | ✅ distinguishes RPC error from absence |
+| §10.4.1 FAB/EBFAB discriminator, fault and signature domains | types + verifier dispatch | `src/types/bundle.ts`, `src/lib/verify-bundle-v1.ts` | ✅ additive; legacy reads preserved |
+| §10.4.2 BundleBinding publication seam + role addresses | finalizer | `src/adapters/dacs/bundle-finalizer.ts`, `src/lib/bundle-binding-v1.ts` | ✅ in-memory tested; live publication wiring pending |
+| §10.4.3 SEB-1..SEB-6 exact settlement-evidence set | shared emission/cold function | `src/adapters/dacs/bundle-finalizer.ts` | emission and cold verification refetch evidence, bind receipt anchor fields, verify signatures, and compare the exact ordered set; ST-8 supersession graphs are not implemented |
 | §10.5.1 Reputation derivation (per-primary-claim, failed-substrate excluded) | — | — | ❌ v0.3 |
 | §10.7 ERC-8004 publication surface | — | — | ❌ v0.3 (optional in spec) |
 | Domain separator `"dacs5-bundle:v1:"` | constant | `src/domain-sep.ts` | ✅ |

@@ -135,9 +135,120 @@ export interface BundlePhaseEntry {
   kind: string; // PhaseType — closed set across DACS-2..5
   outcome: 'ok' | 'fail';
   errorClass?: 'permanent' | 'transient' | 'counterparty' | 'substrate' | 'settlement-atomicity';
+  retryExhausted?: true;
   txRefs?: ChainTxRef[];
   attestationRef?: AttestationRef;
 }
+
+/** CORE §5.1 immutable anchor/finality observation. */
+export interface AnchorReceipt {
+  receiptVersion: '1';
+  substrate: string;
+  finalityProfile: string;
+  logicalAddress: string;
+  nativeAddress: string;
+  contentHash: string;
+  transactionRef: { kind: string; value: string };
+  writer: string;
+  nonce?: string;
+  state:
+    | 'submitted'
+    | 'accepted'
+    | 'included'
+    | 'finalized'
+    | 'rejected'
+    | 'dropped'
+    | 'replaced'
+    | 'expired'
+    | 'reorged';
+  observationDisposition: 'established' | 'indeterminate';
+  preservedReceiptHash?: string;
+  observedAt: number;
+  blockRef?: { id: string; height?: string; timestamp?: number };
+  replacementTransactionRef?: { kind: string; value: string };
+  evidence: { kind: string; value: string };
+}
+
+export interface AgreementPartyV1 {
+  role: 'buyer' | 'seller' | 'bidder-non-winning';
+  bundleHash: string;
+  primaryClaim: ClaimRef | string;
+  vetRecordRef: AttestationRef;
+  encryptionKey?: string;
+}
+
+export interface AgreementTermsV1 {
+  deliverable: Record<string, unknown>;
+  price: { amount: string; currency: string; unit?: string };
+  meteredQuantity?: { quantity: string; unit: string };
+  rail?: Record<string, unknown>;
+  deadline: number;
+  priceAnchor?: Record<string, unknown>;
+  feeSchedule?: Record<string, unknown>;
+  additionalTerms?: Record<string, unknown>;
+}
+
+export interface AgreementDocumentV1 {
+  agreementVersion: '1';
+  jobId: string;
+  listingRef: { listingId: string; version: number; contentHash: string };
+  parties: AgreementPartyV1[];
+  terms: AgreementTermsV1;
+  derivedFromPattern: 'fixed-price' | 'rfq' | 'sealed-envelope';
+  derivedFromChannel?: { subnet: string; lastMessageHash: string };
+  generatedAt: number;
+  signatures: Array<{ party: ClaimRef | string; algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate'; value: string }>;
+}
+
+export interface FinalityCommitmentRecord {
+  finalityCommitmentVersion: '1';
+  jobId: string;
+  agreementHash: string;
+  listingRef: { listingId: string; version: number; contentHash: string };
+  parties: Array<ClaimRef | string>;
+  pattern: 'fixed-price' | 'rfq' | 'sealed-envelope';
+  createdAt: number;
+  signature: { algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate'; signer: ClaimRef | string; value: string };
+}
+
+interface AbsoluteFaultBundleBase {
+  jobId: string;
+  outcome: BundleOutcome;
+  faultedParty: 'buyer' | 'seller' | 'orchestrator' | 'none';
+  anchoredByRole: 'buyer' | 'seller' | 'orchestrator';
+  listingRef: { listingId: string; version: number; contentHash: string };
+  agreementRef?: AttestationRef;
+  cancellation?: { claimedPolicy: 'pre-commit' };
+  parties: BundleParty[];
+  phaseSummary: BundlePhaseEntry[];
+  vetRecords: AttestationRef[];
+  settlementEvidence: AttestationRef[];
+  amendments?: AttestationRef[];
+  ratingRefs?: AttestationRef[];
+  recipeRegistryVersion: number;
+  railRegistryVersion: number;
+  finalisedAt: number;
+  signatures: BundleSignature[];
+}
+
+export interface FaultAttestationBundle extends AbsoluteFaultBundleBase {
+  faultBundleVersion: '1';
+}
+
+export interface EvidenceBoundFaultAttestationBundle extends AbsoluteFaultBundleBase {
+  evidenceBoundFaultBundleVersion: '1';
+}
+
+export interface EvidenceBoundFaultBundleExtendedPointer {
+  evidenceBoundFaultBundleVersion: '1';
+  pointerKind: 'extended';
+  fullBundleUrl: string;
+  fullBundleContentHash: string;
+  segmentRefs?: AttestationRef[];
+  signature: { algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate'; signer: ClaimRef | string; value: string };
+}
+
+export type CurrentAttestationBundle = FaultAttestationBundle | EvidenceBoundFaultAttestationBundle;
 
 /** §10.4 BundleSignature — structured per signer (vs the legacy scalar sig fields). */
 export interface BundleSignature {

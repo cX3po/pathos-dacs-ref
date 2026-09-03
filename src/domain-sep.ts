@@ -56,6 +56,15 @@ export const DOMAIN_SEPARATORS = {
   FAULT_BUNDLE_POINTER: 'dacs-fault-bundle-pointer:v1:',    // §10.4 — DACS-5 fault-bundle pointer; added to §B.7 by #248
 } as const;
 
+/** Additive post-v0.1 registry entries used by the v0.3/v0.4 artifact types. Kept
+ * separate so callers auditing the frozen legacy subset do not see a moving count. */
+export const ADDITIVE_DOMAIN_SEPARATORS = {
+  PAYEE_BOUND_AGREEMENT: 'dacs-payee-bound-agreement:v1:',
+  FINALITY_COMMITMENT: 'dacs-finality-commitment:v1:',
+  EVIDENCE_BOUND_FAULT_BUNDLE: 'dacs-evidence-bound-fault-bundle:v1:',
+  EVIDENCE_BOUND_FAULT_BUNDLE_POINTER: 'dacs-evidence-bound-fault-bundle-pointer:v1:',
+} as const;
+
 /**
  * READ-ONLY legacy separators (§10.4.2 backwards-compat).
  *
@@ -146,6 +155,7 @@ export const PATHOS_EXTENSION_SEPARATORS = {
 
 export type DomainSeparator =
   | (typeof DOMAIN_SEPARATORS)[keyof typeof DOMAIN_SEPARATORS]
+  | (typeof ADDITIVE_DOMAIN_SEPARATORS)[keyof typeof ADDITIVE_DOMAIN_SEPARATORS]
   | (typeof LEGACY_READ_SEPARATORS)[keyof typeof LEGACY_READ_SEPARATORS]
   | (typeof DACS_X_EXTENSION_SEPARATORS)[keyof typeof DACS_X_EXTENSION_SEPARATORS]
   | (typeof PATHOS_EXTENSION_SEPARATORS)[keyof typeof PATHOS_EXTENSION_SEPARATORS];
@@ -159,6 +169,7 @@ export type DomainSeparatorKey = keyof typeof DOMAIN_SEPARATORS;
 export function assertKnownSeparator(sep: string): asserts sep is DomainSeparator {
   const known: string[] = [
     ...Object.values(DOMAIN_SEPARATORS),
+    ...Object.values(ADDITIVE_DOMAIN_SEPARATORS),
     ...Object.values(LEGACY_READ_SEPARATORS),
     ...Object.values(DACS_X_EXTENSION_SEPARATORS),
     ...Object.values(PATHOS_EXTENSION_SEPARATORS),

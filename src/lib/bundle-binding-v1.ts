@@ -9,7 +9,7 @@ import { sha256, sha512 } from '@noble/hashes/sha2';
 import { jcsCanonical } from '../jcs.js';
 import { verify } from './sign.js';
 import { claimKey, decodeEd25519Sig } from './verify-bundle-v1.js';
-import { DOMAIN_SEPARATORS } from '../domain-sep.js';
+import { DOMAIN_SEPARATORS, ADDITIVE_DOMAIN_SEPARATORS } from '../domain-sep.js';
 
 ed25519.etc.sha512Sync = (...messages: Uint8Array[]): Uint8Array =>
   sha512(ed25519.etc.concatBytes(...messages));
@@ -18,6 +18,7 @@ const encoder = new TextEncoder();
 // Sourced from the central §B.7 registry (single source of truth) — these were added to §B.7 by #248.
 const BINDING_DOMAIN = DOMAIN_SEPARATORS.BUNDLE_BINDING;
 const FAULT_BUNDLE_DOMAIN = DOMAIN_SEPARATORS.FAULT_BUNDLE;
+const EVIDENCE_BOUND_FAULT_BUNDLE_DOMAIN = ADDITIVE_DOMAIN_SEPARATORS.EVIDENCE_BOUND_FAULT_BUNDLE;
 // §10.4.2 extended-pointer path: the FaultBundleExtendedPointer is signed under its own domain;
 // legacy AttestationBundle copies (mixed-version reconciliation) sign under dacs-bundle:v1:.
 const FAULT_BUNDLE_POINTER_DOMAIN = DOMAIN_SEPARATORS.FAULT_BUNDLE_POINTER;
@@ -195,7 +196,7 @@ function verifyBundleSignatures(
     const signature = decodeEd25519Sig(entry.value);
     const publicKey = publicKeyFor(request, entry.party);
     if (key === null || !roles.has(key) || signature === null || publicKey === null ||
-        !verifyHashedDomain(FAULT_BUNDLE_DOMAIN, signature, hash, publicKey)) {
+        !verifyHashedDomain('evidenceBoundFaultBundleVersion' in bundle ? EVIDENCE_BOUND_FAULT_BUNDLE_DOMAIN : FAULT_BUNDLE_DOMAIN, signature, hash, publicKey)) {
       return { valid: false, fullySigned: false };
     }
     signed.add(key);
@@ -425,7 +426,7 @@ function impliedFaultSet(bundle: JsonObject, roles: Map<string, string>): Set<st
       typeof anchoredRole !== 'string' || !ROLES.has(anchoredRole)) return null;
   const partyRoles = new Set(roles.values());
   if (!partyRoles.has(anchoredRole)) return null;
-  const isFab = 'faultBundleVersion' in bundle;
+  const isFab = 'faultBundleVersion' in bundle || 'evidenceBoundFaultBundleVersion' in bundle;
   if (isFab) {
     // A FAB must satisfy §10.4.1 for its explicit faultedParty; reuse the permissible-set relation.
     if (!faultedPartyPermitted(bundle, roles)) return null;
@@ -448,7 +449,8 @@ function copySignaturesValid(
   roles: Map<string, string>,
 ): boolean {
   if (!Array.isArray(bundle.signatures) || bundle.signatures.length === 0) return false;
-  const domain = 'faultBundleVersion' in bundle ? FAULT_BUNDLE_DOMAIN : LEGACY_BUNDLE_DOMAIN;
+  const domain = 'evidenceBoundFaultBundleVersion' in bundle ? EVIDENCE_BOUND_FAULT_BUNDLE_DOMAIN
+    : 'faultBundleVersion' in bundle ? FAULT_BUNDLE_DOMAIN : LEGACY_BUNDLE_DOMAIN;
   for (const entry of bundle.signatures) {
     if (!isObject(entry) || entry.algorithm !== 'ed25519') return false;
     const key = claimKey(entry.party);
