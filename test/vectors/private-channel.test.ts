@@ -172,7 +172,7 @@ test('duplicate sequence and sequence gap are fatal and not buffered', async (t)
 test('transcript verification rejects every edited field class and structural edit', async (t) => {
   const original = await completedTranscript();
   const cases: Array<[string, (copy: ChannelTranscript) => void]> = [
-    ['top-level binding', (x) => { x.channelId = `${x.channelId.slice(0, -1)}0`; }],
+    ['top-level binding', (x) => { const last = x.channelId.slice(-1); x.channelId = `${x.channelId.slice(0, -1)}${last === '0' ? '1' : '0'}`; }],
     ['mode', (x) => { x.mode = 'l2ps-live'; }],
     ['membership', (x) => { x.membership = { ...x.membership, coordinatorClaim: x.membership.members[1]!.claim }; }],
     ['envelope version/header', (x) => { (x.envelopes[0] as { v: string }).v = 'changed'; }],
