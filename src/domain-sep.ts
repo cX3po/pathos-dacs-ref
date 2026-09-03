@@ -137,6 +137,16 @@ export const DACS_X_EXTENSION_SEPARATORS = {
 } as const;
 
 /**
+ * Reviewed additive SIG-4 extensions. Kept separate from the legacy-counted
+ * DACS_X_EXTENSION_SEPARATORS map so adding a reviewed surface cannot silently
+ * change the frozen compatibility inventory asserted by existing vectors.
+ */
+export const REVIEWED_DACS_X_EXTENSION_SEPARATORS = {
+  /** Private-channel wire envelope: sep || UTF8(sha256hex(JCS(unsigned envelope))). */
+  CHANNEL_ENVELOPE: 'dacs-x-channel-envelope:v1:',
+} as const;
+
+/**
  * PATH-OS Labs extension separators — NOT part of the normative DACS v0.7 §7.7
  * closed registry, kept in a sibling map so the "exactly 17 spec separators"
  * invariant stays meaningful. These are admitted by assertKnownSeparator() and
@@ -158,6 +168,7 @@ export type DomainSeparator =
   | (typeof ADDITIVE_DOMAIN_SEPARATORS)[keyof typeof ADDITIVE_DOMAIN_SEPARATORS]
   | (typeof LEGACY_READ_SEPARATORS)[keyof typeof LEGACY_READ_SEPARATORS]
   | (typeof DACS_X_EXTENSION_SEPARATORS)[keyof typeof DACS_X_EXTENSION_SEPARATORS]
+  | (typeof REVIEWED_DACS_X_EXTENSION_SEPARATORS)[keyof typeof REVIEWED_DACS_X_EXTENSION_SEPARATORS]
   | (typeof PATHOS_EXTENSION_SEPARATORS)[keyof typeof PATHOS_EXTENSION_SEPARATORS];
 export type DomainSeparatorKey = keyof typeof DOMAIN_SEPARATORS;
 
@@ -172,6 +183,7 @@ export function assertKnownSeparator(sep: string): asserts sep is DomainSeparato
     ...Object.values(ADDITIVE_DOMAIN_SEPARATORS),
     ...Object.values(LEGACY_READ_SEPARATORS),
     ...Object.values(DACS_X_EXTENSION_SEPARATORS),
+    ...Object.values(REVIEWED_DACS_X_EXTENSION_SEPARATORS),
     ...Object.values(PATHOS_EXTENSION_SEPARATORS),
   ];
   if (!known.includes(sep)) {
