@@ -9,6 +9,10 @@ import type {
   PayDemSettlementRecoveryContext,
   SettleResult,
 } from './sdk-pay-dem-types.js';
+import {
+  meterErrorResult,
+  type MeterErrorResult,
+} from '../demos/dem-meter-errors.js';
 import type { DemMeter } from '../demos/dem-meter.js';
 
 export type {
@@ -96,6 +100,7 @@ export type PayDemSettleOutcome =
       evidence: SettlementEvidenceV1Payment;
       blockNumber: number;
       finality: { model: 'bft-final' };
+      meterError?: MeterErrorResult;
     })
   | { ok: false; reason: string; recovery?: Readonly<PayDemAuthorizationAbortContext> };
 
@@ -229,7 +234,19 @@ export async function settlePayDemCore(
     observedAt: finalityObservedAt,
   }) as SettlementEvidenceV1Payment;
 
-  hooks.meter?.record({ kind: 'transfer', os: captured.amountOs.toString(), ref: result.hash });
+  let meterError: MeterErrorResult | undefined;
+  if (hooks.meter !== undefined) {
+    try {
+      hooks.meter.record({
+        agent: captured.payer,
+        kind: 'transfer',
+        os: captured.amountOs.toString(),
+        ref: result.hash,
+      });
+    } catch (error) {
+      meterError = meterErrorResult(error);
+    }
+  }
 
   return {
     ok: true,
@@ -243,5 +260,6 @@ export async function settlePayDemCore(
     amountOs: captured.amountOs,
     finalityObservedAt,
     evidence,
+    ...(meterError === undefined ? {} : { meterError }),
   };
 }

@@ -5,16 +5,31 @@
  * invoice produced here is not a payment request. The meter performs no on-chain writes.
  */
 
-import { createHash } from 'node:crypto';
-import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  closeSync,
+  fsyncSync,
+  ftruncateSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeSync,
+} from 'node:fs';
 import { dirname } from 'node:path';
 
 import { demToOs, osToDem } from '../dacs/pay-dem.js';
 import { jcsCanonical, jcsHashHex } from '../../jcs.js';
-import {
-  acquirePayDemJournalLock,
-  resolvePayDemJournalPath,
-} from '../../live/pay-dem-journal.js';
+import { resolvePayDemJournalPath } from '../../live/pay-dem-journal.js';
+import { DemMeterError, type MeterErrorCode } from './dem-meter-errors.js';
+
+export {
+  DemMeterError,
+  meterErrorResult,
+  type MeterErrorCode,
+  type MeterErrorResult,
+} from './dem-meter-errors.js';
 
 export const DEM_METER_KINDS = [
   'seat-call',
@@ -71,7 +86,8 @@ export interface InvoiceDocument {
   totalOs: string;
   totalDem: string;
   meterHead: string | null;
-  receiptRefs: string[];
+  meteredReceiptHashes: string[];
+  notice: 'unsigned internal accounting; not a DACS artifact, not settlement proof, not a payment request';
   contentHash: string;
 }
 
@@ -87,18 +103,36 @@ export interface DemMeter {
     until: string;
   }): InvoiceDocument;
   read(): MeterRow[];
+  repair(): { rowCount: number; meterHead: string | null };
 }
 
 const OS_RE = /^(?:0|[1-9]\d*)$/;
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 const SEAT_RE = /^[a-z0-9._-]+$/;
 const CCI_RE = /^cci:(?:0x)?[0-9a-fA-F]{64}$/;
+const CANONICAL_CCI_RE = /^cci:(?:0x)?[0-9a-f]{64}$/;
+const LOCK_WAIT_MS = 2_000;
+const LOCK_RETRY_MS = 20;
+
+type MeterHead = { rowCount: number; meterHead: string | null };
+
+function fail(code: MeterErrorCode, message: string): never {
+  throw new DemMeterError(code, message);
+}
 
 function requireAgent(value: unknown): string {
   if (typeof value !== 'string' || (!SEAT_RE.test(value) && !CCI_RE.test(value))) {
     throw new Error('dem meter agent must be a CCI claim or a lowercase seat name');
   }
-  return value;
+  return value.startsWith('cci:') ? value.toLowerCase() : value;
+}
+
+function requireStoredAgent(value: unknown): string {
+  const agent = requireAgent(value);
+  if (typeof value === 'string' && value.startsWith('cci:') && !CANONICAL_CCI_RE.test(value)) {
+    throw new Error('dem meter stored CCI agent must use lowercase hexadecimal');
+  }
+  return agent;
 }
 
 function requireIso(value: unknown, label: string): string {
@@ -167,19 +201,30 @@ function chainedHash(body: Omit<MeterRow, 'rowHash'>): string {
   return createHash('sha256').update(jcsCanonical(body)).update(previous, 'utf8').digest('hex');
 }
 
-function readJsonl(path: string): unknown[] {
-  let text: string;
+function readMeterBytes(path: string): Buffer {
   try {
-    text = readFileSync(path, 'utf8');
+    return readFileSync(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return Buffer.alloc(0);
     throw error;
   }
-  return text.split('\n').filter((line) => line.length > 0).map((line, index) => {
+}
+
+function jsonLines(bytes: Buffer, allowPartialTail = false): { values: unknown[]; prefixBytes: number } {
+  if (bytes.length === 0) return { values: [], prefixBytes: 0 };
+  const lastNewline = bytes.lastIndexOf(0x0a);
+  if (lastNewline !== bytes.length - 1 && !allowPartialTail) {
+    fail('partial-tail', 'dem meter has a partial trailing line');
+  }
+  const prefixBytes = lastNewline + 1;
+  const text = bytes.subarray(0, prefixBytes).toString('utf8');
+  const lines = text.slice(0, -1).split('\n');
+  return { prefixBytes, values: lines.map((line, index) => {
+    if (line.length === 0) throw new Error(`dem meter line ${index + 1} is blank`);
     try { return JSON.parse(line) as unknown; } catch {
       throw new Error(`dem meter line ${index + 1} is not valid JSON`);
     }
-  });
+  }) };
 }
 
 function parseRow(value: unknown, previous: string | undefined, index: number): MeterRow {
@@ -196,7 +241,7 @@ function parseRow(value: unknown, previous: string | undefined, index: number): 
     throw new Error(`dem meter chain is broken at line ${index + 1}`);
   }
   const body: Omit<MeterRow, 'rowHash'> = rowBody({
-    agent: requireAgent(raw.agent),
+    agent: requireStoredAgent(raw.agent),
     kind: requireKind(raw.kind),
     os: requireOs(raw.os),
     at: requireIso(raw.at, 'row at'),
@@ -209,6 +254,111 @@ function parseRow(value: unknown, previous: string | undefined, index: number): 
     throw new Error(`dem meter chain is broken at line ${index + 1}`);
   }
   return { ...body, rowHash: raw.rowHash };
+}
+
+function parseRows(values: unknown[]): MeterRow[] {
+  const rows: MeterRow[] = [];
+  let previous: string | undefined;
+  for (const [index, value] of values.entries()) {
+    const row = parseRow(value, previous, index);
+    rows.push(row);
+    previous = row.rowHash;
+  }
+  return rows;
+}
+
+function parseHead(path: string): MeterHead | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    fail('head-mismatch', 'dem meter head file is invalid');
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    fail('head-mismatch', 'dem meter head file is invalid');
+  }
+  const raw = value as Record<string, unknown>;
+  if (!Number.isSafeInteger(raw.rowCount) || (raw.rowCount as number) < 0 ||
+    !(raw.meterHead === null || (typeof raw.meterHead === 'string' && SHA256_HEX_RE.test(raw.meterHead))) ||
+    Object.keys(raw).some((key) => key !== 'rowCount' && key !== 'meterHead')) {
+    fail('head-mismatch', 'dem meter head file is invalid');
+  }
+  return { rowCount: raw.rowCount as number, meterHead: raw.meterHead as string | null };
+}
+
+function verifyHead(rows: MeterRow[], head: MeterHead | undefined): MeterHead {
+  const actual = { rowCount: rows.length, meterHead: rows.at(-1)?.rowHash ?? null };
+  if (rows.length > 0 && head === undefined) {
+    fail('head-missing', 'dem meter head file is missing for a non-empty log');
+  }
+  if (head !== undefined && (head.rowCount !== actual.rowCount || head.meterHead !== actual.meterHead)) {
+    fail('head-mismatch', 'dem meter head does not match the log');
+  }
+  return actual;
+}
+
+function sleep(milliseconds: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function acquireMeterLock(path: string): { release(): void } {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const lockPath = `${path}.lock`;
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  let fd: number | undefined;
+  while (fd === undefined) {
+    try {
+      fd = openSync(lockPath, 'wx', 0o600);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      if (Date.now() >= deadline) fail('meter-busy', 'dem meter lock could not be acquired');
+      sleep(Math.min(LOCK_RETRY_MS, Math.max(1, deadline - Date.now())));
+    }
+  }
+  try {
+    const token = Buffer.from(randomUUID(), 'utf8');
+    if (writeSync(fd, token, 0, token.length, null) !== token.length) {
+      fail('meter-io', 'dem meter lock write was incomplete');
+    }
+    fsyncSync(fd);
+  } catch (error) {
+    closeSync(fd);
+    try { unlinkSync(lockPath); } catch { /* best-effort cleanup */ }
+    throw error;
+  }
+  closeSync(fd);
+  let released = false;
+  return { release() {
+    if (released) return;
+    released = true;
+    try { unlinkSync(lockPath); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  } };
+}
+
+function writeAll(fd: number, bytes: Buffer): void {
+  const written = writeSync(fd, bytes, 0, bytes.length, null);
+  if (written !== bytes.length) fail('meter-io', 'dem meter write was incomplete');
+}
+
+function writeHeadAtomically(path: string, head: MeterHead): void {
+  const headPath = `${path}.head`;
+  const tempPath = `${headPath}.${process.pid}.${randomUUID()}.tmp`;
+  let fd: number | undefined;
+  try {
+    fd = openSync(tempPath, 'wx', 0o600);
+    writeAll(fd, Buffer.from(JSON.stringify(head), 'utf8'));
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = undefined;
+    renameSync(tempPath, headPath);
+  } catch (error) {
+    if (fd !== undefined) closeSync(fd);
+    try { unlinkSync(tempPath); } catch { /* best-effort cleanup */ }
+    throw error;
+  }
 }
 
 function filtered(rows: MeterRow[], opts: { since?: string; until?: string; agent?: string }): MeterRow[] {
@@ -243,6 +393,26 @@ function publicTotals(source: Record<string, { count: number; os: bigint }>): Re
   }]));
 }
 
+function summarizeRows(rows: MeterRow[]): MeterSummary {
+  const agents: Record<string, { count: number; os: bigint }> = Object.create(null);
+  const kinds: Record<string, { count: number; os: bigint }> = Object.create(null);
+  let total = 0n;
+  for (const row of rows) {
+    const amount = BigInt(row.os);
+    total += amount;
+    addTotal(agents, row.agent, amount);
+    addTotal(kinds, row.kind, amount);
+  }
+  return {
+    rowCount: rows.length,
+    totalOs: total.toString(),
+    totalDem: osToDem(total),
+    byAgent: publicTotals(agents),
+    byKind: publicTotals(kinds) as Partial<Record<MeterKind, MeterTotal>>,
+    lastRowHash: rows.at(-1)?.rowHash ?? null,
+  };
+}
+
 /** Create a synchronous, append-only local DEM meter. */
 export function createDemMeter(opts: {
   path: string;
@@ -252,26 +422,26 @@ export function createDemMeter(opts: {
   const path = resolvePayDemJournalPath(opts.path);
   const defaultAgent = opts.agent === undefined ? undefined : requireAgent(opts.agent);
   const now = opts.now ?? (() => new Date().toISOString());
+  const headPath = `${path}.head`;
+
+  function readUnlocked(): MeterRow[] {
+    const rows = parseRows(jsonLines(readMeterBytes(path)).values);
+    verifyHead(rows, parseHead(headPath));
+    return rows;
+  }
 
   function read(): MeterRow[] {
-    const values = readJsonl(path);
-    const rows: MeterRow[] = [];
-    let previous: string | undefined;
-    for (const [index, value] of values.entries()) {
-      const row = parseRow(value, previous, index);
-      rows.push(row);
-      previous = row.rowHash;
-    }
-    return rows;
+    const lease = acquireMeterLock(path);
+    try { return readUnlocked(); } finally { lease.release(); }
   }
 
   function record(entry: MeterEntry): MeterRow {
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
       throw new Error('dem meter entry must be an object');
     }
-    const lease = acquirePayDemJournalLock(path);
+    const lease = acquireMeterLock(path);
     try {
-      const rows = read();
+      const rows = readUnlocked();
       const previous = rows.at(-1)?.rowHash;
       const body: Omit<MeterRow, 'rowHash'> = rowBody({
         agent: requireAgent(entry.agent ?? defaultAgent),
@@ -285,11 +455,13 @@ export function createDemMeter(opts: {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       const fd = openSync(path, 'a', 0o600);
       try {
-        writeSync(fd, `${new TextDecoder().decode(jcsCanonical(row))}\n`, null, 'utf8');
+        const line = Buffer.from(`${new TextDecoder().decode(jcsCanonical(row))}\n`, 'utf8');
+        writeAll(fd, line);
         fsyncSync(fd);
       } finally {
         closeSync(fd);
       }
+      writeHeadAtomically(path, { rowCount: rows.length + 1, meterHead: row.rowHash });
       return row;
     } finally {
       lease.release();
@@ -298,23 +470,7 @@ export function createDemMeter(opts: {
 
   function summarize(summaryOpts: { since?: string; until?: string; agent?: string } = {}): MeterSummary {
     const rows = filtered(read(), summaryOpts);
-    const agents: Record<string, { count: number; os: bigint }> = Object.create(null);
-    const kinds: Record<string, { count: number; os: bigint }> = Object.create(null);
-    let total = 0n;
-    for (const row of rows) {
-      const amount = BigInt(row.os);
-      total += amount;
-      addTotal(agents, row.agent, amount);
-      addTotal(kinds, row.kind, amount);
-    }
-    return {
-      rowCount: rows.length,
-      totalOs: total.toString(),
-      totalDem: osToDem(total),
-      byAgent: publicTotals(agents),
-      byKind: publicTotals(kinds) as Partial<Record<MeterKind, MeterTotal>>,
-      lastRowHash: rows.at(-1)?.rowHash ?? null,
-    };
+    return summarizeRows(rows);
   }
 
   function invoice(invoiceOpts: Parameters<DemMeter['invoice']>[0]): InvoiceDocument {
@@ -324,27 +480,61 @@ export function createDemMeter(opts: {
     requireAgent(invoiceOpts.to);
     const since = requireIso(invoiceOpts.since, 'invoice since');
     const until = requireIso(invoiceOpts.until, 'invoice until');
-    const rows = filtered(read(), { since, until });
-    const summary = summarize({ since, until });
-    const lines = DEM_METER_KINDS.flatMap((kind) => {
-      const kindRows = rows.filter((row) => row.kind === kind);
-      if (kindRows.length === 0) return [];
-      const os = kindRows.reduce((sum, row) => sum + BigInt(row.os), 0n);
-      return [{ kind, count: kindRows.length, os: os.toString(), dem: osToDem(os) }];
-    });
-    const unsigned = {
-      v: 'pathos-dem-invoice:0.1' as const,
-      issuer,
-      payer,
-      period: { since, until },
-      lines,
-      totalOs: summary.totalOs,
-      totalDem: summary.totalDem,
-      meterHead: summary.lastRowHash,
-      receiptRefs: [...new Set(rows.flatMap((row) => row.receiptHash === undefined ? [] : [row.receiptHash]))],
-    };
-    return { ...unsigned, contentHash: jcsHashHex(unsigned) };
+    const lease = acquireMeterLock(path);
+    try {
+      const rows = filtered(readUnlocked(), { since, until });
+      const summary = summarizeRows(rows);
+      const lines = DEM_METER_KINDS.flatMap((kind) => {
+        const kindRows = rows.filter((row) => row.kind === kind);
+        if (kindRows.length === 0) return [];
+        const os = kindRows.reduce((sum, row) => sum + BigInt(row.os), 0n);
+        return [{ kind, count: kindRows.length, os: os.toString(), dem: osToDem(os) }];
+      });
+      const unsigned = {
+        v: 'pathos-dem-invoice:0.1' as const,
+        issuer,
+        payer,
+        period: { since, until },
+        lines,
+        totalOs: summary.totalOs,
+        totalDem: summary.totalDem,
+        meterHead: summary.lastRowHash,
+        meteredReceiptHashes: [...new Set(rows.flatMap((row) =>
+          row.receiptHash === undefined ? [] : [row.receiptHash]))],
+        notice: 'unsigned internal accounting; not a DACS artifact, not settlement proof, not a payment request' as const,
+      };
+      return { ...unsigned, contentHash: jcsHashHex(unsigned) };
+    } finally {
+      lease.release();
+    }
   }
 
-  return { record, summarize, invoice, read };
+  function repair(): { rowCount: number; meterHead: string | null } {
+    const lease = acquireMeterLock(path);
+    try {
+      const bytes = readMeterBytes(path);
+      if (bytes.length === 0 || bytes.at(-1) === 0x0a) {
+        fail('meter-invalid', 'dem meter repair requires a partial trailing line');
+      }
+      const parsed = jsonLines(bytes, true);
+      const rows = parseRows(parsed.values);
+      const head = parseHead(headPath);
+      if (head === undefined || head.rowCount !== rows.length ||
+        head.meterHead !== (rows.at(-1)?.rowHash ?? null)) {
+        fail('head-mismatch', 'dem meter intact prefix does not match the head file');
+      }
+      const fd = openSync(path, 'r+');
+      try {
+        ftruncateSync(fd, parsed.prefixBytes);
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+      return head;
+    } finally {
+      lease.release();
+    }
+  }
+
+  return { record, summarize, invoice, read, repair };
 }

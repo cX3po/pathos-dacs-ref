@@ -9,7 +9,7 @@ import { createDemMeter } from '../adapters/demos/dem-meter.js';
 export const DEFAULT_DEM_METER_PATH = join(homedir(), '.pathos-dacs-ref', 'dem-meter.jsonl');
 
 type Args = {
-  action: 'summary' | 'invoice' | 'verify';
+  action: 'summary' | 'invoice' | 'verify' | 'repair';
   path: string;
   since?: string;
   until?: string;
@@ -33,7 +33,7 @@ function parseArgs(argv: string[], env: Readonly<NodeJS.ProcessEnv>): Args {
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--summary' || arg === '--invoice' || arg === '--verify') {
+    if (arg === '--summary' || arg === '--invoice' || arg === '--verify' || arg === '--repair') {
       if (action !== undefined) throw new Error('choose exactly one meter command');
       action = arg.slice(2) as Args['action'];
     } else if (arg === '--path') {
@@ -60,8 +60,8 @@ function parseArgs(argv: string[], env: Readonly<NodeJS.ProcessEnv>): Args {
     throw new Error('from and to apply only to invoice');
   }
   if (action !== 'summary' && agent !== undefined) throw new Error('agent applies only to summary');
-  if (action === 'verify' && (since !== undefined || until !== undefined)) {
-    throw new Error('since and until do not apply to verify');
+  if ((action === 'verify' || action === 'repair') && (since !== undefined || until !== undefined)) {
+    throw new Error('since and until do not apply to verify or repair');
   }
   return { action, path, ...(since ? { since } : {}), ...(until ? { until } : {}),
     ...(agent ? { agent } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}) };
@@ -85,6 +85,7 @@ export function runDemMeterCli(
       from: args.from!, to: args.to!, since: args.since!, until: args.until!,
     });
   }
+  if (args.action === 'repair') return meter.repair();
   const rows = meter.read();
   return { ok: true, rowCount: rows.length, meterHead: rows.at(-1)?.rowHash ?? null };
 }
