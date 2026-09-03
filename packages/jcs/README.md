@@ -18,7 +18,7 @@ Signing is registry-bound. `sign` accepts only an emittable separator registered
 
 ## Vectors
 
-`vectors/canonical-form-v0.1.json` is a byte-for-byte copy of `conformance/partner-kit/vectors.json`. Its canonical-accept and canonical-reject sections are the repository's dedicated JCS corpus, including NFC/NFD value and member-name cases. `vectors/index.json` records its package path, byte count, SHA-256 digest, and origin.
+`vectors/canonical-form-v0.1.json` is derived deterministically from `conformance/partner-kit/vectors.json`: it carries only the canonical-accept and canonical-reject sections (the repository's JCS corpus, including NFC/NFD value and member-name cases) and records the source file's SHA-256; the partner-kit signing and drift sections, which carry test keys, are not packaged. `vectors/index.json` records its package path, byte count, SHA-256 digest, and origin.
 
 ## Provenance and build
 

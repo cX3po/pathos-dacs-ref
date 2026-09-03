@@ -19,8 +19,11 @@ const implementationSources = [
   { source: 'src/jcs.ts', destination: 'src/jcs.ts' },
   { source: 'src/lib/sign.ts', destination: 'src/lib/sign.ts' },
 ] as const;
+// The package ships ONLY the canonical-form sections of the partner-kit corpus, derived
+// deterministically from the repository file. The signing sections carry test private keys
+// and belong to the partner kit, not to a JCS toolkit package.
 const vectorSources = [
-  { source: 'conformance/partner-kit/vectors.json', destination: 'vectors/canonical-form-v0.1.json' },
+  { source: 'conformance/partner-kit/vectors.json', destination: 'vectors/canonical-form-v0.1.json', sections: ['canonical-accept', 'canonical-reject'] },
 ] as const;
 
 function sha256(bytes: Uint8Array): string {
@@ -68,13 +71,28 @@ async function buildAt(output: string): Promise<void> {
 
   const vectorFiles = [];
   for (const item of vectorSources) {
-    const bytes = await readFile(join(repoRoot, item.source));
-    await copy(join(repoRoot, item.source), join(output, item.destination));
+    const sourceBytes = await readFile(join(repoRoot, item.source));
+    const sourceDoc = JSON.parse(sourceBytes.toString('utf8')) as { name: string; nonNormative?: unknown; vectors: Array<{ section: string; [k: string]: unknown }> };
+    const kept = sourceDoc.vectors.filter((vector) => (item.sections as readonly string[]).includes(vector.section));
+    for (const vector of kept) {
+      if ('privKeyHex' in vector) throw new Error(`canonical vector ${String(vector.id)} carries key material`);
+    }
+    const derived = jcs({
+      v: 'pathos-dacs-jcs-canonical-vectors:0.1',
+      name: sourceDoc.name,
+      nonNormative: sourceDoc.nonNormative ?? true,
+      derivedFrom: { repo: 'cX3po/pathos-dacs-ref', path: item.source, sha256: sha256(sourceBytes), sections: [...item.sections] },
+      declaredTotal: kept.length,
+      vectors: kept,
+    });
+    const bytes = Buffer.from(derived, 'utf8');
+    await mkdir(join(output, 'vectors'), { recursive: true });
+    await writeFile(join(output, item.destination), bytes);
     vectorFiles.push({
       path: item.destination,
       bytes: bytes.length,
       sha256: sha256(bytes),
-      origin: { repo: 'cX3po/pathos-dacs-ref', path: item.source },
+      origin: { repo: 'cX3po/pathos-dacs-ref', path: item.source, sourceSha256: sha256(sourceBytes), derived: `sections ${item.sections.join(', ')} only` },
     });
   }
   vectorFiles.sort((a, b) => compareText(a.path, b.path));
@@ -128,6 +146,8 @@ async function main(): Promise<void> {
     throw new Error('Usage: build-jcs-package.mts [--check]');
   }
   const check = args.includes('--check');
+  // Built under the repository root so the package compile resolves the repository's node_modules;
+  // the prefix is gitignored so an interrupted run cannot be swept into a commit.
   const temporary = await mkdtemp(join(repoRoot, '.jcs-build-'));
   try {
     const rebuilt = join(temporary, 'jcs');

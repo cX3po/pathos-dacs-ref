@@ -30,6 +30,9 @@ jobs:
       - name: TypeScript typecheck
         run: npx tsc --noEmit
 
+      - name: Check the JCS package is reproducible from the committed sources
+        run: node --import tsx scripts/build-jcs-package.mts --check
+
       - name: Run offline test suite
         # DACS_LIVE_NETWORK is intentionally NOT set — CI runs only the deterministic
         # offline tests. Live-network + chain-write tests gate on their own env vars.

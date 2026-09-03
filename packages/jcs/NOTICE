@@ -1,7 +1,8 @@
 THIRD-PARTY AND PROJECT NOTICES
 
 The package source, generated distribution files, metadata, documentation, and
-the copied PATH-OS partner-kit vector file are covered by the PATH-OS MIT notice
+the derived canonical-form vector file (the canonical-accept and canonical-reject
+sections of the PATH-OS partner-kit corpus; no signing keys) are covered by the PATH-OS MIT notice
 in LICENSE.
 
 The implementation uses canonicalize (Apache-2.0), @noble/ed25519 (MIT), and

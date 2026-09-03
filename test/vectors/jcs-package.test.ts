@@ -1,10 +1,11 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
+import { ed25519 } from '@noble/curves/ed25519';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
@@ -101,7 +102,7 @@ test('package signing round-trips only with registered emission separators', () 
 
 test('package vector index describes the copied bytes', async () => {
   const index = JSON.parse(await readFile(join(packageRoot, 'vectors', 'index.json'), 'utf8')) as {
-    files: Array<{ path: string; bytes: number; sha256: string; origin: { path: string } }>;
+    files: Array<{ path: string; bytes: number; sha256: string; origin: { path: string; sourceSha256?: string; derived?: string } }>;
   };
   assert.equal(index.files.length, 1);
   const entry = index.files[0]!;
@@ -109,7 +110,14 @@ test('package vector index describes the copied bytes', async () => {
   assert.equal(entry.bytes, bytes.length);
   assert.equal(entry.sha256, createHash('sha256').update(bytes).digest('hex'));
   assert.equal(entry.origin.path, 'conformance/partner-kit/vectors.json');
-  assert.deepEqual(bytes, await readFile(join(repoRoot, entry.origin.path)));
+  const sourceBytes = await readFile(join(repoRoot, entry.origin.path));
+  assert.equal(entry.origin.sourceSha256, createHash('sha256').update(sourceBytes).digest('hex'));
+  const packaged = JSON.parse(bytes.toString('utf8')) as { derivedFrom: { sha256: string; sections: string[] }; vectors: Array<Record<string, unknown>> };
+  assert.equal(packaged.derivedFrom.sha256, entry.origin.sourceSha256);
+  assert.deepEqual(packaged.derivedFrom.sections, ['canonical-accept', 'canonical-reject']);
+  assert.deepEqual([...new Set(packaged.vectors.map((vector) => vector.section))].sort(), ['canonical-accept', 'canonical-reject']);
+  assert.equal(packaged.vectors.length, 27);
+  assert.equal(bytes.toString('utf8').includes('privKeyHex'), false, 'no key material in the packaged vectors');
 });
 
 test('consumer imports built ESM and canonicalizes a packaged vector', async () => {
@@ -122,20 +130,21 @@ test('deterministic package --check passes', async () => {
   await run(process.execPath, ['--import', 'tsx', 'scripts/build-jcs-package.mts', '--check'], { cwd: repoRoot });
 });
 
-test('npm dry-run pack contains exactly the declared package files', async () => {
+test('npm dry-run pack contains exactly the declared package files', async (t) => {
   const npmCache = await mkdtemp(join(tmpdir(), 'pathos-jcs-npm-cache-'));
   try {
-    const npmCli = await realpath('/usr/bin/npm');
-    const { stdout } = await run(process.execPath, [npmCli, 'pack', '--dry-run', '--json', './packages/jcs'], {
-      cwd: repoRoot,
-      env: { ...process.env, npm_config_cache: npmCache },
-    });
-    const actual = stdout.trim().length > 0
-      ? (JSON.parse(stdout) as Array<{ files: Array<{ path: string }> }>)[0]!.files.map((file) => file.path).sort()
-      : (await packageFiles(packageRoot)).filter((path) =>
-          path === 'package.json' || path === 'LICENSE' || path === 'NOTICE' || path === 'README.md' ||
-          path === 'provenance.json' || path.startsWith('dist/') || path.startsWith('vectors/')
-        ).sort();
+    let stdout = '';
+    try {
+      ({ stdout } = await run('npm', ['pack', '--dry-run', '--json', './packages/jcs'], {
+        cwd: repoRoot,
+        env: { ...process.env, npm_config_cache: npmCache },
+      }));
+    } catch (error) {
+      t.skip(`npm pack is unavailable here: ${(error as Error).message.slice(0, 120)}`);
+      return;
+    }
+    assert.ok(stdout.trim().length > 0, 'npm pack --json produced no output');
+    const actual = (JSON.parse(stdout) as Array<{ files: Array<{ path: string }> }>)[0]!.files.map((file) => file.path).sort();
     const expected = [
       'LICENSE',
       'NOTICE',
@@ -156,5 +165,59 @@ test('npm dry-run pack contains exactly the declared package files', async () =>
     assert.deepEqual(actual, expected);
   } finally {
     await rm(npmCache, { recursive: true, force: true });
+  }
+});
+
+test('built package executes the partner-kit signing vectors (golden signatures, refusals, legacy read)', async () => {
+  const pkg = await import('../../packages/jcs/dist/index.js');
+  const partnerKit = JSON.parse(await readFile(join(repoRoot, 'conformance/partner-kit/vectors.json'), 'utf8')) as {
+    vectors: Array<Record<string, string | boolean | undefined>>;
+  };
+  const signVectors = partnerKit.vectors.filter((vector) => vector.section === 'domain-sep-sign');
+  assert.equal(signVectors.length, 12);
+  const maps: Record<string, Record<string, string>> = {
+    DOMAIN_SEPARATORS: pkg.DOMAIN_SEPARATORS as Record<string, string>,
+    DACS_X_EXTENSION_SEPARATORS: pkg.DACS_X_EXTENSION_SEPARATORS as Record<string, string>,
+    REVIEWED_DACS_X_EXTENSION_SEPARATORS: pkg.REVIEWED_DACS_X_EXTENSION_SEPARATORS as Record<string, string>,
+    PATHOS_EXTENSION_SEPARATORS: pkg.PATHOS_EXTENSION_SEPARATORS as Record<string, string>,
+    ADDITIVE_DOMAIN_SEPARATORS: pkg.ADDITIVE_DOMAIN_SEPARATORS as Record<string, string>,
+    LEGACY_READ_SEPARATORS: pkg.LEGACY_READ_SEPARATORS as Record<string, string>,
+  };
+  const sepByRef = (ref: string): string => {
+    const [map, key] = ref.split('.');
+    const value = maps[map!]?.[key!];
+    assert.ok(value, `unknown separator ref ${ref}`);
+    return value;
+  };
+  const unhex = (h: string): Uint8Array => Uint8Array.from(Buffer.from(h, 'hex'));
+  const hex = (b: Uint8Array): string => Buffer.from(b).toString('hex');
+  for (const v of signVectors) {
+    const sep = typeof v.separatorRef === 'string' ? sepByRef(v.separatorRef) : undefined;
+    const body = new TextEncoder().encode(String(v.bodyUtf8));
+    const inter = typeof v.intermediateHashHex === 'string' ? unhex(v.intermediateHashHex) : undefined;
+    const priv = typeof v.privKeyHex === 'string' ? unhex(v.privKeyHex) : undefined;
+    const pub = typeof v.pubKeyHex === 'string' ? unhex(v.pubKeyHex) : undefined;
+    const id = String(v.id);
+    switch (v.op) {
+      case 'sign-roundtrip': {
+        const sig = pkg.sign(sep as never, body, priv!, inter);
+        assert.equal(hex(sig), v.expectedSigHex, id);
+        assert.equal(pkg.verify(sep as never, sig, body, pub!, inter), true, id);
+        if (v.derivedPubMustMatch) assert.equal(hex(ed25519.getPublicKey(priv!)), v.pubKeyHex, id);
+        break;
+      }
+      case 'verify-true':
+        assert.equal(pkg.verify(sep as never, unhex(String(v.sigHex)), body, pub!, inter), true, id); break;
+      case 'verify-false':
+        assert.equal(pkg.verify(sep as never, unhex(String(v.sigHex)), body, pub!, inter), false, id); break;
+      case 'verify-unknown-separator-false':
+        assert.equal(pkg.verify(String(v.rawSeparator) as never, unhex(String(v.sigHex)), body, pub!, inter), false, id); break;
+      case 'sign-must-throw':
+        assert.throws(() => pkg.sign((typeof v.rawSeparator === 'string' ? v.rawSeparator : sep) as never, body, priv!, inter), id); break;
+      case 'signed-bytes-golden':
+        assert.equal(hex(pkg.buildSignedBytes(sep as never, body, inter)), v.expectedSignedBytesHex, id); break;
+      default:
+        assert.fail(`unknown sign op ${String(v.op)} in ${id}`);
+    }
   }
 });
