@@ -25,6 +25,8 @@ export interface AnchorResult {
   contentBytes: number;
   /** When anchored (ISO 8601) */
   anchoredAt: string;
+  /** Wallet nonce bound into the create transaction, when available. */
+  nonce?: string;
 }
 
 export interface FetchResult {
@@ -129,7 +131,8 @@ export async function anchor(
   // Get current nonce — required for deterministic address derivation + as `options.nonce`
   // for createStorageProgram (the SDK's create-payload helper)
   const nonceInfo = await demos.getAddressNonce(address);
-  const nonce = typeof nonceInfo === 'number' ? nonceInfo : (typeof nonceInfo === 'object' && nonceInfo !== null && 'nonce' in nonceInfo ? Number((nonceInfo as { nonce: number }).nonce) : 0);
+  const nonce = typeof nonceInfo === 'number' ? nonceInfo : (typeof nonceInfo === 'object' && nonceInfo !== null && 'nonce' in nonceInfo ? Number((nonceInfo as { nonce: number }).nonce) : Number.NaN);
+  if (!Number.isSafeInteger(nonce) || nonce < 0) throw new Error('SR-2 anchor nonce is unavailable');
 
   // Derive the deterministic storage address — this is what the spec calls the SR-2 locator
   const storageAddress = StorageProgram.deriveStorageAddress(
@@ -240,6 +243,7 @@ export async function anchor(
     sizeBytes,
     contentBytes,
     anchoredAt: new Date().toISOString(),
+    nonce: String(nonce),
   };
 }
 
