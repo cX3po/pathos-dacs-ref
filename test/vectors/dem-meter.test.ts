@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
@@ -101,6 +101,74 @@ test('partial tail fails closed, blocks record, and repair restores the guarded 
   assert.deepEqual(meter.repair(), { rowCount: 1, meterHead: first.rowHash });
   assert.deepEqual(meter.read(), [first]);
   assert.equal(meter.record({ kind: 'tool-call', os: '8' }).prevRowHash, first.rowHash);
+});
+
+test('repair rolls back a complete uncommitted tail to the committed head', (t) => {
+  const { path, meter } = temporaryMeter(t);
+  const first = meter.record({ kind: 'seat-call', os: '7' });
+  const committedHead = readFileSync(`${path}.head`);
+  meter.record({ kind: 'tool-call', os: '8' });
+  writeFileSync(`${path}.head`, committedHead);
+
+  for (const operation of [() => meter.read(), () => meter.record({ kind: 'anchor', os: '9' })]) {
+    assert.throws(operation, (error: unknown) => (error as { code?: string }).code === 'head-mismatch');
+  }
+  assert.deepEqual(meter.repair(), { repaired: 'uncommitted-tail', removedRows: 1 });
+  assert.deepEqual(meter.read(), [first]);
+  assert.equal(readFileSync(path, 'utf8').trimEnd().split('\n').length, 1);
+
+  const next = meter.record({ kind: 'anchor', os: '9' });
+  assert.equal(next.prevRowHash, first.rowHash);
+  assert.deepEqual(meter.read(), [first, next]);
+});
+
+test('repair refuses a complete tail when the committed prefix does not match the head', (t) => {
+  const { path, meter } = temporaryMeter(t);
+  meter.record({ kind: 'seat-call', os: '7' });
+  const second = meter.record({ kind: 'tool-call', os: '8' });
+  writeFileSync(`${path}.head`, JSON.stringify({ rowCount: 1, meterHead: second.rowHash }));
+  assert.throws(() => meter.repair(),
+    (error: unknown) => (error as { code?: string }).code === 'meter-invalid');
+});
+
+test('meter lock recovers an old owner record', (t) => {
+  const { path, meter } = temporaryMeter(t);
+  writeFileSync(`${path}.lock`, JSON.stringify({
+    pid: process.pid, createdAt: Date.now() - 30_001, token: 'old-owner',
+  }));
+  assert.deepEqual(meter.read(), []);
+  assert.equal(existsSync(`${path}.lock`), false);
+});
+
+test('meter lock keeps a live foreign owner and fails with meter-busy', (t) => {
+  const { path, meter } = temporaryMeter(t);
+  writeFileSync(`${path}.lock`, JSON.stringify({
+    pid: process.pid, createdAt: Date.now(), token: 'live-owner',
+  }));
+  assert.throws(() => meter.read(),
+    (error: unknown) => (error as { code?: string }).code === 'meter-busy');
+  assert.equal((JSON.parse(readFileSync(`${path}.lock`, 'utf8')) as { token: string }).token, 'live-owner');
+});
+
+test('meter release never removes a replacement owner lock', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dem-meter-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'meter.jsonl');
+  const meter = createDemMeter({
+    path,
+    agent: 'seat-one',
+    now: () => {
+      writeFileSync(`${path}.lock`, JSON.stringify({
+        pid: process.pid, createdAt: Date.now(), token: 'replacement-owner',
+      }));
+      return T0;
+    },
+  });
+  meter.record({ kind: 'seat-call', os: '7' });
+  assert.equal(
+    (JSON.parse(readFileSync(`${path}.lock`, 'utf8')) as { token: string }).token,
+    'replacement-owner',
+  );
 });
 
 test('record rejects every malformed input rule', async (t) => {

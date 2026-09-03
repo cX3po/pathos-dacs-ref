@@ -103,7 +103,7 @@ export interface DemMeter {
     until: string;
   }): InvoiceDocument;
   read(): MeterRow[];
-  repair(): { rowCount: number; meterHead: string | null };
+  repair(): MeterHead | { repaired: 'uncommitted-tail'; removedRows: number };
 }
 
 const OS_RE = /^(?:0|[1-9]\d*)$/;
@@ -113,8 +113,10 @@ const CCI_RE = /^cci:(?:0x)?[0-9a-fA-F]{64}$/;
 const CANONICAL_CCI_RE = /^cci:(?:0x)?[0-9a-f]{64}$/;
 const LOCK_WAIT_MS = 2_000;
 const LOCK_RETRY_MS = 20;
+const LOCK_STALE_MS = 30_000;
 
 type MeterHead = { rowCount: number; meterHead: string | null };
+type MeterLockOwner = { pid: number; createdAt: number; token: string };
 
 function fail(code: MeterErrorCode, message: string): never {
   throw new DemMeterError(code, message);
@@ -302,25 +304,55 @@ function sleep(milliseconds: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
+function readLockOwner(path: string): MeterLockOwner | undefined {
+  try {
+    const value = JSON.parse(readFileSync(path, 'utf8')) as Partial<MeterLockOwner>;
+    if (!Number.isSafeInteger(value.pid) || (value.pid as number) <= 0 ||
+      !Number.isFinite(value.createdAt) || typeof value.token !== 'string') return undefined;
+    return value as MeterLockOwner;
+  } catch {
+    return undefined;
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
+}
+
 function acquireMeterLock(path: string): { release(): void } {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const lockPath = `${path}.lock`;
   const deadline = Date.now() + LOCK_WAIT_MS;
+  const owner: MeterLockOwner = { pid: process.pid, createdAt: Date.now(), token: randomUUID() };
+  const bytes = Buffer.from(JSON.stringify(owner), 'utf8');
+  let staleRecoveryAttempted = false;
   let fd: number | undefined;
   while (fd === undefined) {
     try {
       fd = openSync(lockPath, 'wx', 0o600);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const existing = readLockOwner(lockPath);
+      const stale = existing !== undefined &&
+        (!processIsAlive(existing.pid) || Date.now() - existing.createdAt > LOCK_STALE_MS);
+      if (stale && !staleRecoveryAttempted) {
+        staleRecoveryAttempted = true;
+        try { unlinkSync(lockPath); } catch (unlinkError) {
+          if ((unlinkError as NodeJS.ErrnoException).code !== 'ENOENT') throw unlinkError;
+        }
+        continue;
+      }
       if (Date.now() >= deadline) fail('meter-busy', 'dem meter lock could not be acquired');
       sleep(Math.min(LOCK_RETRY_MS, Math.max(1, deadline - Date.now())));
     }
   }
   try {
-    const token = Buffer.from(randomUUID(), 'utf8');
-    if (writeSync(fd, token, 0, token.length, null) !== token.length) {
-      fail('meter-io', 'dem meter lock write was incomplete');
-    }
+    writeAll(fd, bytes);
     fsyncSync(fd);
   } catch (error) {
     closeSync(fd);
@@ -332,6 +364,7 @@ function acquireMeterLock(path: string): { release(): void } {
   return { release() {
     if (released) return;
     released = true;
+    if (readLockOwner(lockPath)?.token !== owner.token) return;
     try { unlinkSync(lockPath); } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
@@ -341,6 +374,19 @@ function acquireMeterLock(path: string): { release(): void } {
 function writeAll(fd: number, bytes: Buffer): void {
   const written = writeSync(fd, bytes, 0, bytes.length, null);
   if (written !== bytes.length) fail('meter-io', 'dem meter write was incomplete');
+}
+
+function syncDirectory(path: string): void {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, 'r');
+    fsyncSync(fd);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'EINVAL' && code !== 'ENOSYS' && code !== 'ENOTSUP') throw error;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 function writeHeadAtomically(path: string, head: MeterHead): void {
@@ -354,6 +400,25 @@ function writeHeadAtomically(path: string, head: MeterHead): void {
     closeSync(fd);
     fd = undefined;
     renameSync(tempPath, headPath);
+    syncDirectory(dirname(headPath));
+  } catch (error) {
+    if (fd !== undefined) closeSync(fd);
+    try { unlinkSync(tempPath); } catch { /* best-effort cleanup */ }
+    throw error;
+  }
+}
+
+function rewriteLogAtomically(path: string, bytes: Buffer): void {
+  const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  let fd: number | undefined;
+  try {
+    fd = openSync(tempPath, 'wx', 0o600);
+    writeAll(fd, bytes);
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = undefined;
+    renameSync(tempPath, path);
+    syncDirectory(dirname(path));
   } catch (error) {
     if (fd !== undefined) closeSync(fd);
     try { unlinkSync(tempPath); } catch { /* best-effort cleanup */ }
@@ -509,28 +574,43 @@ export function createDemMeter(opts: {
     }
   }
 
-  function repair(): { rowCount: number; meterHead: string | null } {
+  function repair(): MeterHead | { repaired: 'uncommitted-tail'; removedRows: number } {
     const lease = acquireMeterLock(path);
     try {
       const bytes = readMeterBytes(path);
-      if (bytes.length === 0 || bytes.at(-1) === 0x0a) {
-        fail('meter-invalid', 'dem meter repair requires a partial trailing line');
-      }
-      const parsed = jsonLines(bytes, true);
+      const hasPartialTail = bytes.length > 0 && bytes.at(-1) !== 0x0a;
+      const parsed = jsonLines(bytes, hasPartialTail);
       const rows = parseRows(parsed.values);
       const head = parseHead(headPath);
-      if (head === undefined || head.rowCount !== rows.length ||
-        head.meterHead !== (rows.at(-1)?.rowHash ?? null)) {
-        fail('head-mismatch', 'dem meter intact prefix does not match the head file');
+      if (head === undefined) fail('meter-invalid', 'dem meter repair requires a valid head file');
+
+      if (hasPartialTail) {
+        if (head.rowCount !== rows.length || head.meterHead !== (rows.at(-1)?.rowHash ?? null)) {
+          fail('meter-invalid', 'dem meter intact prefix does not match the head file');
+        }
+        const fd = openSync(path, 'r+');
+        try {
+          ftruncateSync(fd, parsed.prefixBytes);
+          fsyncSync(fd);
+        } finally {
+          closeSync(fd);
+        }
+        return head;
       }
-      const fd = openSync(path, 'r+');
-      try {
-        ftruncateSync(fd, parsed.prefixBytes);
-        fsyncSync(fd);
-      } finally {
-        closeSync(fd);
+
+      if (rows.length > head.rowCount) {
+        const prefixHead = head.rowCount === 0 ? null : rows[head.rowCount - 1]?.rowHash;
+        if (prefixHead !== head.meterHead) {
+          fail('meter-invalid', 'dem meter committed prefix does not match the head file');
+        }
+        let prefixBytes = 0;
+        for (let index = 0; index < head.rowCount; index += 1) {
+          prefixBytes = bytes.indexOf(0x0a, prefixBytes) + 1;
+        }
+        rewriteLogAtomically(path, bytes.subarray(0, prefixBytes));
+        return { repaired: 'uncommitted-tail', removedRows: rows.length - head.rowCount };
       }
-      return head;
+      fail('meter-invalid', 'dem meter has no repairable tail');
     } finally {
       lease.release();
     }
