@@ -20,6 +20,7 @@ import {
   type FetchResult,
 } from '../../demos/storage.js';
 import { jcsHashHex } from '../../jcs.js';
+import type { DemMeter } from './dem-meter.js';
 
 export type { AppendPlan, LedgerData, ReceiptEntry } from '../../demos/receipt-ledger.js';
 
@@ -173,6 +174,7 @@ export async function createProofLedger(opts: {
   head?: { storageAddress: string };
   broadcastImpl?: BroadcastPlan;
   fetchAnchoredImpl?: typeof fetchAnchored;
+  meter?: { record: DemMeter['record'] };
 }): Promise<{
   plan(entry: ReceiptEntry): Promise<AppendPlan>;
   append(entry: ReceiptEntry): Promise<{
@@ -239,6 +241,11 @@ export async function createProofLedger(opts: {
     const ledger = ledgerFromPlan(appendPlan);
     const contentHash = jcsHashHex(record(appendPlan.payload, 'append plan payload').data);
     const broadcast = await broadcastImpl(opts.handle, appendPlan.payload);
+    opts.meter?.record({
+      kind: 'anchor',
+      os: typeof appendPlan.feeOS === 'string' ? appendPlan.feeOS : '0',
+      ref: appendPlan.storageAddress,
+    });
     latestAddress = appendPlan.storageAddress;
     latestEntryCount = ledger.entries.length;
     expectedContentHash = contentHash;

@@ -9,6 +9,7 @@ import type {
   PayDemSettlementRecoveryContext,
   SettleResult,
 } from './sdk-pay-dem-types.js';
+import type { DemMeter } from '../demos/dem-meter.js';
 
 export type {
   DemosNativeClient,
@@ -69,6 +70,7 @@ export interface PayDemCoreParams {
 }
 
 export interface PayDemCoreHooks {
+  meter?: { record: DemMeter['record'] };
   authorizeTransfer?: (ctx: {
     amountOs: bigint;
     rpcUrl: string;
@@ -226,6 +228,8 @@ export async function settlePayDemCore(
     finalityObservedAt,
     observedAt: finalityObservedAt,
   }) as SettlementEvidenceV1Payment;
+
+  hooks.meter?.record({ kind: 'transfer', os: captured.amountOs.toString(), ref: result.hash });
 
   return {
     ok: true,
