@@ -1,0 +1,823 @@
+{
+  "name": "pathos-dacs partner-kit conformance vectors",
+  "nonNormative": "NON-NORMATIVE sanity vectors extracted from pathos-dacs-ref. Passing them is NOT a DACS certification; the normative source is the DACS specification (KyneSys Labs / Demos Network).",
+  "declaredTotal": 49,
+  "sections": {
+    "canonical-accept": 22,
+    "canonical-reject": 5,
+    "domain-sep-sign": 12,
+    "drift-signed-scope": 10
+  },
+  "testKeyNote": "privKeyHex values are deterministic PUBLIC test vectors: sha256(\"pathos-dacs-partner-kit deterministic TEST key #1 — NOT A SECRET\") and sha256(\"pathos-dacs-partner-kit deterministic TEST key #2 — NOT A SECRET\"). Not secrets. Never use outside these vectors.",
+  "vectors": [
+    {
+      "id": "ca-ascii-basic",
+      "section": "canonical-accept",
+      "description": "plain ASCII object",
+      "input": {
+        "a": 1,
+        "b": "hello"
+      },
+      "canonicalUtf8Hex": "7b2261223a312c2262223a2268656c6c6f227d",
+      "expectedSha256": "d84ab9f85753473707229d00b92623f0f9a1b8b9bf69763fc5cfc692b56c236b"
+    },
+    {
+      "id": "ca-key-ordering",
+      "section": "canonical-accept",
+      "description": "keys supplied out of order hash identically (JCS sorts object keys)",
+      "input": {
+        "b": "hello",
+        "a": 1
+      },
+      "canonicalUtf8Hex": "7b2261223a312c2262223a2268656c6c6f227d",
+      "expectedSha256": "d84ab9f85753473707229d00b92623f0f9a1b8b9bf69763fc5cfc692b56c236b"
+    },
+    {
+      "id": "ca-nfc-precomposed",
+      "section": "canonical-accept",
+      "description": "string value: cafe with precomposed U+00E9 (NFC)",
+      "input": {
+        "name": "café"
+      },
+      "canonicalUtf8Hex": "7b226e616d65223a22636166c3a9227d",
+      "expectedSha256": "645fa443126a8954fc6d871912b8fc67bc2ee8feae417efe55546251962ca74d"
+    },
+    {
+      "id": "ca-nfd-decomposed",
+      "section": "canonical-accept",
+      "description": "string value: cafe as e + U+0301 (NFD) - MUST hash identically to NFC after CF-1 normalisation",
+      "input": {
+        "name": "café"
+      },
+      "canonicalUtf8Hex": "7b226e616d65223a22636166c3a9227d",
+      "expectedSha256": "645fa443126a8954fc6d871912b8fc67bc2ee8feae417efe55546251962ca74d"
+    },
+    {
+      "id": "ca-unicode-key-nfc",
+      "section": "canonical-accept",
+      "description": "object KEY in NFC form",
+      "input": {
+        "café": 1
+      },
+      "canonicalUtf8Hex": "7b22636166c3a9223a317d",
+      "expectedSha256": "4ba6f859a6604763e30e1afc74dd00bf3b245be58d902b5d1ae0eaa119e8a141"
+    },
+    {
+      "id": "ca-unicode-key-nfd",
+      "section": "canonical-accept",
+      "description": "object KEY in NFD form - MUST NOT hash identically to the NFC key. CF-1 normalises string VALUES only; RFC 8785 preserves member names as received and sorts their raw UTF-16 code units, so NFC and NFD names are distinct members. Previously this carried sameHashAs: 'unicode-key-nfc', which encoded our own key-normalisation defect (#270).",
+      "input": {
+        "café": 1
+      },
+      "canonicalUtf8Hex": "7b2263616665cc81223a317d",
+      "expectedSha256": "26a86d452316c9c5fbd357205471fe96854efae9c460b0497c3b512f66172d60"
+    },
+    {
+      "id": "ca-nfc-nfd-key-pair-distinct",
+      "section": "canonical-accept",
+      "description": "an object carrying BOTH the NFC and NFD spellings of the same word as member names is valid and canonicalises to TWO members, ordered by raw UTF-16 code units. This was a reject case ('nfc-key-collision') while we normalised member names — under CF-1 as written (string VALUES only) the two names never collide, so there is nothing to reject.",
+      "input": {
+        "café": 1,
+        "café": 2
+      },
+      "canonicalUtf8Hex": "7b2263616665cc81223a322c22636166c3a9223a317d",
+      "expectedSha256": "a2d154082182d12d601088ebd807c6aa696cd07ae4d8614ef552e6be956f9bef"
+    },
+    {
+      "id": "ca-number-integer",
+      "section": "canonical-accept",
+      "description": "integer value",
+      "input": {
+        "n": 42
+      },
+      "canonicalUtf8Hex": "7b226e223a34327d",
+      "expectedSha256": "4e0730f238f81de137ff27d89ec3bcc3ebadf95107661387df82043c4ec25475"
+    },
+    {
+      "id": "ca-safe-int-max",
+      "section": "canonical-accept",
+      "description": "Number.MAX_SAFE_INTEGER (2^53-1 = 9007199254740991) is the LARGEST accepted integer (boundary)",
+      "input": {
+        "n": 9007199254740991
+      },
+      "canonicalUtf8Hex": "7b226e223a393030373139393235343734303939317d",
+      "expectedSha256": "e1da48c6a6089f06ecb4e0a2259e658e3786b2420f52baccdf929ec6460d7b41"
+    },
+    {
+      "id": "ca-number-decimal",
+      "section": "canonical-accept",
+      "description": "in-range decimal value",
+      "input": {
+        "n": 0.5
+      },
+      "canonicalUtf8Hex": "7b226e223a302e357d",
+      "expectedSha256": "aec38c68ae9784cd6c9391c1d52335984c2722d6ec167168b08027566480962d"
+    },
+    {
+      "id": "ca-number-small-exponent",
+      "section": "canonical-accept",
+      "description": "small magnitude uses exponent form: 1e-7 -> \"1e-7\"",
+      "input": {
+        "n": 1e-7
+      },
+      "canonicalUtf8Hex": "7b226e223a31652d377d",
+      "expectedSha256": "747d6d23b64d1b2d579adb832b44de31c91c875bbef7a8e397f5d183a746b54b"
+    },
+    {
+      "id": "ca-number-shortest-roundtrip",
+      "section": "canonical-accept",
+      "description": "shortest round-trip: 0.1+0.2 -> \"0.30000000000000004\" (not \"0.3\")",
+      "input": {
+        "n": 0.30000000000000004
+      },
+      "canonicalUtf8Hex": "7b226e223a302e33303030303030303030303030303030347d",
+      "expectedSha256": "1d8a8e16d9ee625f1fb5ef505413efa212cc020b272ed0f9b3d3d81acf593fde"
+    },
+    {
+      "id": "ca-number-decimal-tenth",
+      "section": "canonical-accept",
+      "description": "decimal 0.1 -> \"0.1\" (no trailing/leading drift)",
+      "input": {
+        "n": 0.1
+      },
+      "canonicalUtf8Hex": "7b226e223a302e317d",
+      "expectedSha256": "c20c34ed16c837e86b4dcdb33f98c274c9f7da1231f64302082d2cd50743f951"
+    },
+    {
+      "id": "ca-number-negative-fraction",
+      "section": "canonical-accept",
+      "description": "negative fractional -> \"-1.5\"",
+      "input": {
+        "n": -1.5
+      },
+      "canonicalUtf8Hex": "7b226e223a2d312e357d",
+      "expectedSha256": "88937a1939eede07ce08e21d88358de627b6742adcaba9dc6de1bc7867414c12"
+    },
+    {
+      "id": "ca-string-control-char",
+      "section": "canonical-accept",
+      "description": "control char U+0001 -> lowercase \\u0001 escape",
+      "input": {
+        "s": "\u0001"
+      },
+      "canonicalUtf8Hex": "7b2273223a225c7530303031227d",
+      "expectedSha256": "8d4f0e5fe4a5bba1edb70f8fefc66bfede576b92884d96ea3f2e58f099712594"
+    },
+    {
+      "id": "ca-string-two-char-escapes",
+      "section": "canonical-accept",
+      "description": "tab + newline use two-char escapes \\t \\n (not \\u0009)",
+      "input": {
+        "s": "a\tb\nc"
+      },
+      "canonicalUtf8Hex": "7b2273223a22615c74625c6e63227d",
+      "expectedSha256": "99486c9a0bbba24d3bdd8fd5187058891418e01b79b0d68fcb95c8a0eea54be8"
+    },
+    {
+      "id": "ca-string-quote-backslash",
+      "section": "canonical-accept",
+      "description": "quote and backslash escape as \\\" and \\\\",
+      "input": {
+        "s": "a\"b\\c"
+      },
+      "canonicalUtf8Hex": "7b2273223a22615c22625c5c63227d",
+      "expectedSha256": "97a1049b950c4967857a84a892616be14cfa33824839b42b557d9299074e9ea6"
+    },
+    {
+      "id": "ca-string-emoji-nonbmp",
+      "section": "canonical-accept",
+      "description": "non-BMP emoji (U+1F600, surrogate pair) passes through as raw UTF-8, NOT escaped",
+      "input": {
+        "s": "😀"
+      },
+      "canonicalUtf8Hex": "7b2273223a22f09f9880227d",
+      "expectedSha256": "f9949e1006d1ca22bc0b60ea94f09779f11a8f0a29bae250fc7ab313d879f5e7"
+    },
+    {
+      "id": "ca-empty-object",
+      "section": "canonical-accept",
+      "description": "empty object -> {}",
+      "input": {},
+      "canonicalUtf8Hex": "7b7d",
+      "expectedSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "id": "ca-empty-array",
+      "section": "canonical-accept",
+      "description": "empty array value -> {\"a\":[]}",
+      "input": {
+        "a": []
+      },
+      "canonicalUtf8Hex": "7b2261223a5b5d7d",
+      "expectedSha256": "50e8660084976a10f0b3b9b3a6352d5881cbd219b5587a26224971a60ff2cc55"
+    },
+    {
+      "id": "ca-nested",
+      "section": "canonical-accept",
+      "description": "nested object + array (array order preserved, object keys sorted)",
+      "input": {
+        "outer": {
+          "z": [
+            3,
+            2,
+            1
+          ],
+          "a": true
+        },
+        "list": [
+          "x",
+          "y"
+        ]
+      },
+      "canonicalUtf8Hex": "7b226c697374223a5b2278222c2279225d2c226f75746572223a7b2261223a747275652c227a223a5b332c322c315d7d7d",
+      "expectedSha256": "048f40344a297ef97cc63b6ad6f846da8d5e5b9fb33b9a6cb0ac67cc796747cc"
+    },
+    {
+      "id": "ca-key-ordering-nonascii",
+      "section": "canonical-accept",
+      "description": "keys sorted by UTF-16 code unit: a < b < ä (U+00E4) — non-ASCII sorts AFTER ASCII",
+      "input": {
+        "b": 1,
+        "ä": 2,
+        "a": 3
+      },
+      "canonicalUtf8Hex": "7b2261223a332c2262223a312c22c3a4223a327d",
+      "expectedSha256": "73e74eb9fe924b1e65bb9dffd62ce97ad97a218a2e83b9f1eb5f58c31e20d137"
+    },
+    {
+      "id": "cr-number-over-2pow53",
+      "section": "canonical-reject",
+      "description": "integer === 2^53 (MAX_SAFE_INTEGER+1) is outside the IEEE-754 safe-integer range and MUST be rejected",
+      "constructorId": "number-over-2pow53",
+      "reason": "safe-integer-range"
+    },
+    {
+      "id": "cr-number-large-magnitude-over-range",
+      "section": "canonical-reject",
+      "description": "large-magnitude number outside the IEEE-754 safe range (1e300) MUST be rejected (bound is on magnitude)",
+      "constructorId": "number-large-magnitude-over-range",
+      "reason": "safe-integer-range"
+    },
+    {
+      "id": "cr-number-exponent-over-range",
+      "section": "canonical-reject",
+      "description": "1e21 is valid RFC 8785 JCS but MUST be rejected under the DACS §B.2 safe-integer bound (deliberate DACS tightening)",
+      "constructorId": "number-exponent-over-range",
+      "reason": "safe-integer-range"
+    },
+    {
+      "id": "cr-lone-surrogate",
+      "section": "canonical-reject",
+      "description": "unpaired UTF-16 high surrogate has no valid UTF-8 encoding",
+      "constructorId": "lone-surrogate",
+      "reason": "unpaired-surrogate"
+    },
+    {
+      "id": "cr-bigint",
+      "section": "canonical-reject",
+      "description": "BigInt is not JSON-encodable",
+      "constructorId": "bigint",
+      "reason": "bigint-not-encodable"
+    },
+    {
+      "id": "ds-s1-bundle-roundtrip",
+      "op": "sign-roundtrip",
+      "separatorRef": "DOMAIN_SEPARATORS.BUNDLE",
+      "description": "sign+verify roundtrip under dacs-bundle:v1: — signature must equal the reference-generated one (cross-impl ed25519 determinism)",
+      "bodyUtf8": "partner-kit sign vector S1 body (dacs-bundle roundtrip)",
+      "privKeyHex": "edc071801b34191287e098a2c961cee34aa2f6f4764df377aa3dc8d4807734d1",
+      "pubKeyHex": "8c7c3cfef3b54350a5ece306e447556695eec25b873a188dc6c21d18e2999620",
+      "expectedSigHex": "3dd70f873017d6e1231c45dfa174461d239ec4888b55f9aea06153aace478d044b7232bac15a48c9064731a19694b67d812f1fb5e02d427ac0b8acd3d8e8e304",
+      "derivedPubMustMatch": true,
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s2-wrong-separator-false",
+      "op": "verify-false",
+      "separatorRef": "DOMAIN_SEPARATORS.REPUTATION_ATTESTATION",
+      "description": "a valid dacs-bundle signature MUST NOT verify under a different registered separator (domain separation is load-bearing)",
+      "bodyUtf8": "partner-kit sign vector S1 body (dacs-bundle roundtrip)",
+      "pubKeyHex": "8c7c3cfef3b54350a5ece306e447556695eec25b873a188dc6c21d18e2999620",
+      "sigHex": "3dd70f873017d6e1231c45dfa174461d239ec4888b55f9aea06153aace478d044b7232bac15a48c9064731a19694b67d812f1fb5e02d427ac0b8acd3d8e8e304",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s3-unknown-separator-sign-throws",
+      "op": "sign-must-throw",
+      "rawSeparator": "dacs-unregistered:v1:",
+      "description": "sign() MUST refuse a separator outside the §B.7 closed registry (SIG-1..4 closure)",
+      "bodyUtf8": "any body",
+      "privKeyHex": "edc071801b34191287e098a2c961cee34aa2f6f4764df377aa3dc8d4807734d1",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s4-unknown-separator-verify-false",
+      "op": "verify-unknown-separator-false",
+      "rawSeparator": "dacs-unregistered:v1:",
+      "description": "verify() MUST return false (not throw) on an unknown separator",
+      "bodyUtf8": "partner-kit sign vector S1 body (dacs-bundle roundtrip)",
+      "pubKeyHex": "8c7c3cfef3b54350a5ece306e447556695eec25b873a188dc6c21d18e2999620",
+      "sigHex": "3dd70f873017d6e1231c45dfa174461d239ec4888b55f9aea06153aace478d044b7232bac15a48c9064731a19694b67d812f1fb5e02d427ac0b8acd3d8e8e304",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s5-legacy-read-verifies",
+      "op": "verify-true",
+      "separatorRef": "LEGACY_READ_SEPARATORS.BUNDLE_DACS5",
+      "description": "a pre-cutover artifact sealed under dacs5-bundle:v1: MUST still verify (§10.4.2 backwards-compatible READ)",
+      "bodyUtf8": "legacy bundle body",
+      "pubKeyHex": "8c7c3cfef3b54350a5ece306e447556695eec25b873a188dc6c21d18e2999620",
+      "sigHex": "a27ab54d12fa698fa109f56247d8b200ad485bb8666f9ddbde3c04f3389577152dfff011db24d0fe15fd804623e75ac97dbfd89d4ebfb324d89060776a932e03",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s6-legacy-emission-refused",
+      "op": "sign-must-throw",
+      "separatorRef": "LEGACY_READ_SEPARATORS.BUNDLE_DACS5",
+      "description": "sign() MUST refuse to EMIT under a read-only legacy separator (emission closure)",
+      "bodyUtf8": "legacy bundle body",
+      "privKeyHex": "edc071801b34191287e098a2c961cee34aa2f6f4764df377aa3dc8d4807734d1",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s7-dacs-x-roundtrip",
+      "op": "sign-roundtrip",
+      "separatorRef": "DACS_X_EXTENSION_SEPARATORS.CLAIM_COMMIT",
+      "description": "SIG-4 dacs-x extension separator signs and verifies like a registry entry",
+      "bodyUtf8": "dacs-x claim commit body",
+      "privKeyHex": "cbf668588d0ff3752f6f6814bc5aed88bf4293961b0948b51ba0f898a430ab46",
+      "pubKeyHex": "643660c541192f7d562f2be03a5bd7aceb9f4942e0ce03afa97c02cbe28374e5",
+      "expectedSigHex": "3ffa61714d1c0039514298f5fd838e12b6832df416072f7380abe20068ca494e4ed50a3557d99549c4abd06b4c137d8fd7785d445ecfa7df3e49a6a16decad07",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s8-pathos-ext-roundtrip",
+      "op": "sign-roundtrip",
+      "separatorRef": "PATHOS_EXTENSION_SEPARATORS.CROSS_VPS_ATTESTATION",
+      "description": "PATH-OS Labs extension separator (non-normative sibling map) signs and verifies",
+      "bodyUtf8": "abc123responsehash",
+      "privKeyHex": "cbf668588d0ff3752f6f6814bc5aed88bf4293961b0948b51ba0f898a430ab46",
+      "pubKeyHex": "643660c541192f7d562f2be03a5bd7aceb9f4942e0ce03afa97c02cbe28374e5",
+      "expectedSigHex": "0a4cef47ab69f0b2200910dfe13e061d373ff679593c76c1d514195e769c4456ee70c4cc389df1e05c208e4d3c9059a061b439bd05ed07160107593ab976bd05",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s9-composite-intermediate",
+      "op": "sign-roundtrip",
+      "separatorRef": "DOMAIN_SEPARATORS.SESSION_BINDING",
+      "description": "composite form: signed_bytes = sep || intermediateHash || body (§6.3.2 session binding)",
+      "bodyUtf8": "composite body",
+      "intermediateHashHex": "56e8d8f8eb6707fa7e45a6782f9024d7ac6943c859977dc86246f26b680c988f",
+      "privKeyHex": "edc071801b34191287e098a2c961cee34aa2f6f4764df377aa3dc8d4807734d1",
+      "pubKeyHex": "8c7c3cfef3b54350a5ece306e447556695eec25b873a188dc6c21d18e2999620",
+      "expectedSigHex": "ba1377b4f394a071568e43d298507cb9a918c12f254f1a4211df79d4df7f20033c8ae8cff0929d8eaac24ab74dd35922ccf2995c24007b6d0afc6d4d13dfec04",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s10-tampered-body-false",
+      "op": "verify-false",
+      "separatorRef": "DOMAIN_SEPARATORS.BUNDLE",
+      "description": "tampered body MUST NOT verify",
+      "bodyUtf8": "partner-kit sign vector S1 body (dacs-bundle roundtrip) (tampered)",
+      "pubKeyHex": "8c7c3cfef3b54350a5ece306e447556695eec25b873a188dc6c21d18e2999620",
+      "sigHex": "3dd70f873017d6e1231c45dfa174461d239ec4888b55f9aea06153aace478d044b7232bac15a48c9064731a19694b67d812f1fb5e02d427ac0b8acd3d8e8e304",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s11-tampered-sig-false",
+      "op": "verify-false",
+      "separatorRef": "DOMAIN_SEPARATORS.BUNDLE",
+      "description": "tampered signature MUST NOT verify",
+      "bodyUtf8": "partner-kit sign vector S1 body (dacs-bundle roundtrip)",
+      "pubKeyHex": "8c7c3cfef3b54350a5ece306e447556695eec25b873a188dc6c21d18e2999620",
+      "sigHex": "c2d70f873017d6e1231c45dfa174461d239ec4888b55f9aea06153aace478d044b7232bac15a48c9064731a19694b67d812f1fb5e02d427ac0b8acd3d8e8e304",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "ds-s12-signed-bytes-golden",
+      "op": "signed-bytes-golden",
+      "separatorRef": "DOMAIN_SEPARATORS.BUNDLE",
+      "description": "byte-exact signed_bytes layout: sep || intermediateHash || body",
+      "bodyUtf8": "golden",
+      "intermediateHashHex": "9438a723c6776f4dcc3e1ce89d66d2343df4d329d648b39c8a317e04047b4350",
+      "expectedSignedBytesHex": "646163732d62756e646c653a76313a9438a723c6776f4dcc3e1ce89d66d2343df4d329d648b39c8a317e04047b4350676f6c64656e",
+      "section": "domain-sep-sign"
+    },
+    {
+      "id": "dr-d1-bundle-golden-match",
+      "section": "drift-signed-scope",
+      "op": "evaluate",
+      "description": "real reference fixture reproduces its R5-1 signed-scope bundleHash (match)",
+      "fixtureName": "attestation-bundle-0004.json",
+      "artifact": {
+        "bundleVersion": "1",
+        "jobId": "DACS-VERIFY-0004",
+        "outcome": "completed",
+        "anchoredByRole": "buyer",
+        "listingRef": {
+          "listingId": "listing-dacs-verify-0004",
+          "version": 1,
+          "contentHash": "523fd847aa12527534937d20d2f73453d9efa65242b2302994534020a21dc3e0"
+        },
+        "agreementRef": {
+          "kind": "dacs-3-agreement",
+          "id": "agreement-dacs-verify-0004",
+          "contentHash": "0aa1c81b07e746755bcbb496da6bcb75b9c25ecc15d7bed9e32105780001898d"
+        },
+        "parties": [
+          {
+            "role": "buyer",
+            "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+            "primaryClaim": "did:demos:buyer"
+          },
+          {
+            "role": "seller",
+            "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+            "primaryClaim": "did:demos:seller"
+          }
+        ],
+        "phaseSummary": [
+          {
+            "index": 0,
+            "kind": "vet-counterparty",
+            "outcome": "ok",
+            "attestationRef": {
+              "kind": "dacs-4-evidence",
+              "id": "vet-dacs-verify-0004",
+              "contentHash": "d8a683311ffd2a5e2d01fede4b7501a089758b1fea7b84066af1ed45f8d48eb8"
+            }
+          },
+          {
+            "index": 1,
+            "kind": "settle-testnet",
+            "outcome": "ok",
+            "txRefs": [
+              {
+                "rail": "demos-testnet",
+                "txHash": "demos-testnet:tx-dacs-verify-0004-settle",
+                "kind": "settlement"
+              }
+            ],
+            "attestationRef": {
+              "kind": "dacs-4-evidence",
+              "id": "settlement-dacs-verify-0004",
+              "contentHash": "8d0b400b4530267381a5d2d8bdc052b0517097d132c6b3b69e9c2d6f421a758c"
+            }
+          }
+        ],
+        "vetRecords": [
+          {
+            "kind": "dacs-4-evidence",
+            "id": "vet-dacs-verify-0004",
+            "contentHash": "d8a683311ffd2a5e2d01fede4b7501a089758b1fea7b84066af1ed45f8d48eb8"
+          }
+        ],
+        "settlementEvidence": [
+          {
+            "kind": "dacs-4-evidence",
+            "id": "settlement-dacs-verify-0004",
+            "contentHash": "8d0b400b4530267381a5d2d8bdc052b0517097d132c6b3b69e9c2d6f421a758c"
+          }
+        ],
+        "recipeRegistryVersion": 1,
+        "railRegistryVersion": 1,
+        "finalisedAt": 1780004000000,
+        "signatures": [
+          {
+            "party": "did:demos:buyer",
+            "algorithm": "ed25519",
+            "value": "oYyPHgz8ehrMsCLeSDdruuHDEsLbHZrTcIearhk6K2w9aiBgx7CdGOYHbJcr3imaPr4q21YGUiE_xSh-bT9wDA"
+          },
+          {
+            "party": "did:demos:seller",
+            "algorithm": "ed25519",
+            "value": "TiGFAa9ypWi4gMg-rDunkkipyNYe-asHLRF1m6Q6RFfptr7WnqULWDpCzWTjY-kaEjkrngAxJO7iRM4Jlga6AA"
+          }
+        ]
+      },
+      "expectedHash": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba",
+      "expectRow": {
+        "hashStatus": "match",
+        "structurallyValid": true,
+        "decision": "accept",
+        "ourHash": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba"
+      }
+    },
+    {
+      "id": "dr-d2-bundle-drift-detected",
+      "section": "drift-signed-scope",
+      "op": "evaluate",
+      "description": "a mutated bundle against the golden expected hash MUST report drift",
+      "fixtureName": "attestation-bundle-0004-mutated.json",
+      "artifact": {
+        "bundleVersion": "1",
+        "jobId": "DACS-VERIFY-0004-MUTATED",
+        "outcome": "completed",
+        "anchoredByRole": "buyer",
+        "listingRef": {
+          "listingId": "listing-dacs-verify-0004",
+          "version": 1,
+          "contentHash": "523fd847aa12527534937d20d2f73453d9efa65242b2302994534020a21dc3e0"
+        },
+        "agreementRef": {
+          "kind": "dacs-3-agreement",
+          "id": "agreement-dacs-verify-0004",
+          "contentHash": "0aa1c81b07e746755bcbb496da6bcb75b9c25ecc15d7bed9e32105780001898d"
+        },
+        "parties": [
+          {
+            "role": "buyer",
+            "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+            "primaryClaim": "did:demos:buyer"
+          },
+          {
+            "role": "seller",
+            "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+            "primaryClaim": "did:demos:seller"
+          }
+        ],
+        "phaseSummary": [
+          {
+            "index": 0,
+            "kind": "vet-counterparty",
+            "outcome": "ok",
+            "attestationRef": {
+              "kind": "dacs-4-evidence",
+              "id": "vet-dacs-verify-0004",
+              "contentHash": "d8a683311ffd2a5e2d01fede4b7501a089758b1fea7b84066af1ed45f8d48eb8"
+            }
+          },
+          {
+            "index": 1,
+            "kind": "settle-testnet",
+            "outcome": "ok",
+            "txRefs": [
+              {
+                "rail": "demos-testnet",
+                "txHash": "demos-testnet:tx-dacs-verify-0004-settle",
+                "kind": "settlement"
+              }
+            ],
+            "attestationRef": {
+              "kind": "dacs-4-evidence",
+              "id": "settlement-dacs-verify-0004",
+              "contentHash": "8d0b400b4530267381a5d2d8bdc052b0517097d132c6b3b69e9c2d6f421a758c"
+            }
+          }
+        ],
+        "vetRecords": [
+          {
+            "kind": "dacs-4-evidence",
+            "id": "vet-dacs-verify-0004",
+            "contentHash": "d8a683311ffd2a5e2d01fede4b7501a089758b1fea7b84066af1ed45f8d48eb8"
+          }
+        ],
+        "settlementEvidence": [
+          {
+            "kind": "dacs-4-evidence",
+            "id": "settlement-dacs-verify-0004",
+            "contentHash": "8d0b400b4530267381a5d2d8bdc052b0517097d132c6b3b69e9c2d6f421a758c"
+          }
+        ],
+        "recipeRegistryVersion": 1,
+        "railRegistryVersion": 1,
+        "finalisedAt": 1780004000000,
+        "signatures": [
+          {
+            "party": "did:demos:buyer",
+            "algorithm": "ed25519",
+            "value": "oYyPHgz8ehrMsCLeSDdruuHDEsLbHZrTcIearhk6K2w9aiBgx7CdGOYHbJcr3imaPr4q21YGUiE_xSh-bT9wDA"
+          },
+          {
+            "party": "did:demos:seller",
+            "algorithm": "ed25519",
+            "value": "TiGFAa9ypWi4gMg-rDunkkipyNYe-asHLRF1m6Q6RFfptr7WnqULWDpCzWTjY-kaEjkrngAxJO7iRM4Jlga6AA"
+          }
+        ]
+      },
+      "expectedHash": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba",
+      "expectRow": {
+        "hashStatus": "drift",
+        "structurallyValid": true,
+        "decision": "accept"
+      }
+    },
+    {
+      "id": "dr-d3-bundle-struct-fail",
+      "section": "drift-signed-scope",
+      "op": "evaluate",
+      "description": "a bundleVersion file missing jobId/parties MUST be structurally rejected",
+      "fixtureName": "broken-bundle.json",
+      "artifact": {
+        "bundleVersion": "1",
+        "outcome": "completed"
+      },
+      "expectRow": {
+        "structurallyValid": false,
+        "decision": "reject",
+        "hashStatus": "computed"
+      }
+    },
+    {
+      "id": "dr-d4-settlement-golden-match",
+      "section": "drift-signed-scope",
+      "op": "evaluate",
+      "description": "DACS-4 evidenceHash = sha256(JCS(evidence minus signature)) reproduces (match)",
+      "fixtureName": "settlement-golden.json",
+      "artifact": {
+        "evidenceVersion": "1",
+        "jobId": "pk-settle-1",
+        "outcome": "completed",
+        "amount": "42",
+        "rail": "demos-testnet",
+        "signature": "stripped-from-signed-scope"
+      },
+      "expectedHash": "46f25e662d76bbd49c7fe189398a562f408951373185d3e9c237ef9f19d3d490",
+      "expectRow": {
+        "hashStatus": "match",
+        "structurallyValid": true,
+        "decision": "accept",
+        "kind": "settlement",
+        "ourHash": "46f25e662d76bbd49c7fe189398a562f408951373185d3e9c237ef9f19d3d490"
+      }
+    },
+    {
+      "id": "dr-d5-settlement-drift",
+      "section": "drift-signed-scope",
+      "op": "evaluate",
+      "description": "a mutated settlement evidence against the golden expected hash MUST report drift",
+      "fixtureName": "settlement-mutated.json",
+      "artifact": {
+        "evidenceVersion": "1",
+        "jobId": "pk-settle-1",
+        "outcome": "completed",
+        "amount": "43",
+        "rail": "demos-testnet",
+        "signature": "stripped-from-signed-scope"
+      },
+      "expectedHash": "46f25e662d76bbd49c7fe189398a562f408951373185d3e9c237ef9f19d3d490",
+      "expectRow": {
+        "hashStatus": "drift",
+        "structurallyValid": true,
+        "decision": "accept",
+        "kind": "settlement"
+      }
+    },
+    {
+      "id": "dr-d6-settlement-struct-fail",
+      "section": "drift-signed-scope",
+      "op": "evaluate",
+      "description": "a SettlementEvidence missing jobId MUST be structurally rejected",
+      "fixtureName": "settlement-broken.json",
+      "artifact": {
+        "evidenceVersion": "1",
+        "amount": "42"
+      },
+      "expectRow": {
+        "structurallyValid": false,
+        "decision": "reject"
+      }
+    },
+    {
+      "id": "dr-d7-non-dacs-skipped",
+      "section": "drift-signed-scope",
+      "op": "evaluate",
+      "description": "a non-DACS JSON file in discovery mode is SKIPPED, never a failure",
+      "fixtureName": "not-dacs.json",
+      "artifact": {
+        "hello": "world",
+        "note": "neither bundleVersion nor evidenceVersion"
+      },
+      "expectRow": {
+        "hashStatus": "skipped",
+        "structurallyValid": true,
+        "decision": "skipped"
+      }
+    },
+    {
+      "id": "dr-d8-non-dacs-expected-fails-closed",
+      "section": "drift-signed-scope",
+      "op": "evaluate",
+      "description": "a manifest-expected hash on a non-DACS file MUST fail closed (cannot verify ⇒ reject)",
+      "fixtureName": "not-dacs.json",
+      "artifact": {
+        "hello": "world",
+        "note": "neither bundleVersion nor evidenceVersion"
+      },
+      "expectedHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "expectRow": {
+        "structurallyValid": false,
+        "decision": "reject"
+      }
+    },
+    {
+      "id": "dr-d9-expected-but-missing",
+      "section": "drift-signed-scope",
+      "op": "summarise-missing",
+      "description": "a manifest entry with no matching fixture MUST fail the run (expected-but-missing)",
+      "artifacts": {
+        "attestation-bundle-0004.json": {
+          "bundleVersion": "1",
+          "jobId": "DACS-VERIFY-0004",
+          "outcome": "completed",
+          "anchoredByRole": "buyer",
+          "listingRef": {
+            "listingId": "listing-dacs-verify-0004",
+            "version": 1,
+            "contentHash": "523fd847aa12527534937d20d2f73453d9efa65242b2302994534020a21dc3e0"
+          },
+          "agreementRef": {
+            "kind": "dacs-3-agreement",
+            "id": "agreement-dacs-verify-0004",
+            "contentHash": "0aa1c81b07e746755bcbb496da6bcb75b9c25ecc15d7bed9e32105780001898d"
+          },
+          "parties": [
+            {
+              "role": "buyer",
+              "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+              "primaryClaim": "did:demos:buyer"
+            },
+            {
+              "role": "seller",
+              "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+              "primaryClaim": "did:demos:seller"
+            }
+          ],
+          "phaseSummary": [
+            {
+              "index": 0,
+              "kind": "vet-counterparty",
+              "outcome": "ok",
+              "attestationRef": {
+                "kind": "dacs-4-evidence",
+                "id": "vet-dacs-verify-0004",
+                "contentHash": "d8a683311ffd2a5e2d01fede4b7501a089758b1fea7b84066af1ed45f8d48eb8"
+              }
+            },
+            {
+              "index": 1,
+              "kind": "settle-testnet",
+              "outcome": "ok",
+              "txRefs": [
+                {
+                  "rail": "demos-testnet",
+                  "txHash": "demos-testnet:tx-dacs-verify-0004-settle",
+                  "kind": "settlement"
+                }
+              ],
+              "attestationRef": {
+                "kind": "dacs-4-evidence",
+                "id": "settlement-dacs-verify-0004",
+                "contentHash": "8d0b400b4530267381a5d2d8bdc052b0517097d132c6b3b69e9c2d6f421a758c"
+              }
+            }
+          ],
+          "vetRecords": [
+            {
+              "kind": "dacs-4-evidence",
+              "id": "vet-dacs-verify-0004",
+              "contentHash": "d8a683311ffd2a5e2d01fede4b7501a089758b1fea7b84066af1ed45f8d48eb8"
+            }
+          ],
+          "settlementEvidence": [
+            {
+              "kind": "dacs-4-evidence",
+              "id": "settlement-dacs-verify-0004",
+              "contentHash": "8d0b400b4530267381a5d2d8bdc052b0517097d132c6b3b69e9c2d6f421a758c"
+            }
+          ],
+          "recipeRegistryVersion": 1,
+          "railRegistryVersion": 1,
+          "finalisedAt": 1780004000000,
+          "signatures": [
+            {
+              "party": "did:demos:buyer",
+              "algorithm": "ed25519",
+              "value": "oYyPHgz8ehrMsCLeSDdruuHDEsLbHZrTcIearhk6K2w9aiBgx7CdGOYHbJcr3imaPr4q21YGUiE_xSh-bT9wDA"
+            },
+            {
+              "party": "did:demos:seller",
+              "algorithm": "ed25519",
+              "value": "TiGFAa9ypWi4gMg-rDunkkipyNYe-asHLRF1m6Q6RFfptr7WnqULWDpCzWTjY-kaEjkrngAxJO7iRM4Jlga6AA"
+            }
+          ]
+        }
+      },
+      "manifest": {
+        "attestation-bundle-0004.json": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba",
+        "missing-fixture.json": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectMissingCount": 1,
+      "expectFailClosed": true
+    },
+    {
+      "id": "dr-d10-malformed-manifest-throws",
+      "section": "drift-signed-scope",
+      "op": "manifest-must-throw",
+      "description": "a manifest with a non-sha256 value MUST be refused up front (fail-closed), never read as drift",
+      "manifest": {
+        "x.json": "not-a-hash"
+      }
+    }
+  ]
+}

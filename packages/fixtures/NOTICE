@@ -1,0 +1,24 @@
+THIRD-PARTY AND PROJECT NOTICES
+
+The following files are covered by the PATH-OS MIT notice in LICENSE:
+
+- README.md
+- NOTICE
+- index.json
+- package.json
+- data/c1/conformance/implementation-manifests/pathos-dacs-ref.json
+- data/c1/conformance/partner-kit/LICENSE
+- data/c1/conformance/partner-kit/MANIFEST.json
+- data/c1/conformance/partner-kit/README.md
+- data/c1/conformance/partner-kit/vectors.json
+- data/c1/docs/c1-conformance-bridge.md
+- data/htlc/conformance/security-vectors/convergence-harness/corpus/attestation-bundle-htlc9.json
+- data/settlement/conformance/security-vectors/sb2-settlement-uniqueness/vectors/sb2-settlement-uniqueness-v0.1.json
+- data/settlement/conformance/security-vectors/settlement-v1/vectors/settlement-v1-v0.1.json
+- data/settlement/dacs-standard/README.md
+
+The following files are covered by the DACS-Standard MIT notice in LICENSE:
+
+- data/settlement/dacs-standard/fixtures/settlement-evidence-delivery-success.json
+- data/settlement/dacs-standard/fixtures/settlement-evidence-payment-success.json
+- data/settlement/dacs-standard/vectors/security/bundle-settlement-evidence-bijection-v0.4.json
