@@ -77,7 +77,10 @@ async function buildAt(output: string): Promise<void> {
     for (const vector of kept) {
       if ('privKeyHex' in vector) throw new Error(`canonical vector ${String(vector.id)} carries key material`);
     }
-    const derived = jcs({
+    // JSON.stringify keeps the source's member order, so vectors that exercise
+    // out-of-order keys still arrive out of order; the document is deterministic
+    // because it is a pure function of the parsed source bytes.
+    const derived = JSON.stringify({
       v: 'pathos-dacs-jcs-canonical-vectors:0.1',
       name: sourceDoc.name,
       nonNormative: sourceDoc.nonNormative ?? true,
