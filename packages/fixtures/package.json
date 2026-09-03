@@ -1,0 +1,13 @@
+{
+  "name": "@pathos-labs/dacs-fixtures",
+  "version": "0.1.0",
+  "description": "Deterministic data-only C1, settlement, and HTLC fixtures for DACS interoperability",
+  "license": "MIT",
+  "private": false,
+  "files": [
+    "data",
+    "index.json",
+    "README.md",
+    "LICENSE"
+  ]
+}

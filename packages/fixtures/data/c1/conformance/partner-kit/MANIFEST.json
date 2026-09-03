@@ -1,0 +1,144 @@
+{
+  "kit": {
+    "name": "pathos-dacs partner kit",
+    "version": "1.0.0",
+    "license": "MIT",
+    "nonNormative": "This kit is a NON-NORMATIVE conformance sanity kit. Passing its 49 vectors means this environment reproduces pathos-dacs-ref reference behavior on the covered surfaces only — it is NOT a full DACS conformance certification.",
+    "attribution": "DACS — Demos Agent Commerce Standards — is specified upstream by KyneSys Labs / the Demos Network project. RFC 8785 (JCS) is an IETF specification. Reference signatures were generated via @noble/ed25519 (MIT); the in-repo canonicalization oracle uses the canonicalize npm package (Apache-2.0, not vendored here)."
+  },
+  "files": {
+    "jcs.mjs": "b994e24625df82d2c5bb1c230e82d780295c20578aeead5c817008df3e580a28",
+    "domain-sep.mjs": "666dc2044bc75b8e6d20098443ef31d8c7f672475eb0d51817f1f8a2cb673893",
+    "sign.mjs": "5873bef2e3c0446f2b96c55d7a23713f2ae215c2dfa7e3273f011945cc48c303",
+    "drift.mjs": "b675e8f1c9c4a8c961505a262f0878342969b38c7b2dd871be49d7d2a5179a0d",
+    "run-conformance.mjs": "3d09cd212bf7ae3027d92a811a9fdcaee2f1be0b496b1b04bed50ed0687eb065",
+    "vectors.json": "f7c6d0de62b399c746c263fc9ed1f8219f156580952da7fc67f763f8cb4424a3",
+    "README.md": "e84318cbed6f815ddb2814bac922f8189bc31ee3a9c3d2b629c27917108002c4",
+    "LICENSE": "9fcf01a79374854a481894661ddf2a9c8a85437e2d87c03735aaf560981ee894",
+    "generate.mts": "1008733800f9a3e0713cc0ab87f78bb5fb422f0b4dff455867d81e56ee91caea"
+  },
+  "provenance": {
+    "repository": "pathos-dacs-ref",
+    "branch": "fix/jcs-member-name-preservation",
+    "sourceCommit": "640efbd1be2ecf0edf17a129e4cf9dfe19e2e09a",
+    "sourceTreeClean": true,
+    "sourceFiles": {
+      "src/jcs.ts": "6538a48da695c6a6eb80c95452da23c2b089b3b292e8565db8001587a4b3a5d4",
+      "src/domain-sep.ts": "19c051ac0376bf7b9a8e1a0db93305424ea4a703aacb26d2bd2fca409c9dfa91",
+      "src/lib/sign.ts": "42d4e911754010df9a5a8c49d9bf4e7d2135a6251da67ee2cde9ef603e706db2",
+      "src/lib/dacs-drift.ts": "c28bfdf05553c4cb7706155a52b4d9171cfe8a8bea677967438675336af90482",
+      "src/lib/bundle-signed-scope-v1.ts": "9927ad1735d72f9f6e812fea670a20e5880719a3a88f85705287c4155c837bc0",
+      "dacs-drift.mts": "efa8b43c93451d172a97bd3990d1e38d368dbe85df2af36b2a31b629738b1db5",
+      "vectors/canonical-form/canonical-form-vectors.json": "d6ce1bcc5fa01e9a636905518316d7adf37898437be6c0e9a0cd2d5349d43a2e",
+      "vectors/canonical-form/cases.ts": "b379ba8497edf7028142e4ccdf14afe0794cc7a236dfbe9a63fc320baab9343e",
+      "test/vectors/dacs-x-fixtures/attestation-bundle-0004.json": "aa12856c1356fd58c3ff23518db679a98985eeb791d0cd097d0c826081eb9ff7"
+    },
+    "generatedAt": "2026-08-28T21:05:07.178Z",
+    "generatorCommand": "npx tsx conformance/partner-kit/generate.mts"
+  },
+  "parityReceipt": {
+    "note": "kit drift evaluator vs reference evaluator (src/lib/dacs-drift.ts + verifyBundleV1, requireSignatures:false), compared on hashStatus/structurallyValid/decision/ourHash/expected",
+    "rows": [
+      {
+        "id": "dr-d1-bundle-golden-match",
+        "fixture": "attestation-bundle-0004.json",
+        "reference": {
+          "hashStatus": "match",
+          "structurallyValid": true,
+          "decision": "accept",
+          "ourHash": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba",
+          "expected": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba"
+        }
+      },
+      {
+        "id": "dr-d2-bundle-drift-detected",
+        "fixture": "attestation-bundle-0004-mutated.json",
+        "reference": {
+          "hashStatus": "drift",
+          "structurallyValid": true,
+          "decision": "accept",
+          "ourHash": "f8fdf747175474ac668a7eefb80d36f64c3a6d820aa55dff6976b8604e628416",
+          "expected": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba"
+        }
+      },
+      {
+        "id": "dr-d3-bundle-struct-fail",
+        "fixture": "broken-bundle.json",
+        "reference": {
+          "hashStatus": "computed",
+          "structurallyValid": false,
+          "decision": "reject",
+          "ourHash": "d160ecb48a338228127d459ffdbd42b12c66129cb0619cbc86ca87a4df9a3bd5",
+          "expected": null
+        }
+      },
+      {
+        "id": "dr-d4-settlement-golden-match",
+        "fixture": "settlement-golden.json",
+        "reference": {
+          "hashStatus": "match",
+          "structurallyValid": true,
+          "decision": "accept",
+          "ourHash": "46f25e662d76bbd49c7fe189398a562f408951373185d3e9c237ef9f19d3d490",
+          "expected": "46f25e662d76bbd49c7fe189398a562f408951373185d3e9c237ef9f19d3d490"
+        }
+      },
+      {
+        "id": "dr-d5-settlement-drift",
+        "fixture": "settlement-mutated.json",
+        "reference": {
+          "hashStatus": "drift",
+          "structurallyValid": true,
+          "decision": "accept",
+          "ourHash": "f373404b6301c026feb3eacdd5f20a0d39ed7331c5071ca64b32f1be6fda9a1e",
+          "expected": "46f25e662d76bbd49c7fe189398a562f408951373185d3e9c237ef9f19d3d490"
+        }
+      },
+      {
+        "id": "dr-d6-settlement-struct-fail",
+        "fixture": "settlement-broken.json",
+        "reference": {
+          "hashStatus": "computed",
+          "structurallyValid": false,
+          "decision": "reject",
+          "ourHash": "dc62752e2f7bf8ac658877f76602624ba5f7429d8b474798d12f8f417b248b3b",
+          "expected": null
+        }
+      },
+      {
+        "id": "dr-d7-non-dacs-skipped",
+        "fixture": "not-dacs.json",
+        "reference": {
+          "hashStatus": "skipped",
+          "structurallyValid": true,
+          "decision": "skipped",
+          "ourHash": "",
+          "expected": null
+        }
+      },
+      {
+        "id": "dr-d8-non-dacs-expected-fails-closed",
+        "fixture": "not-dacs.json",
+        "reference": {
+          "hashStatus": "computed",
+          "structurallyValid": false,
+          "decision": "reject",
+          "ourHash": "",
+          "expected": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    ]
+  },
+  "receipt": {
+    "command": "node run-conformance.mjs --json  (cwd: conformance/partner-kit)",
+    "ranAt": "2026-08-28T21:05:07.216Z",
+    "exitCode": 0,
+    "result": {
+      "declared": 49,
+      "executed": 49,
+      "passed": 49,
+      "failed": 0
+    },
+    "confirmedOnRerun": true
+  }
+}

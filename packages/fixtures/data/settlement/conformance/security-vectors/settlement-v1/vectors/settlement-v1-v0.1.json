@@ -1,0 +1,309 @@
+{
+  "set": "settlement-v1-v0.1",
+  "spec": "DACS-4 §9.7 / §7.5.1",
+  "hash": "a4ab0190318f8341c0a4dfcc03326de2a1fe5fa55ea15f0c759c1a3722f9edda",
+  "count": 13,
+  "vectors": [
+    {
+      "name": "valid-payment",
+      "expected": "pass",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-SETTLE-0001",
+        "phase": "pay-evm-erc20",
+        "phaseIndex": 0,
+        "outcome": "success",
+        "paymentTxRefs": [
+          {
+            "rail": "polygon-amoy-usdc",
+            "txHash": "polygon-amoy:0xsettle0001",
+            "kind": "payment"
+          }
+        ],
+        "paymentAmount": {
+          "amount": "5",
+          "currency": "USDC"
+        },
+        "settlementFinality": {
+          "model": "block-depth",
+          "finalityBlocks": 1,
+          "finalityObservedAt": 1780014401000
+        },
+        "observedAt": 1780014400000
+      }
+    },
+    {
+      "name": "valid-delivery",
+      "expected": "pass",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-DELIVER-0001",
+        "phase": "deliver-storage-program",
+        "phaseIndex": 0,
+        "outcome": "success",
+        "deliverableContentHash": "052a3e356972170c7b655e7d5a92ab2fe070b3ebf4ae8f63f4fd93ad0cc2cb0e",
+        "deliverableAnchor": {
+          "kind": "storage-program",
+          "locator": "stor-dacs-verify-delivery-0001"
+        },
+        "observedAt": 1780014402000
+      }
+    },
+    {
+      "name": "missing-phaseIndex",
+      "expected": "pass",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-SETTLE-0001",
+        "phase": "pay-evm-erc20",
+        "outcome": "success",
+        "paymentTxRefs": [
+          {
+            "rail": "polygon-amoy-usdc",
+            "txHash": "polygon-amoy:0xsettle0001",
+            "kind": "payment"
+          }
+        ],
+        "paymentAmount": {
+          "amount": "5",
+          "currency": "USDC"
+        },
+        "settlementFinality": {
+          "model": "block-depth",
+          "finalityBlocks": 1,
+          "finalityObservedAt": 1780014401000
+        },
+        "observedAt": 1780014400000
+      }
+    },
+    {
+      "name": "success-payment-missing-finality",
+      "expected": "fail",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-SETTLE-0001",
+        "phase": "pay-evm-erc20",
+        "phaseIndex": 0,
+        "outcome": "success",
+        "paymentTxRefs": [
+          {
+            "rail": "polygon-amoy-usdc",
+            "txHash": "polygon-amoy:0xsettle0001",
+            "kind": "payment"
+          }
+        ],
+        "paymentAmount": {
+          "amount": "5",
+          "currency": "USDC"
+        },
+        "observedAt": 1780014400000
+      }
+    },
+    {
+      "name": "delivery-with-finality",
+      "expected": "fail",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-DELIVER-0001",
+        "phase": "deliver-storage-program",
+        "phaseIndex": 0,
+        "outcome": "success",
+        "deliverableContentHash": "052a3e356972170c7b655e7d5a92ab2fe070b3ebf4ae8f63f4fd93ad0cc2cb0e",
+        "deliverableAnchor": {
+          "kind": "storage-program",
+          "locator": "stor-dacs-verify-delivery-0001"
+        },
+        "observedAt": 1780014402000,
+        "settlementFinality": {
+          "model": "block-depth",
+          "finalityObservedAt": 1780014402000
+        }
+      }
+    },
+    {
+      "name": "failure-payment-with-finality",
+      "expected": "fail",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-SETTLE-0001",
+        "phase": "pay-evm-erc20",
+        "phaseIndex": 0,
+        "outcome": "failure",
+        "paymentTxRefs": [
+          {
+            "rail": "polygon-amoy-usdc",
+            "txHash": "polygon-amoy:0xsettle0001",
+            "kind": "payment"
+          }
+        ],
+        "paymentAmount": {
+          "amount": "5",
+          "currency": "USDC"
+        },
+        "settlementFinality": {
+          "model": "block-depth",
+          "finalityBlocks": 1,
+          "finalityObservedAt": 1780014401000
+        },
+        "observedAt": 1780014400000
+      }
+    },
+    {
+      "name": "phaseIndex-not-safe-integer",
+      "expected": "fail",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-SETTLE-0001",
+        "phase": "pay-evm-erc20",
+        "phaseIndex": 9007199254740992,
+        "outcome": "success",
+        "paymentTxRefs": [
+          {
+            "rail": "polygon-amoy-usdc",
+            "txHash": "polygon-amoy:0xsettle0001",
+            "kind": "payment"
+          }
+        ],
+        "paymentAmount": {
+          "amount": "5",
+          "currency": "USDC"
+        },
+        "settlementFinality": {
+          "model": "block-depth",
+          "finalityBlocks": 1,
+          "finalityObservedAt": 1780014401000
+        },
+        "observedAt": 1780014400000
+      }
+    },
+    {
+      "name": "deliverable-content-hash-not-hex",
+      "expected": "fail",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-DELIVER-0001",
+        "phase": "deliver-storage-program",
+        "phaseIndex": 0,
+        "outcome": "success",
+        "deliverableContentHash": "NOT-A-HEX-HASH",
+        "deliverableAnchor": {
+          "kind": "storage-program",
+          "locator": "stor-dacs-verify-delivery-0001"
+        },
+        "observedAt": 1780014402000
+      }
+    },
+    {
+      "name": "observedAt-not-safe-integer",
+      "expected": "fail",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-SETTLE-0001",
+        "phase": "pay-evm-erc20",
+        "phaseIndex": 0,
+        "outcome": "success",
+        "paymentTxRefs": [
+          {
+            "rail": "polygon-amoy-usdc",
+            "txHash": "polygon-amoy:0xsettle0001",
+            "kind": "payment"
+          }
+        ],
+        "paymentAmount": {
+          "amount": "5",
+          "currency": "USDC"
+        },
+        "settlementFinality": {
+          "model": "block-depth",
+          "finalityBlocks": 1,
+          "finalityObservedAt": 1780014401000
+        },
+        "observedAt": 1.5
+      }
+    },
+    {
+      "name": "malformed-payment-txref-entry",
+      "expected": "fail",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-SETTLE-0001",
+        "phase": "pay-evm-erc20",
+        "phaseIndex": 0,
+        "outcome": "success",
+        "paymentTxRefs": [
+          {
+            "rail": "polygon-amoy-usdc",
+            "kind": "payment"
+          }
+        ],
+        "paymentAmount": {
+          "amount": "5",
+          "currency": "USDC"
+        },
+        "settlementFinality": {
+          "model": "block-depth",
+          "finalityBlocks": 1,
+          "finalityObservedAt": 1780014401000
+        },
+        "observedAt": 1780014400000
+      }
+    },
+    {
+      "name": "bad-outcome-enum",
+      "expected": "fail",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-SETTLE-0001",
+        "phase": "pay-evm-erc20",
+        "phaseIndex": 0,
+        "outcome": "settled",
+        "paymentTxRefs": [
+          {
+            "rail": "polygon-amoy-usdc",
+            "txHash": "polygon-amoy:0xsettle0001",
+            "kind": "payment"
+          }
+        ],
+        "paymentAmount": {
+          "amount": "5",
+          "currency": "USDC"
+        },
+        "settlementFinality": {
+          "model": "block-depth",
+          "finalityBlocks": 1,
+          "finalityObservedAt": 1780014401000
+        },
+        "observedAt": 1780014400000
+      }
+    },
+    {
+      "name": "malformed",
+      "expected": "error",
+      "evidence": "not-an-evidence-object"
+    },
+    {
+      "name": "failure-payment-with-reason-no-finality",
+      "expected": "pass",
+      "evidence": {
+        "evidenceVersion": "1",
+        "jobId": "DACS-VERIFY-SETTLE-0001",
+        "phase": "pay-evm-erc20",
+        "phaseIndex": 0,
+        "outcome": "failure",
+        "paymentTxRefs": [
+          {
+            "rail": "polygon-amoy-usdc",
+            "txHash": "polygon-amoy:0xsettle0001",
+            "kind": "payment"
+          }
+        ],
+        "paymentAmount": {
+          "amount": "5",
+          "currency": "USDC"
+        },
+        "observedAt": 1780014400000,
+        "reason": "rail-revert"
+      }
+    }
+  ]
+}
