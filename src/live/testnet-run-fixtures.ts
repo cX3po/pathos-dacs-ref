@@ -142,6 +142,7 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
   };
 
   const deps: DacsTestnetDependencies & { fixtureState: DryRunFixtureState } = {
+    mode: 'dry-run',
     fixtureState: { byNative, byLogical, receipts, commitments, bundleBindings },
     async capabilityPreflight() {},
     async publishListing(run): Promise<PublishedListing> {

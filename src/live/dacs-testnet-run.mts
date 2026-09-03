@@ -9,6 +9,9 @@
  */
 
 import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { jcsHashHex } from '../jcs.js';
 import type { AgreementAnchorResult, CommittedAgreement } from '../adapters/dacs/agreement-commitment.js';
 import type { AdapterSigner } from '../adapters/dacs/agreement-commitment.js';
@@ -64,6 +67,8 @@ export interface FinalizationResult {
 }
 
 export interface DacsTestnetDependencies {
+  /** Execution capability represented by this set (legacy injected dry fakes omit it). */
+  mode?: DacsTestnetConfig['mode'];
   capabilityPreflight(config: DacsTestnetConfig): Promise<void>;
   publishListing(config: DacsTestnetConfig): Promise<PublishedListing>;
   vetListing(listing: PublishedListing, config: DacsTestnetConfig): Promise<ColdVerdict>;
@@ -90,11 +95,11 @@ export interface DacsTestnetRunResult {
   anchors: Partial<Record<'listing' | 'agreement' | 'commitment' | 'paymentEvidence' | 'deliverable' | 'deliveryEvidence' | 'buyerBundle' | 'sellerBundle', string>>;
   paramHash: string;
   authorizeLiveWith?: string;
-  error?: { stage: string; detail: string };
+  error?: { stage: string; code: 'phase-failed' | 'verification-failed'; detail: string };
 }
 
 export class DacsTestnetRefusal extends Error {
-  constructor(public readonly code: 'usage' | 'configuration' | 'policy' | 'spend' | 'live-capability', message: string) {
+  constructor(public readonly code: 'usage' | 'config' | 'policy' | 'spend' | 'capability', message: string) {
     super(message);
     this.name = 'DacsTestnetRefusal';
   }
@@ -106,20 +111,105 @@ export interface LiveNodeReceiptObservation {
   observed?: { nativeAddress: string; writer: string; sizeBytes: number; creationTransaction?: string; creationTime: string; contentHash: string };
 }
 
+type LiveReceiptProvider = (request: {
+  logicalAddress: string;
+  contentHash: string;
+  anchor?: AgreementAnchorResult;
+}) => Promise<import('../types/bundle.js').AnchorReceipt>;
+
+/**
+ * Construct the native pay-dem dependency using the gateway's audited policy path.
+ * The returned function has the same `settlePayment` signature as the dry fixture.
+ */
+export async function createLiveSettlementDependency(
+  config: DacsTestnetConfig,
+  handles: { buyer: import('../demos/connection.js').DemosHandle; seller: import('../demos/connection.js').DemosHandle },
+  anchor: (request: { logicalAddress: string; content: unknown; contentHash: string }) => Promise<AgreementAnchorResult>,
+  orchestratorClaim: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<DacsTestnetDependencies['settlePayment']> {
+  const { loadPayPolicy, authorizeTransfer, spentTodayFromJournal } = await import('./pay-policy.js');
+  const policyResult = loadPayPolicy(env, (path) => readFileSync(path, 'utf8'));
+  if ('verdict' in policyResult) throw new DacsTestnetRefusal('policy', 'pay-dem policy refused the session');
+
+  const journal = await import('./pay-dem-journal.js');
+  const journalPath = journal.resolvePayDemJournalPath(env.DACS_PAYDEM_JOURNAL ?? journal.DEFAULT_PAY_DEM_JOURNAL);
+  const expandHome = (path: string): string => path === '~' ? homedir() : path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;
+  const nowIso = new Date().toISOString();
+  const amountOs = (await import('../adapters/dacs/pay-dem.js')).demToOs(config.priceDem);
+  const authorization = authorizeTransfer(policyResult, {
+    amountOs,
+    rpcUrl: config.rpc,
+    spentTodayOs: spentTodayFromJournal(journal.readPayDemJournalOrEmpty(journalPath), nowIso),
+    killSwitchPresent: journal.payKillSwitchPresent(expandHome(policyResult.killSwitchFile)),
+    nowIso,
+  });
+  if (authorization.verdict !== 'PROCEED') throw new DacsTestnetRefusal('policy', 'pay-dem policy refused the transfer');
+
+  const durableOutcomeJournal = journal.createPayDemOutcomeJournal(journalPath);
+  const paymentJournal = journal.createPayDemJsonlJournal(journalPath);
+  const { createPayDemAuthorizationGate } = await import('./pay-dem-authorization.js');
+  const gate = createPayDemAuthorizationGate({
+    policy: policyResult, journalPath, acquireLock: journal.acquirePayDemJournalLock,
+    readJournal: journal.readPayDemJournalOrEmpty, killSwitchPresent: journal.payKillSwitchPresent,
+    resolveKillSwitchPath: expandHome, durableOutcomeJournal,
+  });
+
+  const addressInfo = await handles.buyer.demos.getAddressInfo(handles.buyer.address);
+  const balanceDem = Number((addressInfo as { balance?: bigint }).balance ?? 0n) / 1e9;
+  const { preflight } = await import('./spend-preflight.js');
+  const spend = preflight({
+    purpose: `dacs-testnet live session ${config.jobId}`, estWrites: 8, estCostPerWriteDem: 1,
+    createCostDem: Number(config.priceDem), maxSpendDem: config.spendCapDem, balanceDem,
+    operatorApproved: env.GATEWAY_LIVE_APPROVED === '1', dryRunHash: env.GATEWAY_DRYRUN_HASH ?? null,
+  });
+  if (spend.verdict !== 'PROCEED' || env.GATEWAY_DRYRUN_HASH !== parameterHash(config)) {
+    throw new DacsTestnetRefusal('spend', 'spend preflight refused the session');
+  }
+
+  return async (_agreement, run) => {
+    const { settlePayDem } = await import('../adapters/dacs/pay-dem-demosdk.js');
+    const settled = await settlePayDem({
+      buyer: handles.buyer, sellerAddress: handles.seller.address, amountOs,
+      amountDemCanonical: run.priceDem, jobId: run.jobId, phaseIndex: 2,
+      journal: paymentJournal, authorizeTransfer: gate.authorize,
+      journalTransferOutcome: gate.journalOutcome, beforeBroadcast: gate.beforeBroadcast,
+    });
+    if (!settled.ok) throw new DacsTestnetRefusal('spend', 'pay-dem settlement was refused');
+    const logicalAddress = (await import('../adapters/dacs/bundle-finalizer.js')).paymentLogicalAddress(run.jobId, 'pay-dem', 2);
+    const contentHash = jcsHashHex(settled.evidence);
+    const evidenceAnchor = await anchor({ logicalAddress, content: settled.evidence, contentHash });
+    return {
+      evidence: settled.evidence,
+      evidenceRef: { anchor: { substrate: 'demos', locator: evidenceAnchor.nativeAddress }, contentHash,
+        type: 'settlement-evidence', producedAt: new Date(settled.finalityObservedAt).toISOString(), signer: orchestratorClaim },
+      evidenceLogicalAddress: logicalAddress, evidenceAnchor,
+    };
+  };
+}
+
 /**
  * Lazy LIVE signer/storage wiring. Capability preflight is intentionally performed by
  * `main` before this function can read credentials or expose an anchor capability.
  * The node receipt seam reports only what the storage read establishes and never
  * manufactures finality, a block reference, or a creation nonce.
  */
-export async function createLiveAdapterWiring(config: DacsTestnetConfig, env: NodeJS.ProcessEnv = process.env): Promise<{
+export async function createLiveAdapterWiring(
+  config: DacsTestnetConfig,
+  env: NodeJS.ProcessEnv = process.env,
+  receiptProvider?: LiveReceiptProvider,
+): Promise<{
   signers: { buyer: AdapterSigner; seller: AdapterSigner; orchestrator: AdapterSigner };
   anchor(request: { logicalAddress: string; content: unknown; contentHash: string }): Promise<AgreementAnchorResult>;
   fetchAnchored(address: string): Promise<unknown>;
   observeNodeReceipt(address: string): Promise<LiveNodeReceiptObservation>;
 }> {
+  // Never expose an SR-2 writer or read credentials without this trust boundary.
+  if (receiptProvider === undefined) {
+    throw new DacsTestnetRefusal('capability', 'CORE §5.1 finalized-receipt provider is not configured');
+  }
   const { config: loadEnvFile } = await import('dotenv');
-  loadEnvFile({ path: env.DACS_ENV_PATH ?? '.env' });
+  loadEnvFile({ path: env.DACS_ENV_PATH ?? '.env', processEnv: env as Record<string, string> });
   const { connectDemos, mnemonicFromEnv } = await import('../demos/connection.js');
   const { claimRefFor, signDomainHashAsAgent } = await import('../adapters/demos/identity.js');
   const storage = await import('../demos/storage.js');
@@ -131,10 +221,10 @@ export async function createLiveAdapterWiring(config: DacsTestnetConfig, env: No
   return {
     signers: { buyer: asSigner(buyer), seller: asSigner(seller), orchestrator: asSigner(seller) },
     async anchor(request) {
-      const handle = request.logicalAddress.endsWith(':buyer') ? buyerHandle : sellerHandle;
-      const result = await storage.anchor(handle, request.logicalAddress, request.content as Record<string, unknown> | string);
+      const result = await storage.anchor(sellerHandle, request.logicalAddress, request.content as Record<string, unknown> | string);
+      if (result.nonce === undefined) throw new DacsTestnetRefusal('capability', 'SR-2 anchor result did not bind a nonce');
       return { logicalAddress: request.logicalAddress, nativeAddress: result.storageAddress,
-        transactionRef: { kind: 'demos', value: result.txHash }, writer: handle.address };
+        transactionRef: { kind: 'demos', value: result.txHash }, writer: seller.claim, nonce: result.nonce };
     },
     async fetchAnchored(address) {
       const result = await storage.fetchAnchored(config.rpc, address);
@@ -151,6 +241,15 @@ export async function createLiveAdapterWiring(config: DacsTestnetConfig, env: No
       } };
     },
   };
+}
+
+/** Construct the selected LIVE dependency set; currently refuses before any write. */
+export async function createLiveDependencies(
+  config: DacsTestnetConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<DacsTestnetDependencies> {
+  await createLiveAdapterWiring(config, env);
+  throw new DacsTestnetRefusal('capability', 'LIVE dependency construction is unavailable');
 }
 
 export function parameterHash(config: Pick<DacsTestnetConfig, 'organ' | 'query' | 'priceDem' | 'spendCapDem'>): string {
@@ -171,6 +270,10 @@ export function rollupColdVerifications(agreement: ColdVerdict, bundle: ColdVerd
 }
 
 const unavailable = (detail: string): ColdVerdict => ({ outcome: 'indeterminate', detail });
+const redactedVerdict = (phase: 'agreement' | 'bundle', verdict: ColdVerdict): ColdVerdict => ({
+  outcome: verdict.outcome,
+  detail: `${phase} verification ${verdict.outcome === 'pass' ? 'passed' : verdict.outcome}`,
+});
 
 /** Execute listing/vet and the four indexed pipeline phases in fail-closed order. */
 export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: DacsTestnetDependencies): Promise<DacsTestnetRunResult> {
@@ -180,7 +283,7 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
   let agreementVerification = unavailable('agreement verification was not reached');
   let bundleVerification = unavailable('bundle verification was not reached');
 
-  const failed = (stage: string, error: unknown): DacsTestnetRunResult => ({
+  const failed = (stage: string, code: 'phase-failed' | 'verification-failed' = 'phase-failed'): DacsTestnetRunResult => ({
     jobId: config.jobId,
     mode: config.mode,
     rollup: 'FAIL',
@@ -188,20 +291,37 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
     verification: { agreement: agreementVerification, bundle: bundleVerification },
     anchors,
     paramHash,
-    error: { stage, detail: error instanceof Error ? error.message : String(error) },
+    error: { stage, code, detail: `${stage}: phase failed` },
   });
 
-  await deps.capabilityPreflight(config);
+  const guarded = async <T,>(stage: string, operation: () => Promise<T>): Promise<T | DacsTestnetRunResult> => {
+    try { return await operation(); }
+    catch (error) {
+      if (error instanceof DacsTestnetRefusal) throw error;
+      return failed(stage);
+    }
+  };
+
+  if (config.mode !== (deps.mode ?? 'dry-run')) throw new DacsTestnetRefusal('capability', 'coordinator mode does not match dependency mode');
+  const preflight = await guarded('capability-preflight', () => deps.capabilityPreflight(config));
+  if (typeof preflight === 'object') return preflight;
   let listing: PublishedListing;
-  try {
-    listing = await deps.publishListing(config);
-    anchors.listing = listing.anchor.nativeAddress;
-  } catch (error) { return failed('listing', error); }
+  const published = await guarded('listing', () => deps.publishListing(config));
+  if ('rollup' in published) return published;
+  listing = published;
+  anchors.listing = listing.anchor.nativeAddress;
 
   try {
     const vet = await deps.vetListing(listing, config);
-    if (vet.outcome !== 'pass') return failed('vet', new Error(vet.detail));
-  } catch (error) { return failed('vet', error); }
+    if (vet.outcome !== 'pass') {
+      const result = failed('vet', 'verification-failed');
+      result.rollup = vet.outcome === 'indeterminate' ? 'INDETERMINATE' : 'FAIL';
+      return result;
+    }
+  } catch (error) {
+    if (error instanceof DacsTestnetRefusal) throw error;
+    return failed('vet');
+  }
 
   phases.push({ index: 0, kind: 'negotiate-fixed-price', outcome: 'PASS' });
   let agreement: AgreementResult;
@@ -210,21 +330,23 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
     anchors.agreement = agreement.committed.addresses.agreement?.native;
     anchors.commitment = agreement.committed.addresses.commitment.native;
   } catch (error) {
+    if (error instanceof DacsTestnetRefusal) throw error;
     phases.push({ index: 1, kind: 'commit-agreement', outcome: 'FAIL' });
-    return failed('agreement-emission', error);
+    return failed('agreement-emission');
   }
 
   try {
-    agreementVerification = await deps.verifyAgreement(agreement, listing, config);
+    agreementVerification = redactedVerdict('agreement', await deps.verifyAgreement(agreement, listing, config));
     if (agreementVerification.outcome !== 'pass') {
       phases.push({ index: 1, kind: 'commit-agreement', outcome: 'FAIL' });
-      const result = failed('agreement-verification', new Error(agreementVerification.detail));
+      const result = failed('agreement-verification', 'verification-failed');
       result.rollup = agreementVerification.outcome === 'fail' ? 'FAIL' : 'INDETERMINATE';
       return result;
     }
   } catch (error) {
+    if (error instanceof DacsTestnetRefusal) throw error;
     phases.push({ index: 1, kind: 'commit-agreement', outcome: 'FAIL' });
-    return failed('agreement-verification', error);
+    return failed('agreement-verification');
   }
   phases.push({ index: 1, kind: 'commit-agreement', outcome: 'PASS' });
 
@@ -234,8 +356,9 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
     anchors.paymentEvidence = payment.evidenceAnchor.nativeAddress;
     phases.push({ index: 2, kind: 'pay-dem', outcome: 'PASS' });
   } catch (error) {
+    if (error instanceof DacsTestnetRefusal) throw error;
     phases.push({ index: 2, kind: 'pay-dem', outcome: 'FAIL' });
-    return failed('payment', error);
+    return failed('payment');
   }
 
   let delivery: DeliveryResult;
@@ -245,8 +368,9 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
     anchors.deliveryEvidence = delivery.evidenceAnchor.nativeAddress;
     phases.push({ index: 3, kind: 'deliver-storage-program', outcome: 'PASS' });
   } catch (error) {
+    if (error instanceof DacsTestnetRefusal) throw error;
     phases.push({ index: 3, kind: 'deliver-storage-program', outcome: 'FAIL' });
-    return failed('delivery', error);
+    return failed('delivery');
   }
 
   let finalization: FinalizationResult;
@@ -254,11 +378,17 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
     finalization = await deps.finalize({ config, listing, agreement, payment, delivery });
     anchors.buyerBundle = finalization.finalized.bundles.buyer?.address.native;
     anchors.sellerBundle = finalization.finalized.bundles.seller?.address.native;
-  } catch (error) { return failed('finalization', error); }
+  } catch (error) {
+    if (error instanceof DacsTestnetRefusal) throw error;
+    return failed('finalization');
+  }
 
   try {
-    bundleVerification = await deps.verifyBundle(finalization, config);
-  } catch (error) { return failed('bundle-verification', error); }
+    bundleVerification = redactedVerdict('bundle', await deps.verifyBundle(finalization, config));
+  } catch (error) {
+    if (error instanceof DacsTestnetRefusal) throw error;
+    return failed('bundle-verification');
+  }
   const rollup = rollupColdVerifications(agreementVerification, bundleVerification);
   return {
     jobId: config.jobId, mode: config.mode, rollup, phases,
@@ -298,7 +428,11 @@ function parseCli(argv: readonly string[], env: NodeJS.ProcessEnv): CliOptions {
 
 const HELP = `Usage: node --import tsx src/live/dacs-testnet-run.mts [--dry-run] [--job-id ID] [--fixture-seed HEX] [--json]\n\nLIVE=1 selects LIVE. --dry-run is the explicit default and overrides no LIVE request.`;
 
-export async function main(argv = process.argv.slice(2), env: NodeJS.ProcessEnv = process.env): Promise<number> {
+export async function main(
+  argv = process.argv.slice(2),
+  env: NodeJS.ProcessEnv = process.env,
+  dependencyFactory?: (config: DacsTestnetConfig) => DacsTestnetDependencies | Promise<DacsTestnetDependencies>,
+): Promise<number> {
   try {
     const cli = parseCli(argv, env);
     if (cli.help) { process.stdout.write(HELP + '\n'); return 0; }
@@ -308,21 +442,21 @@ export async function main(argv = process.argv.slice(2), env: NodeJS.ProcessEnv 
       priceDem: '1', spendCapDem: Number(env.GATEWAY_SPEND_CAP_DEM ?? '50'),
       rpc: env.DEMOS_RPC ?? 'https://demosnode.discus.sh/', ...(cli.fixtureSeedHex ? { fixtureSeedHex: cli.fixtureSeedHex } : {}),
     };
-    if (!Number.isFinite(config.spendCapDem) || config.spendCapDem < 0) throw new DacsTestnetRefusal('configuration', 'invalid spend cap configuration');
-    const paramHash = parameterHash(config);
-    if (mode === 'live') {
-      if (env.GATEWAY_LIVE_APPROVED !== '1') throw new DacsTestnetRefusal('policy', 'LIVE requires GATEWAY_LIVE_APPROVED=1');
-      if (env.GATEWAY_DRYRUN_HASH !== paramHash) throw new DacsTestnetRefusal('policy', 'GATEWAY_DRYRUN_HASH does not match the current parameters');
-      throw new DacsTestnetRefusal('live-capability', 'LIVE requires a CORE §5.1 finalized-receipt provider; none is configured');
-    }
-    const { createDryRunDependencies } = await import('./testnet-run-fixtures.js');
-    const result = await runDacsTestnetSession(config, createDryRunDependencies(config));
+    if (!Number.isFinite(config.spendCapDem) || config.spendCapDem < 0) throw new DacsTestnetRefusal('config', 'invalid spend cap configuration');
+    const deps = dependencyFactory !== undefined
+      ? await dependencyFactory(config)
+      : mode === 'live'
+        ? await createLiveDependencies(config, env)
+        : (await import('./testnet-run-fixtures.js')).createDryRunDependencies(config);
+    const result = await runDacsTestnetSession(config, deps);
+    if (!cli.json) process.stdout.write(`${result.rollup} ${result.jobId} (${result.mode})\n`);
     process.stdout.write(JSON.stringify(result) + '\n');
     return result.rollup === 'PASS' ? 0 : 1;
   } catch (error) {
     const refusal = error instanceof DacsTestnetRefusal;
-    const safe = refusal ? error.message : 'coordinator failed';
-    process.stderr.write(JSON.stringify({ outcome: 'REFUSED', detail: safe }) + '\n');
+    process.stderr.write(JSON.stringify(refusal
+      ? { outcome: 'REFUSED', reason: error.code, detail: `${error.code}: request refused` }
+      : { outcome: 'REFUSED', reason: 'internal', detail: 'coordinator failed' }) + '\n');
     return refusal ? 2 : 1;
   }
 }

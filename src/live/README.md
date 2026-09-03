@@ -59,6 +59,8 @@ content and creation metadata, but its finality observation remains
 
 ## Files
 - `organ-gateway.mts` — the DACS-1→5 orchestrator (dry-run + live)
+- `dacs-testnet-run.mts` — fail-closed testnet lifecycle coordinator and CLI
+- `testnet-run-fixtures.ts` — deterministic dry-run dependency factory and receipt store
 - `../adapters/dacs/pay-dem.ts` — SDK-faithful native-DEM adapter; only exact
   `included` with a block-number witness can emit `bft-final` evidence
 - `anchor-naming.ts` — Demos substrate-equivalent anchor addressing (name-based,
