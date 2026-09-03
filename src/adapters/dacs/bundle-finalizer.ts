@@ -161,7 +161,7 @@ function effectivePipeline(input: CompletedSessionEvidence, deps: Pick<BundleFin
 /** PC-2: the rail segment is the rail selected by the authenticated agreement and phase context — the projected
  *  `parameters.rail` for a pay-alternative phase, else the concrete pay-* kind — and is a CF-4 variable segment,
  *  percent-encoded before assembly (internal colons become %3A). */
-export function paymentRailId(phase: { kind: unknown; parameters?: unknown }): string {
+export function paymentRailId(phase: { kind?: unknown; parameters?: unknown }): string {
   const params = phase.parameters && typeof phase.parameters === 'object' ? (phase.parameters as Record<string, unknown>) : {};
   const rail = typeof params.rail === 'string' && params.rail.length > 0 ? params.rail : String(phase.kind);
   return rail;
@@ -222,7 +222,7 @@ function validateReceipt(receipt: AnchorReceipt, expected: { logicalAddress: str
   if (!allowed || !receipt.blockRef) throw new BundleFinalizationError('finality', completed ? 'completed bundle dependency is not finalized' : 'bundle dependency is not included');
 }
 
-async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFinalizerDependencies): Promise<AttestationRef[]> {
+async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFinalizerDependencies, pipeline: JsonObject[]): Promise<AttestationRef[]> {
   const required = input.phaseResults.filter((p) => SETTLEMENT.has(p.kind));
   const refs = required.map((p) => p.evidenceRef);
   if (refs.some((r) => !r)) throw new BundleFinalizationError('seb-bijection', 'every executed payment/delivery result requires one evidenceRef');
@@ -230,9 +230,11 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
   if (new Set(canonicalRefs).size !== canonicalRefs.length) throw new BundleFinalizationError('seb-duplicate', 'settlementEvidence contains a duplicate reference');
   for (let i = 0; i < required.length; i++) {
     const phase = required[i]!, ref = refs[i]!;
-    let evidence: JsonObject;
-    try { evidence = parsed(await deps.fetchAnchored(ref.anchor.locator)); }
-    catch { throw new BundleFinalizationError('evidence-unresolved', `evidence for phase ${phase.index} could not be resolved`); }
+    let raw: unknown;
+    try { raw = await deps.fetchAnchored(ref.anchor.locator); }
+    catch { throw new BundleFinalizationError('evidence-transport', `evidence for phase ${phase.index} could not be fetched; a transport error is not absence`); }
+    if (raw === null || raw === undefined) throw new BundleFinalizationError('evidence-unresolved', `evidence for phase ${phase.index} is absent at its anchor`);
+    const evidence: JsonObject = parsed(raw);
     if (jcsHashHex(evidence) !== ref.contentHash.replace(/^sha256:/, '')) throw new BundleFinalizationError('evidence-hash', `evidence hash mismatch for phase ${phase.index}`);
     const structural = verifySettlementEvidenceV1(evidence);
     if (structural.decision !== 'pass') throw new BundleFinalizationError('evidence-shape', structural.reasons.join('; '));
@@ -246,7 +248,9 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     if (!sameSigner) throw new BundleFinalizationError('seb-authorship', `evidence signer is not phase ${phase.index}'s authenticated orchestrator`);
     const unsigned = { ...evidence }; delete unsigned.signature;
     if (!await signatureValid(deps, DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, jcsHashHex(unsigned), signature)) throw new BundleFinalizationError('seb-signature', `evidence signature invalid for phase ${phase.index}`);
-    const railId = phase.kind.startsWith('pay-') ? paymentRailId(phase) : undefined;
+    // PC-2: the rail comes from the effective pipeline entry (which carries the projected rail parameter for a
+    // pay-alternative phase), never from the executed phase result alone.
+    const railId = phase.kind.startsWith('pay-') ? paymentRailId(pipeline[phase.index] ?? phase) : undefined;
     const logicalAddress = railId === undefined ? phase.evidenceLogicalAddress : paymentLogicalAddress(input.jobId, railId, phase.index);
     if (!logicalAddress || (phase.evidenceLogicalAddress !== undefined && phase.evidenceLogicalAddress !== logicalAddress)) throw new BundleFinalizationError('receipt-binding', `caller evidence logical address contradicts PC-2 for phase ${phase.index}`);
     if (!phase.evidenceAnchor) throw new BundleFinalizationError('evidence-anchor', `evidence anchor metadata missing for phase ${phase.index}`);
@@ -337,7 +341,7 @@ export async function finalizeBundle(input: CompletedSessionEvidence, deps: Bund
   if (resolvedCommitment) input = { ...input, agreement: resolvedCommitment.agreement as unknown as JsonObject };
   const pipeline = effectivePipeline(input, deps, resolvedCommitment?.agreement);
   const phaseSummary = validateTrace(input, pipeline);
-  const evidence = await resolveEvidence(input, deps);
+  const evidence = await resolveEvidence(input, deps, pipeline);
   const roles: Role[] = ['buyer', 'seller'];
   const distinctOrchestrator = deps.signers.orchestrator && ![deps.signers.buyer, deps.signers.seller].some((s) => claimKey(s.claim) === claimKey(deps.signers.orchestrator!.claim));
   if (distinctOrchestrator) roles.push('orchestrator');
@@ -447,7 +451,7 @@ export async function verifyFinalizedBundleCold(expected: FinalizedBundleExpecta
     if (!Buffer.from(jcsCanonical(replayedPhaseSummary)).equals(Buffer.from(jcsCanonical(phaseSummary)))) {
       return { outcome: 'fail', detail: 'phaseSummary does not match the authority bundle' };
     }
-    const refs = await resolveEvidence(replayInput, deps as BundleFinalizerDependencies);
+    const refs = await resolveEvidence(replayInput, deps as BundleFinalizerDependencies, pipeline);
     if (jcsHashHex(refs) !== jcsHashHex(settlementEvidence)) return { outcome: 'fail', detail: 'bundle settlement evidence does not equal the re-derived SEB set' };
     return { outcome: 'pass', detail: 'buyer/seller copies, signatures, hashes, finalized commitment, and the shared evidence checks verified' };
   } catch (error) {

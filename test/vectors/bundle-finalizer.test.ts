@@ -318,3 +318,16 @@ test('SEB never treats two distinct unparseable signer claims as equal', async (
   });
   await assert.rejects(finalizeBundle(input, { ...state.deps, verifySignature: async () => true }), /evidence signer is not/);
 });
+
+test('cold SEB replay: an evidence fetch transport error is indeterminate, an absent evidence is fail', async () => {
+  const state = setup(); const input = await session(state);
+  const result = await finalizeBundle(input, state.deps);
+  const expectation = { jobId: input.jobId, ...result, session: input };
+  const evidenceAddress = input.phaseResults.find((p) => p.evidenceRef)!.evidenceRef!.anchor.locator;
+  const throwing = { ...state.deps, fetchAnchored: async (address: string) => { if (address === evidenceAddress) throw new Error('rpc down'); return state.memory.get(address); } };
+  const absent = { ...state.deps, fetchAnchored: async (address: string) => (address === evidenceAddress ? null : state.memory.get(address)) };
+  const a = await verifyFinalizedBundleCold(expectation, throwing);
+  const b = await verifyFinalizedBundleCold(expectation, absent);
+  assert.equal(a.outcome, 'indeterminate', a.detail);
+  assert.equal(b.outcome, 'fail', b.detail);
+});
