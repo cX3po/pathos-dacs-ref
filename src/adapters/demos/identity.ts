@@ -21,8 +21,10 @@ import {
 } from '../../demos/connection.js';
 import {
   assertEmittableSeparator,
+  assertKnownSeparator,
   buildSignedBytes,
   DACS_X_EXTENSION_SEPARATORS,
+  type DomainSeparator,
 } from '../../domain-sep.js';
 
 export type AgentRole = 'buyer-reviewer' | 'seller';
@@ -238,4 +240,33 @@ export function verifyAgentSignature(
   signature: Uint8Array,
 ): boolean {
   return cci.verifyPrimaryClaimSignature(claim, identitySigningBytes(payload), signature);
+}
+
+/** Sign the adapter-wide `domain || UTF8(hex-hash)` contract through the CCI boundary. */
+export function signDomainHashAsAgent(
+  handle: UnlockedAgent,
+  domain: DomainSeparator,
+  hash: string,
+): Promise<Uint8Array> {
+  assertEmittableSeparator(domain);
+  return cci.signWithPrimaryClaim(
+    handle.claim,
+    buildSignedBytes(domain, new TextEncoder().encode(hash)),
+    handle.demos,
+  );
+}
+
+/** Verify the adapter-wide `domain || UTF8(hex-hash)` contract through CCI. */
+export function verifyDomainHashAgentSignature(
+  claim: ClaimReference,
+  domain: DomainSeparator,
+  hash: string,
+  signature: Uint8Array,
+): boolean {
+  assertKnownSeparator(domain);
+  return cci.verifyPrimaryClaimSignature(
+    claim,
+    buildSignedBytes(domain, new TextEncoder().encode(hash)),
+    signature,
+  );
 }

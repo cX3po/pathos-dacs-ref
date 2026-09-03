@@ -35,6 +35,28 @@ address returned by `anchor()` first, then fall back to exact owner/name resolut
 with a bounded retry window (at most 50 seconds); an RPC error remains indeterminate
 and is never interpreted as an absent party anchor.
 
+## DACS testnet coordinator
+
+`dacs-testnet-run.mts` is a second entry point. It does not import
+`organ-gateway.mts`, whose top-level session executes on import. It retains the
+gateway's organ, query, fixed DEM price, and pipeline terms, then delegates
+agreement commitment and bundle finalization to the receipt-enforcing adapters.
+
+`--dry-run` is the explicit default. It uses public deterministic fixture keys,
+one in-memory store indexed by logical and native address, simulated payment and
+delivery, finalized fixture receipts, and cold verification of the agreement and
+both bundle copies. `LIVE=1` selects LIVE; combining it with `--dry-run`, or using
+`--fixture-seed` in LIVE, is a usage error. LIVE also requires
+`GATEWAY_LIVE_APPROVED=1` and the exact parameter hash from a passing dry run.
+
+Exit 0 means both cold verifiers passed. Exit 1 means a phase failed or either
+verifier failed or was indeterminate. Exit 2 means usage, configuration, payment
+policy, spend preflight, or LIVE capability refusal. The current LIVE path exits
+2 before DACS-1 and before payment because no configured provider authenticates
+all CORE §5.1 finalized-receipt fields. A node storage read can report stored
+content and creation metadata, but its finality observation remains
+`indeterminate`; it is not converted into a finalized receipt.
+
 ## Files
 - `organ-gateway.mts` — the DACS-1→5 orchestrator (dry-run + live)
 - `../adapters/dacs/pay-dem.ts` — SDK-faithful native-DEM adapter; only exact
