@@ -8,7 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 type Expected = 'pass' | 'fail' | 'indeterminate' | 'error';
-type Entry = { path: string; sha256: string; bytes: number };
+type Entry = { path: string; sha256: string; bytes: number; origin: { repo: string; commit?: string; path: string } };
 type Expectation = { path: string; vectorName?: string; expected: Expected; source: string };
 type Index = { files: Entry[]; expectations: Expectation[] };
 
@@ -33,7 +33,7 @@ test('index hashes and byte counts match every packaged data file', () => {
   }
 });
 
-test('two independent rebuilds are byte-identical', () => {
+test('two post-commit rebuilds and the committed package are byte-identical', () => {
   const temporary = mkdtempSync(join(tmpdir(), 'fixtures-rebuild-test-'));
   try {
     const first = join(temporary, 'first');
@@ -43,9 +43,24 @@ test('two independent rebuilds are byte-identical', () => {
       assert.equal(run.status, 0, run.stderr);
     }
     assert.deepEqual(filesBelow(first), filesBelow(second));
-    for (const path of filesBelow(first)) assert.deepEqual(readFileSync(join(first, path)), readFileSync(join(second, path)), path);
+    assert.deepEqual(filesBelow(first), filesBelow(packageRoot));
+    for (const path of filesBelow(first)) {
+      assert.deepEqual(readFileSync(join(first, path)), readFileSync(join(second, path)), `rebuild: ${path}`);
+      assert.deepEqual(readFileSync(join(first, path)), readFileSync(join(packageRoot, path)), `committed: ${path}`);
+    }
   } finally {
     rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test('DACS-Standard origins use real pinned upstream paths', () => {
+  const pinReadme = readFileSync(join(root, 'test/fixtures/dacs-standard-63793a39/README.md'), 'utf8');
+  const recordedPaths = new Set([...pinReadme.matchAll(/\| `([^`]+)` \|/g)].map((match) => `conformance/${match[1]}`));
+  const standardEntries = index.files.filter((entry) => entry.origin.repo === 'https://github.com/DACS-Agent-commerce/DACS-Standard');
+  assert.ok(standardEntries.length > 0);
+  for (const entry of standardEntries) {
+    assert.ok(entry.origin.path.startsWith('conformance/'), entry.origin.path);
+    assert.ok(recordedPaths.has(entry.origin.path), entry.origin.path);
   }
 });
 
@@ -76,7 +91,7 @@ test('npm package is data-only and contains exactly the declared payload', (t) =
     }
     const report = JSON.parse(run.stdout) as Array<{ files: Array<{ path: string }> }>;
     const packed = report[0]?.files.map((file) => file.path).sort();
-    const expected = [...index.files.map((entry) => entry.path), 'index.json', 'package.json', 'README.md', 'LICENSE'].sort();
+    const expected = [...index.files.map((entry) => entry.path), 'index.json', 'package.json', 'README.md', 'LICENSE', 'NOTICE'].sort();
     assert.deepEqual(packed, expected);
     assert.equal(packed?.some((path) => /\.(?:ts|js|mjs)$/.test(path)), false);
   } finally {

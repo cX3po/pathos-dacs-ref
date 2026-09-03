@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,6 +15,8 @@ type Source = {
   commit?: string;
   originPath?: string;
 };
+
+type SourceManifestEntry = { sourcePath: string; sha256: string };
 
 type IndexFile = {
   path: string;
@@ -35,9 +36,10 @@ type Expectation = {
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(scriptPath), '..');
 const defaultOutput = join(repoRoot, 'packages', 'fixtures');
-const repository = 'https://github.com/cX3po/pathos-dacs-ref';
+const repository = 'cX3po/pathos-dacs-ref';
 const standardRepository = 'https://github.com/DACS-Agent-commerce/DACS-Standard';
 const standardCommit = '63793a39';
+const dacsSdkCommit = '12c5ad358800b4ddc6e732405366035b6a2ac955';
 const compareText = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 
 const sources = ([
@@ -50,17 +52,11 @@ const sources = ([
   { source: 'conformance/security-vectors/settlement-v1/vectors/settlement-v1-v0.1.json', destination: 'data/settlement/conformance/security-vectors/settlement-v1/vectors/settlement-v1-v0.1.json', group: 'settlement' },
   { source: 'conformance/security-vectors/sb2-settlement-uniqueness/vectors/sb2-settlement-uniqueness-v0.1.json', destination: 'data/settlement/conformance/security-vectors/sb2-settlement-uniqueness/vectors/sb2-settlement-uniqueness-v0.1.json', group: 'settlement' },
   { source: 'conformance/security-vectors/convergence-harness/corpus/attestation-bundle-htlc9.json', destination: 'data/htlc/conformance/security-vectors/convergence-harness/corpus/attestation-bundle-htlc9.json', group: 'htlc' },
-  { source: 'test/fixtures/dacs-standard-63793a39/fixtures/settlement-evidence-payment-success.json', destination: 'data/settlement/dacs-standard/fixtures/settlement-evidence-payment-success.json', group: 'settlement', repo: standardRepository, commit: standardCommit, originPath: 'fixtures/settlement-evidence-payment-success.json' },
-  { source: 'test/fixtures/dacs-standard-63793a39/fixtures/settlement-evidence-delivery-success.json', destination: 'data/settlement/dacs-standard/fixtures/settlement-evidence-delivery-success.json', group: 'settlement', repo: standardRepository, commit: standardCommit, originPath: 'fixtures/settlement-evidence-delivery-success.json' },
-  { source: 'test/fixtures/dacs-standard-63793a39/vectors/security/bundle-settlement-evidence-bijection-v0.4.json', destination: 'data/settlement/dacs-standard/vectors/security/bundle-settlement-evidence-bijection-v0.4.json', group: 'settlement', repo: standardRepository, commit: standardCommit, originPath: 'vectors/security/bundle-settlement-evidence-bijection-v0.4.json' },
-  { source: 'test/fixtures/dacs-standard-63793a39/README.md', destination: 'data/settlement/dacs-standard/README.md', group: 'settlement', repo: standardRepository, commit: standardCommit, originPath: 'README.md' },
+  { source: 'test/fixtures/dacs-standard-63793a39/fixtures/settlement-evidence-payment-success.json', destination: 'data/settlement/dacs-standard/fixtures/settlement-evidence-payment-success.json', group: 'settlement', repo: standardRepository, commit: standardCommit, originPath: 'conformance/fixtures/settlement-evidence-payment-success.json' },
+  { source: 'test/fixtures/dacs-standard-63793a39/fixtures/settlement-evidence-delivery-success.json', destination: 'data/settlement/dacs-standard/fixtures/settlement-evidence-delivery-success.json', group: 'settlement', repo: standardRepository, commit: standardCommit, originPath: 'conformance/fixtures/settlement-evidence-delivery-success.json' },
+  { source: 'test/fixtures/dacs-standard-63793a39/vectors/security/bundle-settlement-evidence-bijection-v0.4.json', destination: 'data/settlement/dacs-standard/vectors/security/bundle-settlement-evidence-bijection-v0.4.json', group: 'settlement', repo: standardRepository, commit: standardCommit, originPath: 'conformance/vectors/security/bundle-settlement-evidence-bijection-v0.4.json' },
+  { source: 'test/fixtures/dacs-standard-63793a39/README.md', destination: 'data/settlement/dacs-standard/README.md', group: 'settlement' },
 ] satisfies Source[]).sort((a, b) => compareText(a.destination, b.destination));
-
-function gitHead(): string {
-  const result = spawnSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
-  if (result.status !== 0) throw new Error('Could not determine git HEAD');
-  return result.stdout.trim();
-}
 
 function sha256(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex');
@@ -112,16 +108,18 @@ function packageJson(): string {
     description: 'Deterministic data-only C1, settlement, and HTLC fixtures for DACS interoperability',
     license: 'MIT',
     private: false,
-    files: ['data', 'index.json', 'README.md', 'LICENSE'],
+    files: ['data', 'index.json', 'README.md', 'LICENSE', 'NOTICE'],
   }, null, 2)}\n`;
 }
 
-function packageReadme(head: string): string {
+function packageReadme(): string {
   const rows = sources.map((source) => {
     const repo = source.repo ?? repository;
-    const commit = source.commit ?? head;
     const originPath = source.originPath ?? source.source;
-    return `| \`${source.destination}\` | ${source.group} | \`${originPath}\` | [${repo}](${repo}) @ \`${commit}\` |`;
+    const repositoryAndPin = source.commit === undefined
+      ? `\`${repo}\``
+      : `[${repo}](${repo}) @ \`${source.commit}\``;
+    return `| \`${source.destination}\` | ${source.group} | \`${originPath}\` | ${repositoryAndPin} |`;
   }).join('\n');
   return `# @pathos-labs/dacs-fixtures
 
@@ -137,11 +135,13 @@ ${rows}
 
 The two settlement-named security-vector sets included from \`conformance/security-vectors\` are \`settlement-v1\` and \`sb2-settlement-uniqueness\`; no other directory name there contains \`settlement\` or \`htlc\`. The HTLC convergence corpus file is included separately because it is an explicitly selected fixture.
 
-The copied DACS-Standard README records the source fixture hashes and the short commit pin \`63793a39\`. The C1 implementation manifest and partner-kit manifest also retain their own embedded provenance pins.
+The packaged \`data/settlement/dacs-standard/README.md\` is the PATH-OS pin record for the copied DACS-Standard files. It records source fixture hashes and the short commit pin \`63793a39\`; it is not the upstream DACS-Standard README. The C1 implementation manifest and partner-kit manifest also retain their own embedded provenance pins.
+
+The top-level \`LICENSE\` reproduces the PATH-OS MIT notice and the DACS-Standard MIT notice from DACS-Standard commit \`63793a39\`. \`NOTICE\` maps packaged files to the applicable notice.
 
 ## Index
 
-\`index.json\` is JCS-canonical JSON with version \`pathos-dacs-fixtures-index:0.1\`. \`generatedFrom\` is the PATH-OS git commit used to build the package. Each \`files\` entry gives a package-relative path, SHA-256, byte count, group, and origin. Each \`expectations\` entry is copied only from a vector's own case-level \`expected\`, \`verdict\`, or \`decision\` field; \`vectorName\` is the case's \`name\` or \`id\` when present. Files without such a field have no expectation entry.
+\`index.json\` is JCS-canonical JSON with version \`pathos-dacs-fixtures-index:0.1\`. \`generatedFrom.sourceManifestSha256\` hashes the JCS list of source paths and content hashes, so it is independent of the checkout's current commit. Top-level \`pins\` names only the upstream DACS-Standard and dacs-sdk commits already recorded by the copied sources. Each \`files\` entry gives a package-relative path, SHA-256, byte count, group, and origin. Each \`expectations\` entry is copied only from a vector's own case-level \`expected\`, \`verdict\`, or \`decision\` field; \`vectorName\` is the case's \`name\` or \`id\` when present. Files without such a field have no expectation entry.
 
 To verify the bytes, hash a data file directly and compare both values with its index entry, for example:
 
@@ -154,6 +154,59 @@ From a checkout of the source repository, rebuild or check the complete package 
 \`node --import tsx scripts/build-fixtures-package.mts\`
 
 \`node --import tsx scripts/build-fixtures-package.mts --check\`
+`;
+}
+
+function packageLicense(pathosLicense: string): string {
+  const standardLicense = `MIT License
+
+Copyright (c) 2026 KyneSys Labs and the DACS authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+`;
+  return `PATH-OS MATERIAL
+================
+
+${pathosLicense.trimEnd()}
+
+DACS-STANDARD MATERIAL (commit ${standardCommit})
+===============================================
+
+${standardLicense}`;
+}
+
+function packageNotice(): string {
+  const standardFiles = sources.filter((source) => source.repo === standardRepository).map((source) => `- ${source.destination}`).join('\n');
+  const pathosFiles = sources.filter((source) => source.repo !== standardRepository).map((source) => `- ${source.destination}`).join('\n');
+  return `THIRD-PARTY AND PROJECT NOTICES
+
+The following files are covered by the PATH-OS MIT notice in LICENSE:
+
+- README.md
+- NOTICE
+- index.json
+- package.json
+${pathosFiles}
+
+The following files are covered by the DACS-Standard MIT notice in LICENSE:
+
+${standardFiles}
 `;
 }
 
@@ -173,27 +226,34 @@ async function build(output: string): Promise<void> {
   if (resolvedOutput === repoRoot || !dirname(resolvedOutput)) throw new Error(`Refusing unsafe output path: ${resolvedOutput}`);
   await rm(resolvedOutput, { recursive: true, force: true });
   await mkdir(resolvedOutput, { recursive: true });
-  const head = gitHead();
   const files: IndexFile[] = [];
   const expectations: Expectation[] = [];
+  const sourceManifest: SourceManifestEntry[] = [];
   for (const source of sources) {
     const bytes = await readFile(join(repoRoot, source.source));
     const destination = join(resolvedOutput, source.destination);
     await mkdir(dirname(destination), { recursive: true });
     await writeFile(destination, bytes);
+    const sourceSha256 = sha256(bytes);
+    sourceManifest.push({ sourcePath: source.source, sha256: sourceSha256 });
     const origin: IndexFile['origin'] = {
       repo: source.repo ?? repository,
-      commit: source.commit ?? head,
       path: source.originPath ?? source.source,
     };
-    files.push({ path: source.destination, sha256: sha256(bytes), bytes: bytes.length, group: source.group, origin });
+    if (source.commit !== undefined) origin.commit = source.commit;
+    files.push({ path: source.destination, sha256: sourceSha256, bytes: bytes.length, group: source.group, origin });
     expectations.push(...extractExpectations(bytes, source.destination));
   }
   expectations.sort((a, b) => compareText(a.path, b.path) || compareText(a.vectorName ?? '', b.vectorName ?? ''));
-  await writeFile(join(resolvedOutput, 'index.json'), jcs({ v: 'pathos-dacs-fixtures-index:0.1', generatedFrom: head, files, expectations }));
+  sourceManifest.sort((a, b) => compareText(a.sourcePath, b.sourcePath));
+  const generatedFrom = { sourceManifestSha256: sha256(Buffer.from(jcs(sourceManifest))) };
+  const pins = { dacsSdk: dacsSdkCommit, dacsStandard: standardCommit };
+  await writeFile(join(resolvedOutput, 'index.json'), jcs({ v: 'pathos-dacs-fixtures-index:0.1', generatedFrom, pins, files, expectations }));
   await writeFile(join(resolvedOutput, 'package.json'), packageJson());
-  await writeFile(join(resolvedOutput, 'README.md'), packageReadme(head));
-  await writeFile(join(resolvedOutput, 'LICENSE'), await readFile(join(repoRoot, 'conformance/partner-kit/LICENSE')));
+  await writeFile(join(resolvedOutput, 'README.md'), packageReadme());
+  const pathosLicense = await readFile(join(repoRoot, 'conformance/partner-kit/LICENSE'), 'utf8');
+  await writeFile(join(resolvedOutput, 'LICENSE'), packageLicense(pathosLicense));
+  await writeFile(join(resolvedOutput, 'NOTICE'), packageNotice());
 }
 
 async function compareDirectories(expected: string, actual: string): Promise<string[]> {
