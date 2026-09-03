@@ -1,0 +1,45 @@
+# DEM meter
+
+The DEM meter is a local, off-chain cost log. It performs no Demos write.
+
+## JSONL read contract
+
+The file contains one JCS-canonical JSON object per line. A row has these fields:
+
+- `agent`: a `cci:` claim with lowercase hexadecimal or a lowercase seat name containing only `a-z`, digits, `.`, `_`, or `-`. CCI input is canonicalized to lowercase when recorded; mixed-case CCI in stored rows is rejected.
+- `kind`: `seat-call`, `tool-call`, `anchor`, `transfer`, `receipt-read`, or `verify-call`.
+- `os`: a canonical non-negative integer string. OS is the smallest DEM unit.
+- `at`: an ISO timestamp with an explicit timezone.
+- `receiptHash`: optional 64-character lowercase SHA-256 hex. It references a receipt; receipt content is not copied into the meter.
+- `ref`: optional string for a storage address, transaction hash, or caller-defined reference.
+- `prevRowHash`: the preceding row's `rowHash`; it is absent on the first row.
+- `rowHash`: 64-character lowercase SHA-256 hex.
+
+For each row, remove `rowHash`, encode the remaining object with JCS, append the UTF-8 bytes of `prevRowHash` (or no bytes for the first row), and SHA-256 the result. A reader rejects malformed rows, blank lines, partial trailing lines, a `prevRowHash` mismatch, or a `rowHash` mismatch.
+
+The adjacent `<path>.head` sidecar is the truncation guard and the commit point. It contains JSON `{ "rowCount", "meterHead" }`. Creating a fresh meter atomically writes and directory-syncs the initial `{ "rowCount": 0, "meterHead": null }` sidecar before any record can append. A record first appends and syncs its row, then atomically replaces and directory-syncs the head. A row is committed only when the head's `rowCount` and `meterHead` include it; a complete row without that matching head is an uncommitted tail. Reads compare both fields to the log and fail closed when the guard is missing for a non-empty log, when rows were removed, or when the head differs. The meter is not tamper-proof against an attacker who can rewrite both the JSONL and its head file.
+
+Meter operations use their own exclusive `<path>.lock`, created with `O_EXCL`. The lock records its process ID, creation time, and a random ownership token. A lock whose process is dead, whose creation time is more than 30 seconds old, or whose creation time is more than 30 seconds in the future is recoverable; `EPERM` while probing a PID means that process is live. An empty or malformed crash lock becomes recoverable from its file modification time under the same bounded-age rule. Recovery atomically renames the candidate to quarantine, revalidates the observed token or inode and staleness, and restores a changed/live lock without replacing a contender's lock. A live, current lock is retried for at most two seconds and then fails with `meter-busy`. Release removes the lock only while its ownership token still matches. This lock is separate from the pay-DEM journal lock. The no-replace restore uses filesystem hard links and therefore requires a filesystem/platform that supports `link(2)` for the meter directory; recovery fails closed if it does not.
+
+A short write or sync failure does not update the head. `--repair` handles narrowly guarded crash tails. If a crash leaves a partial trailing line, repair truncates only its incomplete bytes when the intact rows exactly match the sidecar head. If one or more complete rows follow the committed prefix, repair atomically rewrites the log to exactly `head.rowCount` rows when that prefix's final hash equals `head.meterHead` (including the empty `{ "rowCount": 0, "meterHead": null }` prefix), and reports `{ "repaired": "uncommitted-tail", "removedRows": n }`. If the head is missing, a non-empty log is treated as an entirely uncommitted tail: repair atomically rewrites it to zero rows, directory-syncs it, writes the initial sidecar, and reports the number of complete rows removed. A missing head with an empty or absent log is a no-op repair that writes the initial sidecar. Until repair runs, reads and records continue to fail with `head-missing` for a non-empty log. A prefix that does not match an existing head is invalid and repair refuses it.
+
+## Conversion and totals
+
+There are 1,000,000,000 OS in one DEM. Decimal DEM input is converted by integer arithmetic and permits at most nine fractional digits. Output DEM strings use the unique canonical form: no exponent, no redundant leading or trailing zeroes, and no decimal point for whole DEM. Summaries use bigint arithmetic and apply `since` inclusively and `until` exclusively.
+
+## Invoice
+
+An invoice groups the selected period by meter kind, lists `meteredReceiptHashes`, and binds the selected meter head. It takes one locked snapshot for its lines, totals, receipt hashes, and head. `contentHash` is SHA-256 over the JCS form of the invoice without `contentHash`, including the required in-band notice `unsigned internal accounting; not a DACS artifact, not settlement proof, not a payment request`.
+
+## CLI
+
+The default file is `~/.pathos-dacs-ref/dem-meter.jsonl`. `DACS_DEM_METER` can select another file and `--path` takes precedence.
+
+```text
+node --import tsx src/live/dem-meter.mts --summary [--since ISO] [--until ISO] [--agent name] [--path file]
+node --import tsx src/live/dem-meter.mts --invoice --from cci:… --to cci:… --since ISO --until ISO [--path file]
+node --import tsx src/live/dem-meter.mts --verify [--path file]
+node --import tsx src/live/dem-meter.mts --repair [--path file]
+```
+
+Successful commands write one JSON document to stdout and exit 0. Invalid input or a broken chain exits 1 without printing environment values.

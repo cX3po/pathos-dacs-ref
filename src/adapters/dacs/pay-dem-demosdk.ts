@@ -16,6 +16,7 @@ import type {
   PayDemSettlementRecoveryContext,
 } from './sdk-pay-dem-types.js';
 import { utcDateOrThrow } from '../../live/pay-policy.js';
+import type { DemMeter } from '../demos/dem-meter.js';
 
 export interface DemosBroadcastWaitPayload {
   broadcast?: {
@@ -209,6 +210,7 @@ export async function settlePayDem(opts: {
   phaseIndex: number;
   network?: string;
   journal?: PayDemJournal;
+  meter?: { record: DemMeter['record'] };
   sdk?: DemosSdkFunctions;
   authorizeTransfer: (ctx: { amountOs: bigint; rpcUrl: string }) => Promise<
     | { verdict: 'PROCEED'; nowIso: string }
@@ -246,6 +248,7 @@ export async function settlePayDem(opts: {
     rpcUrl: opts.buyer.rpc,
   }, client, {
     authorizeTransfer: opts.authorizeTransfer,
+    meter: opts.meter,
     async journalPreparedTransfer(recovery) {
       capturedRecovery = recovery;
     },

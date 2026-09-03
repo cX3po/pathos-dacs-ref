@@ -20,6 +20,12 @@ import {
   type FetchResult,
 } from '../../demos/storage.js';
 import { jcsHashHex } from '../../jcs.js';
+import {
+  DemMeterError,
+  meterErrorResult,
+  type MeterErrorResult,
+} from './dem-meter-errors.js';
+import type { DemMeter } from './dem-meter.js';
 
 export type { AppendPlan, LedgerData, ReceiptEntry } from '../../demos/receipt-ledger.js';
 
@@ -173,6 +179,7 @@ export async function createProofLedger(opts: {
   head?: { storageAddress: string };
   broadcastImpl?: BroadcastPlan;
   fetchAnchoredImpl?: typeof fetchAnchored;
+  meter?: { record: DemMeter['record']; agent: string };
 }): Promise<{
   plan(entry: ReceiptEntry): Promise<AppendPlan>;
   append(entry: ReceiptEntry): Promise<{
@@ -180,6 +187,7 @@ export async function createProofLedger(opts: {
     entryCount: number;
     contentHash: string;
     txHash: string;
+    meterError?: MeterErrorResult;
   }>;
   read(): Promise<LedgerData>;
   verify(): Promise<{ outcome: 'pass' | 'fail' | 'indeterminate'; detail: string }>;
@@ -242,11 +250,28 @@ export async function createProofLedger(opts: {
     latestAddress = appendPlan.storageAddress;
     latestEntryCount = ledger.entries.length;
     expectedContentHash = contentHash;
+    let meterError: MeterErrorResult | undefined;
+    if (opts.meter !== undefined) {
+      try {
+        if (typeof appendPlan.feeOS !== 'string') {
+          throw new DemMeterError('meter-invalid', 'proof-ledger feeOS must be a string');
+        }
+        opts.meter.record({
+          agent: opts.meter.agent,
+          kind: 'anchor',
+          os: appendPlan.feeOS,
+          ref: appendPlan.storageAddress,
+        });
+      } catch (error) {
+        meterError = meterErrorResult(error);
+      }
+    }
     return {
       storageAddress: appendPlan.storageAddress,
       entryCount: ledger.entries.length,
       contentHash,
       txHash: broadcast.txHash,
+      ...(meterError === undefined ? {} : { meterError }),
     };
   }
 
