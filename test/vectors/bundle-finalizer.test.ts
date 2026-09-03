@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import * as ed25519 from '@noble/ed25519';
-import { finalizeBundle, verifyBundleListing, verifyFinalizedBundleCold, type BundleFinalizerDependencies, type CompletedSessionEvidence, type ResolvedCommitment } from '../../src/adapters/dacs/bundle-finalizer.js';
+import { finalizeBundle, verifyBundleListing, verifyFinalizedBundleCold, type BundleFinalizerDependencies, type CompletedSessionEvidence, type ResolvedCommitment, paymentRailId, paymentLogicalAddress } from '../../src/adapters/dacs/bundle-finalizer.js';
 import { commitAgreement, type AgreementCommitmentDependencies } from '../../src/adapters/dacs/agreement-commitment.js';
 import { emitSettlementEvidenceV1, evidenceHashV1 } from '../../src/lib/emit-settlement-evidence-v1.js';
 import { verifySettlementEvidenceV1 } from '../../src/lib/verify-settlement-evidence-v1.js';
@@ -294,4 +294,11 @@ test('every pinned upstream input remains byte-identical to the README manifest'
     'vectors/security/phase-kind-divergence-v0.3.json': '0c2c97ca1d4dece0b1f16011834aa21c446b3226311ef0a23417228565ed151e',
   };
   for (const [file, hash] of Object.entries(manifest)) assert.equal(createHash('sha256').update(loadBytes(file)).digest('hex'), hash, file);
+});
+
+test('PC-2: rail segment comes from the projected rail parameter and is percent-encoded', () => {
+  assert.equal(paymentRailId({ kind: 'pay-x402' }), 'pay-x402');
+  assert.equal(paymentRailId({ kind: 'pay-evm-erc20', parameters: { rail: 'pay-evm-erc20:base:usdc' } }), 'pay-evm-erc20:base:usdc');
+  assert.equal(paymentLogicalAddress('01JOB', 'pay-evm-erc20:base:usdc', 2), 'dacs4:payment:01JOB:pay-evm-erc20%3Abase%3Ausdc:2');
+  assert.equal(paymentLogicalAddress('01JOB', 'pay-x402', 0), 'dacs4:payment:01JOB:pay-x402:0');
 });

@@ -158,6 +158,18 @@ function effectivePipeline(input: CompletedSessionEvidence, deps: Pick<BundleFin
   });
 }
 
+/** PC-2: the rail segment is the rail selected by the authenticated agreement and phase context — the projected
+ *  `parameters.rail` for a pay-alternative phase, else the concrete pay-* kind — and is a CF-4 variable segment,
+ *  percent-encoded before assembly (internal colons become %3A). */
+export function paymentRailId(phase: { kind: unknown; parameters?: unknown }): string {
+  const params = phase.parameters && typeof phase.parameters === 'object' ? (phase.parameters as Record<string, unknown>) : {};
+  const rail = typeof params.rail === 'string' && params.rail.length > 0 ? params.rail : String(phase.kind);
+  return rail;
+}
+export function paymentLogicalAddress(jobId: string, railId: string, phaseIndex: number): string {
+  return `dacs4:payment:${jobId}:${encodeURIComponent(railId)}:${phaseIndex}`;
+}
+
 function validateTrace(input: CompletedSessionEvidence, pipeline: JsonObject[]): BundlePhaseEntry[] {
   const phases = input.phaseResults;
   if (!Array.isArray(phases)) throw new BundleFinalizationError('phase-summary', 'phaseResults must be an array');
@@ -230,8 +242,8 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     if (claimKey(signature.signer) !== claimKey(phase.orchestrator)) throw new BundleFinalizationError('seb-authorship', `evidence signer is not phase ${phase.index}'s authenticated orchestrator`);
     const unsigned = { ...evidence }; delete unsigned.signature;
     if (!await signatureValid(deps, DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, jcsHashHex(unsigned), signature)) throw new BundleFinalizationError('seb-signature', `evidence signature invalid for phase ${phase.index}`);
-    const railId = phase.kind.startsWith('pay-') ? phase.kind : undefined;
-    const logicalAddress = railId === undefined ? phase.evidenceLogicalAddress : `dacs4:payment:${input.jobId}:${railId}:${phase.index}`;
+    const railId = phase.kind.startsWith('pay-') ? paymentRailId(phase) : undefined;
+    const logicalAddress = railId === undefined ? phase.evidenceLogicalAddress : paymentLogicalAddress(input.jobId, railId, phase.index);
     if (!logicalAddress || (phase.evidenceLogicalAddress !== undefined && phase.evidenceLogicalAddress !== logicalAddress)) throw new BundleFinalizationError('receipt-binding', `caller evidence logical address contradicts PC-2 for phase ${phase.index}`);
     if (!phase.evidenceAnchor) throw new BundleFinalizationError('evidence-anchor', `evidence anchor metadata missing for phase ${phase.index}`);
     if (phase.evidenceAnchor.logicalAddress !== logicalAddress || phase.evidenceAnchor.nativeAddress !== ref.anchor.locator) throw new BundleFinalizationError('receipt-binding', `evidence anchor address mismatch for phase ${phase.index}`);
@@ -433,7 +445,7 @@ export async function verifyFinalizedBundleCold(expected: FinalizedBundleExpecta
     }
     const refs = await resolveEvidence(replayInput, deps as BundleFinalizerDependencies);
     if (jcsHashHex(refs) !== jcsHashHex(settlementEvidence)) return { outcome: 'fail', detail: 'bundle settlement evidence does not equal the re-derived SEB set' };
-    return { outcome: 'pass', detail: 'buyer/seller copies, signatures, hashes, finalized commitment, and SEB-1..SEB-6 evidence verified' };
+    return { outcome: 'pass', detail: 'buyer/seller copies, signatures, hashes, finalized commitment, and the shared evidence checks verified' };
   } catch (error) {
     if (error instanceof BundleFinalizationError && error.code === 'commitment-transport') return { outcome: 'indeterminate', detail: error.message };
     if (error instanceof BundleFinalizationError && error.code === 'commitment-not-refetched') return { outcome: 'indeterminate', detail: 'commitment-not-refetched' };
