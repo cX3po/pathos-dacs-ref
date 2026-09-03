@@ -1,0 +1,315 @@
+/**
+ * DACS-5 Verify — AttestationBundle
+ *
+ * Spec source: DACS v0.7 + DACS-1..5 v0.1, §10.4
+ *
+ * Normative requirements:
+ *   §10.4.2 — TWO-SIDED ANCHORING
+ *     buyer:  stor-{sha256(jobId + "-bundle-buyer")}
+ *     seller: stor-{sha256(jobId + "-bundle-seller")}
+ *     Divergence between the two = dispute signal.
+ *
+ *   §10.4.1 — CONSUMER VERIFICATION (this is what verify.ts does):
+ *     Verifiers MUST recompute the canonical form, the bundle hash, the
+ *     prefixed signed_bytes, and verify each signature.
+ *
+ *   §10.4.3 — TWO-SIDED LOOKUP
+ *     Consumers MUST query both party-specific addresses.
+ *     Unilateral bundle ⇒ `aborted-by-self` for the non-signer.
+ *
+ *   Domain separator: "dacs-bundle:v1:" (v0.1 §B.7 registry alignment 2026-06-07 — the legacy
+ *     `dacs5-bundle:v1:` separator was folded into the canonical `dacs-bundle:v1:`; backwards
+ *     compat is honored by RE-SEALING legacy bundles under the canonical separator on read/emit).
+ */
+import type { LegacyIdentityBundle, ClaimRef } from './identity.js';
+import type { CompositeVerificationRecord, VerifyResult, AttestationRef } from './verify-result.js';
+/** The phase outcomes captured in a session record. */
+export type PhaseOutcome = 'pass' | 'fail' | 'indeterminate' | 'aborted-by-counterparty' | 'aborted-by-self' | 'failed-substrate';
+/** A single phase that ran during the session. */
+export interface PhaseRecord {
+    phaseId: string;
+    startedAt: string;
+    endedAt: string;
+    outcome: PhaseOutcome;
+    /** Attestations produced or referenced during this phase */
+    attestations: AttestationRef[];
+    /** Free-text or structured detail */
+    detail?: Record<string, unknown>;
+}
+/** Final session state per §10.3.1. */
+export type SessionState = 'completed' | 'aborted-by-buyer' | 'aborted-by-seller' | 'failed-substrate-paused' | 'failed-verification' | 'failed-settlement' | 'failed-delivery' | 'expired';
+/**
+ * @deprecated Legacy DACS-5 reference-impl bundle (pre-§10.4 freeze). Emission is RETIRED
+ * (the emitter now produces `AttestationBundleV1`); this shape is retained for dual-accept
+ * READS only (§10.4.2 backwards-compat). New code MUST use `AttestationBundleV1`.
+ *
+ * The AttestationBundle anchored at TWO party-specific addresses (§10.4.2).
+ */
+export interface AttestationBundle {
+    v: 'dacs-5-bundle:0.1';
+    /** The job/session id — same across both parties' bundles */
+    jobId: string;
+    /** Which party this bundle is from */
+    role: 'buyer' | 'seller' | 'orchestrator';
+    /** The DACS-1 (legacy) IdentityBundle of the bundle author (without their signature on this bundle) */
+    party: LegacyIdentityBundle;
+    /** The counterparty's primary claim (full bundle is in the counterparty's anchor) */
+    counterparty: {
+        primary: ClaimRef;
+    };
+    /** Final state of the session */
+    state: SessionState;
+    /** Phases that ran */
+    phases: PhaseRecord[];
+    /** Composite vet result (DACS-2) — may be absent if no vet ran */
+    verification?: CompositeVerificationRecord;
+    /** Per-claim verify results for fine-grained reputation derivation (§10.5.1) */
+    verifyResults?: VerifyResult[];
+    /** When the bundle was finalised (ISO 8601) */
+    finalisedAt: string;
+    /** Signature over JCS-canonical(bundle without `signature`), prefixed with "dacs-bundle:v1:" || bundleHash */
+    signature?: string;
+    /** If orchestrator-distinct-from-parties: their cosignature */
+    orchestratorSignature?: string;
+}
+/** §10.4 terminal bundle outcome (distinct from the live SessionState). */
+export type BundleOutcome = 'completed' | 'failed-perm' | 'failed-counterparty' | 'failed-substrate' | 'aborted-by-self' | 'aborted-by-other';
+/** §10.3 live session state (spec names; replaces the legacy SessionState above). */
+export type SessionStateV1 = 'draft' | 'vet-pending' | 'vet-completed' | 'vet-failed' | 'negotiate-pending' | 'negotiate-completed' | 'negotiate-failed' | 'commit-pending' | 'commit-completed' | 'commit-failed' | 'settle-pending' | 'settle-completed' | 'settle-failed' | 'rate-pending' | 'rate-completed' | 'finalised' | 'aborted-by-self' | 'aborted-by-other' | 'substrate-failure-paused' | 'failed-substrate';
+/** §10.4 chain transaction reference. */
+export interface ChainTxRef {
+    chainId: string;
+    txHash: string;
+}
+/** §10.4 BundleParty — one entry per signing party. */
+export interface BundleParty {
+    role: 'buyer' | 'seller' | 'orchestrator';
+    bundleHash: string;
+    /** §B.1 ClaimReference. Spec form is the string "Scheme:Identifier"; the object form is accepted
+     *  for backward-compat but the string form is canonical (and what verifier-emitted bundles use). */
+    primaryClaim: ClaimRef | string;
+}
+/** §10.4 BundlePhaseEntry — per-phase summary (phase-level outcome is ok|fail). */
+export interface BundlePhaseEntry {
+    index: number;
+    kind: string;
+    outcome: 'ok' | 'fail';
+    errorClass?: 'permanent' | 'transient' | 'counterparty' | 'substrate' | 'settlement-atomicity';
+    retryExhausted?: true;
+    txRefs?: ChainTxRef[];
+    attestationRef?: AttestationRef;
+}
+/** CORE §5.1 immutable anchor/finality observation. */
+export interface AnchorReceipt {
+    receiptVersion: '1';
+    substrate: string;
+    finalityProfile: string;
+    logicalAddress: string;
+    nativeAddress: string;
+    contentHash: string;
+    transactionRef: {
+        kind: string;
+        value: string;
+    };
+    writer: string;
+    nonce?: string;
+    state: 'submitted' | 'accepted' | 'included' | 'finalized' | 'rejected' | 'dropped' | 'replaced' | 'expired' | 'reorged';
+    observationDisposition: 'established' | 'indeterminate';
+    preservedReceiptHash?: string;
+    observedAt: number;
+    blockRef?: {
+        id: string;
+        height?: string;
+        timestamp?: number;
+    };
+    replacementTransactionRef?: {
+        kind: string;
+        value: string;
+    };
+    evidence: {
+        kind: string;
+        value: string;
+    };
+}
+export interface AgreementPartyV1 {
+    role: 'buyer' | 'seller' | 'bidder-non-winning';
+    bundleHash: string;
+    primaryClaim: ClaimRef | string;
+    vetRecordRef: AttestationRef;
+    encryptionKey?: string;
+}
+export interface AgreementTermsV1 {
+    deliverable: Record<string, unknown>;
+    price: {
+        amount: string;
+        currency: string;
+        unit?: string;
+    };
+    meteredQuantity?: {
+        quantity: string;
+        unit: string;
+    };
+    rail?: Record<string, unknown>;
+    deadline: number;
+    priceAnchor?: Record<string, unknown>;
+    feeSchedule?: Record<string, unknown>;
+    additionalTerms?: Record<string, unknown>;
+}
+export interface AgreementDocumentV1 {
+    agreementVersion: '1';
+    jobId: string;
+    listingRef: {
+        listingId: string;
+        version: number;
+        contentHash: string;
+    };
+    parties: AgreementPartyV1[];
+    terms: AgreementTermsV1;
+    derivedFromPattern: 'fixed-price' | 'rfq' | 'sealed-envelope';
+    derivedFromChannel?: {
+        subnet: string;
+        lastMessageHash: string;
+    };
+    generatedAt: number;
+    signatures: Array<{
+        party: ClaimRef | string;
+        algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate';
+        value: string;
+    }>;
+}
+export interface FinalityCommitmentRecord {
+    finalityCommitmentVersion: '1';
+    jobId: string;
+    agreementHash: string;
+    listingRef: {
+        listingId: string;
+        version: number;
+        contentHash: string;
+    };
+    parties: Array<ClaimRef | string>;
+    pattern: 'fixed-price' | 'rfq' | 'sealed-envelope';
+    createdAt: number;
+    signature: {
+        algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate';
+        signer: ClaimRef | string;
+        value: string;
+    };
+}
+interface AbsoluteFaultBundleBase {
+    jobId: string;
+    outcome: BundleOutcome;
+    faultedParty: 'buyer' | 'seller' | 'orchestrator' | 'none';
+    anchoredByRole: 'buyer' | 'seller' | 'orchestrator';
+    listingRef: {
+        listingId: string;
+        version: number;
+        contentHash: string;
+    };
+    agreementRef?: AttestationRef;
+    cancellation?: {
+        claimedPolicy: 'pre-commit';
+    };
+    parties: BundleParty[];
+    phaseSummary: BundlePhaseEntry[];
+    vetRecords: AttestationRef[];
+    settlementEvidence: AttestationRef[];
+    amendments?: AttestationRef[];
+    ratingRefs?: AttestationRef[];
+    recipeRegistryVersion: number;
+    railRegistryVersion: number;
+    finalisedAt: number;
+    signatures: BundleSignature[];
+}
+export interface FaultAttestationBundle extends AbsoluteFaultBundleBase {
+    faultBundleVersion: '1';
+}
+export interface EvidenceBoundFaultAttestationBundle extends AbsoluteFaultBundleBase {
+    evidenceBoundFaultBundleVersion: '1';
+}
+export interface EvidenceBoundFaultBundleExtendedPointer {
+    evidenceBoundFaultBundleVersion: '1';
+    pointerKind: 'extended';
+    fullBundleUrl: string;
+    fullBundleContentHash: string;
+    segmentRefs?: AttestationRef[];
+    signature: {
+        algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate';
+        signer: ClaimRef | string;
+        value: string;
+    };
+}
+export type CurrentAttestationBundle = FaultAttestationBundle | EvidenceBoundFaultAttestationBundle;
+/** §10.4 BundleSignature — structured per signer (vs the legacy scalar sig fields). */
+export interface BundleSignature {
+    party: ClaimRef | string;
+    algorithm: 'ed25519' | 'ecdsa-secp256k1' | 'sr1-aggregate';
+    value: string;
+}
+/** §10.4 AttestationBundle (v0.1-conformant). Signed under "dacs-bundle:v1:" per §10.4.1. */
+export interface AttestationBundleV1 {
+    bundleVersion: '1';
+    jobId: string;
+    outcome: BundleOutcome;
+    /** §10.4 (R4-B): role of the party that anchored THIS copy; `outcome` is from this party's
+     *  perspective (matches the §10.4.2 role-derived anchor address). Required + signed. */
+    anchoredByRole: 'buyer' | 'seller' | 'orchestrator';
+    listingRef: {
+        listingId: string;
+        version: number;
+        contentHash: string;
+    };
+    agreementRef?: AttestationRef;
+    parties: BundleParty[];
+    phaseSummary: BundlePhaseEntry[];
+    vetRecords: AttestationRef[];
+    settlementEvidence: AttestationRef[];
+    amendments?: AttestationRef[];
+    ratingRefs?: AttestationRef[];
+    recipeRegistryVersion: number;
+    railRegistryVersion: number;
+    finalisedAt: number;
+    signatures: BundleSignature[];
+}
+/**
+ * Compute the two storage anchor addresses for a bundle's jobId (§10.4.2).
+ *
+ *   buyer:  stor-{sha256(jobId + "-bundle-buyer")}
+ *   seller: stor-{sha256(jobId + "-bundle-seller")}
+ *
+ * Implementation lives in src/lib/bundle-anchors.ts (not in this types-only file).
+ */
+export type BundleAnchorPair = {
+    buyer: string;
+    seller: string;
+};
+/** What the verifier returns — closed shape, predictable for downstream tooling. */
+export interface VerifyVerdict {
+    decision: 'pass' | 'fail' | 'indeterminate';
+    jobId: string;
+    steps: VerifyStep[];
+    /** SHA-256 hex of the canonical bundle bytes the verifier hashed */
+    canonicalBundleHash: string;
+    /** Public keys that successfully verified */
+    signersVerified: string[];
+    /** AttestationRefs that resolved + content-hash matched */
+    attestationsVerified: number;
+    /** AttestationRefs that did not resolve or content-hash mismatched */
+    attestationsFailed: number;
+}
+/** A single step in the verifier's walk. */
+export interface VerifyStep {
+    step: string;
+    /**
+     * `pass` | `fail` | `indeterminate` — the three §7.5.1 decision values that
+     * roll up into the final verdict (any fail → fail; else any indeterminate → indeterminate; else pass).
+     *
+     * `skipped` — informational only; recorded in the step log so the user sees
+     * that a check was deliberately not run, but does NOT affect the rollup decision.
+     * Used when the caller explicitly opts out of a check (e.g. skipTwoSidedLookup=true
+     * for offline file verification). The verifier still surfaces the scope limit in
+     * the detail so downstream consumers can choose how to treat it.
+     */
+    outcome: 'pass' | 'fail' | 'indeterminate' | 'skipped';
+    detail: string;
+}
+export {};

@@ -1,0 +1,6 @@
+@pathos-labs/dacs-verifier is built from the pathos-dacs-ref repository (cX3po/pathos-dacs-ref).
+The verifier logic is compiled from the repository's src/lib/verify-bundle-v1.ts,
+src/lib/verify-bundle.ts and src/lib/verify-document.ts and their imports; nothing in this
+package is a second implementation. The DACS specification texts the verifier enforces are
+the DACS-Standard's own (DACS-Agent-commerce/DACS-Standard). This package is a reference
+implementation and not a DACS-Standard publication.
