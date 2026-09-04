@@ -17,10 +17,11 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { VERIFIER_API_VERSION, indeterminateVerdict, verifyDocument, type VerifyDocumentOptions } from '../../../src/lib/verify-document.js';
+import { VERIFIER_API_VERSION, type VerifyDocumentOptions } from '../../../src/lib/verify-document.js';
+import { MAX_VERIFY_BODY_BYTES, handleVerifyRequest } from '../../../src/lib/verify-http.js';
 import { PACKAGE_NAME, PACKAGE_VERSION } from './index.js';
 
-export const MAX_BODY_BYTES = 1_048_576;
+export const MAX_BODY_BYTES = MAX_VERIFY_BODY_BYTES;
 /** The package's schemas directory: the nearest ancestor of this module that holds schemas/verify-request.schema.json
  *  (packages/verifier from the sources, and again from dist/packages/verifier/src once compiled). */
 function findSchemasDir(): string {
@@ -64,32 +65,7 @@ export async function route(method: string, path: string, bodyText: string, conf
   }
   if (path === '/verify') {
     if (method !== 'POST') return { status: 405, body: { error: 'use POST /verify' } };
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(bodyText);
-    } catch (e) {
-      return { status: 400, body: { error: `request body is not valid JSON: ${(e as Error).message}` } };
-    }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { status: 400, body: { error: 'request body must be a JSON object' } };
-    const req = parsed as Record<string, unknown>;
-    if (!req.bundle || typeof req.bundle !== 'object' || Array.isArray(req.bundle)) return { status: 400, body: { error: 'bundle must be a JSON object' } };
-    for (const flag of ['offline', 'requireSignatures'] as const) {
-      if (req[flag] !== undefined && typeof req[flag] !== 'boolean') return { status: 400, body: { error: `${flag} must be a boolean` } };
-    }
-    if (req.rpc !== undefined) return { status: 400, body: { error: 'rpc is server configuration, not a request field' } };
-    try {
-      const result = await verifyDocument(req.bundle, {
-        rpc: config.rpc,
-        offline: req.offline as boolean | undefined,
-        requireSignatures: req.requireSignatures as boolean | undefined,
-        fetchAnchoredImpl: config.fetchAnchoredImpl,
-      });
-      return { status: 200, body: result };
-    } catch (e) {
-      // An RPC or internal failure is "could not reach a verdict": indeterminate, never fail or pass.
-      const verdict = indeterminateVerdict('verifier', `verification did not complete: ${(e as Error).message}`);
-      return { status: 200, body: { apiVersion: VERIFIER_API_VERSION, bundleKind: 'unrecognised', verdict, exitCode: 2 } };
-    }
+    return handleVerifyRequest(bodyText, { rpc: config.rpc, fetchAnchoredImpl: config.fetchAnchoredImpl });
   }
   return { status: 404, body: { error: 'not found' } };
 }

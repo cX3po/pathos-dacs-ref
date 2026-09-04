@@ -15,7 +15,7 @@
     },
     {
       "sourcePath": "packages/verifier/src/http.ts",
-      "sha256": "c6b00a39893f64bfc0e1ca674cfd83af8b66f04b35b3ea63d17311ec44b6f5f7"
+      "sha256": "1d9411a92ed2daa14f23b140005ed252533cfad32e8b4d8d36c595f3d8ea3984"
     },
     {
       "sourcePath": "packages/verifier/src/index.ts",
@@ -62,6 +62,10 @@
       "sha256": "8b519eb483c829ac79542c262690e6feffbe4d8ef1f1865ba42b5a19550f3ce0"
     },
     {
+      "sourcePath": "src/lib/verify-http.ts",
+      "sha256": "8ff824ef1279b66feb3d2f864006a4ae839e8ae5fc1a758602e77ec8f76fdef3"
+    },
+    {
       "sourcePath": "src/types/bundle.ts",
       "sha256": "232387995d7744e301aa2094722a61183b22227e74093fa48c8960ca91a297ca"
     },
@@ -82,7 +86,7 @@
       "sha256": "aedd99df52d5257e4bf8500a3dff634053cf327edb0aeb9d46f04c442f6289f3"
     }
   ],
-  "sourceManifestSha256": "59fc034d09a17cba68fa41cae4d12522b1c9e2520d3cf66504a4ae1eadc99dd4",
+  "sourceManifestSha256": "b033c0027535ec796e7aab9f370a7e6ff92388db3e33b8be8d0ed9e4aa104e1b",
   "emitted": [
     {
       "path": "packages/verifier/src/cli.d.ts",
@@ -98,7 +102,7 @@
     },
     {
       "path": "packages/verifier/src/http.js",
-      "sha256": "fed02b4b0726973b23108a290dbf72f1cc090a741c504abffaff8495b72b40d6"
+      "sha256": "1202863a6513bebe57b518f03cf7a14d14ee462741a0d3d28c75555721a9710e"
     },
     {
       "path": "packages/verifier/src/index.d.ts",
@@ -189,6 +193,14 @@
       "sha256": "454c37bb2757cde9361cd9b901c335a935243b027a8cdbeec9a5f54b850fb9a6"
     },
     {
+      "path": "src/lib/verify-http.d.ts",
+      "sha256": "fe48c07a262c6ce0ec35ec8c0e043b8e1f187c59255ea53f563c063b80fa7915"
+    },
+    {
+      "path": "src/lib/verify-http.js",
+      "sha256": "17a668df961d2c27987e68772e151dd6324bcd5b91b7c6fac8cf4ed40b569b89"
+    },
+    {
       "path": "src/types/bundle.d.ts",
       "sha256": "1242a31f884a45f9f512a0b90ea306830a4e2c43411577f3959d3ec9eddd0f69"
     },
@@ -229,5 +241,5 @@
       "sha256": "cc4e23422ec114b49a43bb29d442339934e2d38ca79d41ebd4d9d253a7a122cf"
     }
   ],
-  "emittedSha256": "6f50bcc6b9683bed3274959c29fc16fa557c8aa73875ba3537da75f4eec48453"
+  "emittedSha256": "277d30967a4c569d2a8d5f2c19dd920c7da51fa0e8d5c2a68512f7d64af66da3"
 }
