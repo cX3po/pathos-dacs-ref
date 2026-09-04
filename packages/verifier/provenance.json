@@ -63,7 +63,7 @@
     },
     {
       "sourcePath": "src/lib/verify-http.ts",
-      "sha256": "7a23980e93635bb25b0a3ecaebb09377b60516c391dbaf4f2f35035ead8820ed"
+      "sha256": "8ff824ef1279b66feb3d2f864006a4ae839e8ae5fc1a758602e77ec8f76fdef3"
     },
     {
       "sourcePath": "src/types/bundle.ts",
@@ -86,7 +86,7 @@
       "sha256": "aedd99df52d5257e4bf8500a3dff634053cf327edb0aeb9d46f04c442f6289f3"
     }
   ],
-  "sourceManifestSha256": "e823ef8206276c87b042cb4f8d91d9690e1364c28a715105a5e4365d36966849",
+  "sourceManifestSha256": "b033c0027535ec796e7aab9f370a7e6ff92388db3e33b8be8d0ed9e4aa104e1b",
   "emitted": [
     {
       "path": "packages/verifier/src/cli.d.ts",
@@ -194,11 +194,11 @@
     },
     {
       "path": "src/lib/verify-http.d.ts",
-      "sha256": "e5cb63b64ad75ca4be3d626b7ecc9938fd64343505217aa0f87ae37920364153"
+      "sha256": "fe48c07a262c6ce0ec35ec8c0e043b8e1f187c59255ea53f563c063b80fa7915"
     },
     {
       "path": "src/lib/verify-http.js",
-      "sha256": "a36c71767ff670bc352378397a568158c4bd8310d9f57d99dc539d1bb48b7cc2"
+      "sha256": "17a668df961d2c27987e68772e151dd6324bcd5b91b7c6fac8cf4ed40b569b89"
     },
     {
       "path": "src/types/bundle.d.ts",
@@ -241,5 +241,5 @@
       "sha256": "cc4e23422ec114b49a43bb29d442339934e2d38ca79d41ebd4d9d253a7a122cf"
     }
   ],
-  "emittedSha256": "b28cbb329d922418b5bdd572b72c290a1d720768c16df45658d48861a04daae2"
+  "emittedSha256": "277d30967a4c569d2a8d5f2c19dd920c7da51fa0e8d5c2a68512f7d64af66da3"
 }

@@ -18,6 +18,7 @@ export interface VerifyHttpConfig {
 export type VerifyHttpResult = {
     status: 200;
     body: VerifyDocumentResult;
+    incomplete?: string;
 } | {
     status: 400;
     body: {

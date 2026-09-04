@@ -19,7 +19,7 @@ export interface VerifyHttpConfig {
 }
 
 export type VerifyHttpResult =
-  | { status: 200; body: VerifyDocumentResult }
+  | { status: 200; body: VerifyDocumentResult; incomplete?: string }
   | { status: 400; body: { error: string } };
 
 /** Parse and validate a verify request body; returns the 400 problem or the parsed request. */
@@ -54,7 +54,10 @@ export async function handleVerifyRequest(bodyText: string, config: VerifyHttpCo
     return { status: 200, body: result };
   } catch (e) {
     // An RPC or internal failure is "could not reach a verdict": indeterminate, never fail or pass.
-    const verdict = indeterminateVerdict('verifier', `verification did not complete: ${(e as Error).message}`);
-    return { status: 200, body: { apiVersion: VERIFIER_API_VERSION, bundleKind: 'unrecognised', verdict, exitCode: 2 } };
+    // `incomplete` tells a caller that this is the verifier's own failure, not a verdict about the bundle;
+    // the payment gate keys on it rather than on the step name, which a real verdict is free to use.
+    const detail = `verification did not complete: ${(e as Error).message}`;
+    const verdict = indeterminateVerdict('verifier', detail);
+    return { status: 200, body: { apiVersion: VERIFIER_API_VERSION, bundleKind: 'unrecognised', verdict, exitCode: 2 }, incomplete: detail };
   }
 }

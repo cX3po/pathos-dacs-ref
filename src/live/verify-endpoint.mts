@@ -171,7 +171,8 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
       }
       if (replayKey && options.committed.has(replayKey)) {
         const reverified = await handleVerifyRequest(body, { ...(options.verify ?? {}), fetchAnchoredImpl: watchedFetch, forceOffline: options.offline === true, lockRequestOptions: true });
-        if (rpcFailed) { outage('a chain read failed on the server during re-verification'); return; }
+        const reverifyIncomplete = reverified.status === 200 ? reverified.incomplete : undefined;
+        if (rpcFailed || reverifyIncomplete !== undefined) { outage(rpcFailed ? 'a chain read failed on the server during re-verification' : reverifyIncomplete!); return; }
         if (reverified.status === 200) {
           json(response, 200, { ...reverified.body, receipt: { txHash: JSON.parse(replayKey)[0], resourceId: resource.resourceId, redelivered: true, reverified: true } });
           return;
@@ -191,11 +192,13 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
       json(response, 400, verified.body);
       return;
     }
-    if (rpcFailed || verified.body.verdict.steps[0]?.step === 'verifier') {
-      // the verifier did not complete on this server (its RPC, not the bundle): not an answer, not billed.
+    if (rpcFailed || verified.incomplete !== undefined) {
+      // the verifier did not complete on this server (its RPC or an internal failure, not the bundle):
+      // not an answer, not billed. The signal is the handler's own `incomplete` flag, never a step
+      // name, so a genuine verdict can never be mistaken for an outage and strand a paid caller.
       // The reservation is released so the same proof pays for a retry.
       options.reserved.delete(key);
-      outage(rpcFailed ? 'a chain read failed on the server during verification' : verified.body.verdict.steps[0]!.detail);
+      outage(rpcFailed ? 'a chain read failed on the server during verification' : verified.incomplete!);
       return;
     }
     const payload = JSON.stringify({ ...verified.body, receipt: { txHash: gated.payment.txHash, from: gated.payment.from, amountOs: gated.payment.amount, resourceId: resource.resourceId } });
@@ -266,6 +269,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       if (!response.headersSent) { response.writeHead(500); response.end(); } else if (!response.writableEnded) response.end();
     });
   });
+  // Explicit socket limits: an unpaid request costs at most one body read (bounded by MAX_VERIFY_BODY_BYTES)
+  // and one hash; a slow or silent client is cut off rather than holding a worker.
+  server.headersTimeout = 10_000;
+  server.requestTimeout = 30_000;
   await new Promise<void>((resolve) => server.listen(config.port, config.host, () => resolve()));
   const addr = server.address();
   const shown = typeof addr === 'object' && addr ? `${addr.address}:${addr.port}` : String(addr);

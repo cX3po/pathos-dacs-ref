@@ -22,11 +22,16 @@ Three rules protect the payer:
   answered again (`receipt.redelivered: true`): from a bounded in-process cache while the
   verdict is there, by verifying again once it has been evicted (`receipt.reverified: true`).
   Never refused, never billed twice. The proof store and the cache live in this process only;
-  after a restart the chain proof is accepted afresh, which is safe for the payer.
+  after a restart the chain proof is accepted afresh, which is safe for the payer and means,
+  for the operator, that one payment can buy one verification per process lifetime: durable
+  single-use across restarts needs a persisted proof store, which this endpoint does not ship.
+  A payment above the price is accepted as paid; nothing is refunded.
 - **Not billed for the server's outage.** If a chain read fails on this server during
   verification, the answer is 503 with `proofRetained: true` and the proof reservation is
-  released, so the same proof pays for the retry. An indeterminate verdict about the bundle
-  itself (an absent anchor, an unresolvable key) is an answer and is billed.
+  released, so the same proof pays for the retry. The signal is the verifier handler's own
+  `incomplete` flag, not the name of a verdict step, so a genuine verdict is always delivered.
+  An indeterminate verdict about the bundle itself (an absent anchor, an unresolvable key) is
+  an answer and is billed.
 - **No downgrade.** The request's own `offline` and `requireSignatures` are ignored; the
   deployment decides what a paid verification is (`--offline` for archive-audit deployments).
 
@@ -53,7 +58,9 @@ greater than zero. `D402_RPC` (default `https://demosnode.discus.sh/`) is the De
 both to verify payment proofs and for the verifier's anchor lookups; it is never taken from a
 request.
 `VERIFY_HOST` defaults to 127.0.0.1. There is no authentication beyond payment; expose the
-port only where that is the intended door.
+port only where that is the intended door. An unpaid request still costs the server one
+body read (at most `MAX_VERIFY_BODY_BYTES`) and one SHA-256 before the gate answers 402, and
+sockets are cut at 10 s for headers and 30 s per request.
 
 ## Paying from a client
 

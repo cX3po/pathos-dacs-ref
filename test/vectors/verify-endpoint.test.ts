@@ -20,7 +20,7 @@ import type { AttestationBundleV1 } from '../../src/types/bundle.js';
 import { createD402Service, amountToOs, type D402PaymentRequirement, type D402VerificationResult, type D402Verifier } from '../../src/adapters/demos/d402-service.js';
 import { createD402ProofStore } from '../../src/live/d402-organ.mjs';
 import { createVerifyEndpointHandler, readConfig, resourceForBody } from '../../src/live/verify-endpoint.mjs';
-import { MAX_VERIFY_BODY_BYTES } from '../../src/lib/verify-http.js';
+import { MAX_VERIFY_BODY_BYTES, handleVerifyRequest } from '../../src/lib/verify-http.js';
 
 const RECIPIENT = '0x' + 'ab'.repeat(32);
 const AMOUNT_OS = '100000000'; // 0.1 DEM
@@ -50,11 +50,12 @@ class FakeVerifier implements D402Verifier {
   calls = 0;
   memo = '';
   amount = AMOUNT_OS;
+  to = RECIPIENT;
   error?: Error;
   async verify(txHash: string): Promise<D402VerificationResult> {
     this.calls += 1;
     if (this.error) throw this.error;
-    return { valid: true, verified_from: 'payer-address', verified_to: RECIPIENT, verified_amount: this.amount, verified_memo: this.memo, timestamp: 1 } as D402VerificationResult;
+    return { valid: true, verified_from: 'payer-address', verified_to: this.to, verified_amount: this.amount, verified_memo: this.memo, timestamp: 1 } as D402VerificationResult;
   }
   validatePayment(v: D402VerificationResult, r: D402PaymentRequirement): boolean {
     if (!v.valid || v.verified_to !== r.recipient || v.verified_amount === undefined) return false;
@@ -332,4 +333,62 @@ test('readConfig validates the environment and --dry-run prints a challenge with
   assert.match(challenge.resourceId, /^verify:[0-9a-f]{16}$/);
   const missing = spawnSync(process.execPath, ['--import', 'tsx', 'src/live/verify-endpoint.mts', '--dry-run'], { encoding: 'utf8', env: { ...process.env, VERIFY_RECIPIENT: '' } });
   assert.equal(missing.status, 2);
+});
+
+test('a payment to the wrong recipient is refused through the handler; an overpayment is accepted', async () => {
+  const { server, fake, committed } = setup();
+  const port = await listen(server);
+  try {
+    const body = JSON.stringify({ bundle: makeBundle(), offline: true });
+    fake.memo = `resourceId:${resourceForBody(body, AMOUNT_OS).resourceId}`;
+    fake.to = '0x' + 'ef'.repeat(32);
+    const wrong = await call(port, 'POST', '/verify', body, { 'X-Payment-Proof': HASH });
+    assert.equal(wrong.status, 402);
+    assert.equal(wrong.body.reason, 'mismatch');
+    assert.equal(committed.size, 0);
+    fake.to = RECIPIENT;
+    fake.amount = '250000000'; // 0.25 DEM against a 0.1 DEM price
+    const over = await call(port, 'POST', '/verify', body, { 'X-Payment-Proof': HASH });
+    assert.equal(over.status, 200, JSON.stringify(over.body));
+    assert.equal(over.body.receipt.amountOs, '250000000');
+    assert.equal(committed.size, 1);
+  } finally { server.close(); }
+});
+
+test('redelivery matches every spelling the gate accepts; spellings it does not accept are refused as malformed before any charge', async () => {
+  const { server, fake, committed } = setup();
+  const port = await listen(server);
+  try {
+    const body = JSON.stringify({ bundle: makeBundle(), offline: true });
+    fake.memo = `resourceId:${resourceForBody(body, AMOUNT_OS).resourceId}`;
+    const first = await call(port, 'POST', '/verify', body, { 'X-Payment-Proof': HASH });
+    assert.equal(first.status, 200);
+    // the gate accepts an optional lower-case 0x prefix and either hex case, and HTTP header parsing
+    // strips surrounding whitespace; every accepted spelling maps to one canonical key
+    for (const spelling of [HASH.slice(2), `0x${HASH.slice(2).toUpperCase()}`, HASH.slice(2).toUpperCase(), ` ${HASH} `]) {
+      const again = await call(port, 'POST', '/verify', body, { 'X-Payment-Proof': spelling });
+      assert.equal(again.status, 200, spelling);
+      assert.equal(again.body.receipt.redelivered, true, spelling);
+    }
+    // an upper-case 0X prefix is not a proof the gate parses: 402 malformed-proof, nothing verified, nothing charged
+    const before = fake.calls;
+    for (const spelling of [HASH.toUpperCase()]) {
+      const bad = await call(port, 'POST', '/verify', body, { 'X-Payment-Proof': spelling });
+      assert.equal(bad.status, 402, spelling);
+      assert.equal(bad.body.reason, 'malformed-proof', spelling);
+    }
+    assert.equal(fake.calls, before);
+    assert.equal(committed.size, 1);
+  } finally { server.close(); }
+});
+
+test('a genuine verdict carries no `incomplete` flag: the outage signal is the handler flag, never a step name', async () => {
+  // Every malformed or unanchored bundle is a verdict (indeterminate/fail), not an outage; the flag is
+  // set only when verifyDocument itself throws, which no request body can provoke. The endpoint keys
+  // its 503 on that flag (plus its own RPC watch), so a verdict is always delivered to a paid caller.
+  for (const bundle of [makeBundle(), {}, { bundleVersion: '1', jobId: null, parties: null, signatures: null }]) {
+    const r = await handleVerifyRequest(JSON.stringify({ bundle, offline: true }), {});
+    assert.equal(r.status, 200);
+    assert.equal((r as { incomplete?: string }).incomplete, undefined);
+  }
 });
