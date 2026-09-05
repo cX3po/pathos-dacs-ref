@@ -1,0 +1,112 @@
+{
+  "v": "pathos-offers:0.1",
+  "provider": {
+    "name": "PATH-OS",
+    "repository": "https://github.com/cX3po/pathos-dacs-ref",
+    "identity": {
+      "scheme": "key",
+      "identifier": "unset-until-deploy",
+      "note": "the merchant key is the deployment's VERIFY_RECIPIENT; it is never committed"
+    }
+  },
+  "network": {
+    "id": "demos:testnet",
+    "mode": "rehearsal",
+    "rpc": "https://demosnode.discus.sh/",
+    "mainnet": {
+      "enabled": false,
+      "note": "fresh quotes are issued when the operator opens the monetisation door on mainnet; nothing here is a mainnet price"
+    }
+  },
+  "currency": {
+    "code": "DEM",
+    "baseUnit": "OS",
+    "fractionalDigits": 9,
+    "amountRule": "amountDem is the canonical DEM string accepted by demToOs(); amountOs is its integer base-unit value"
+  },
+  "quote": {
+    "expiry": "quotes do not expire; each 402 challenge is answered from the deployment's current price, and a proof whose amount is below that price is refused as mismatch",
+    "retry": "an identical request with the same payment proof is redelivered, never billed twice",
+    "failure": "a request that cannot yield a deliverable answers 400 before any challenge; a chain-read failure on the server during verification answers 503 with proofRetained: true so the same proof pays for the retry; a payment proof the node cannot verify is refused as 402 unverifiable and consumes nothing",
+    "refund": "none; an overpayment is accepted as paid"
+  },
+  "skus": [
+    {
+      "id": "verify-bundle",
+      "title": "DACS attestation-bundle verification",
+      "unit": "per bundle",
+      "price": {
+        "amountDem": "0.1",
+        "amountOs": "100000000"
+      },
+      "deliverable": "VerifyDocumentResult (pass, fail or indeterminate from the verifier rollup) plus a receipt {txHash, from, amountOs, resourceId}",
+      "turnaround": "seconds, synchronous",
+      "limits": {
+        "maxBodyBytes": 1048576,
+        "resourceIdBinding": "sha256 of the exact request bytes"
+      },
+      "fulfilment": "automatic: POST /verify on the d402-gated verify endpoint (src/live/verify-endpoint.mts)",
+      "status": "available-on-testnet"
+    },
+    {
+      "id": "interop-run",
+      "title": "Shared-suite interop run for one implementation adapter",
+      "unit": "per pinned run",
+      "price": {
+        "amountDem": "5",
+        "amountOs": "5000000000"
+      },
+      "deliverable": "runner JSON result, readable report, logs and blinded inputs, pinned to the Standard next head and every adapter commit; rows classed INTEROP-AGREE, IMPLEMENTATION-DIVERGENCE, SELF-CHECK or ADAPTER-DECLINED",
+      "turnaround": "one day from receiving the adapter command and commit",
+      "limits": {
+        "adapterProtocol": "dacs-adapter/1",
+        "families": "those the adapter covers"
+      },
+      "fulfilment": "manual: request on the working-group thread; report posted there or privately first",
+      "status": "available-free-to-working-group"
+    },
+    {
+      "id": "verifier-package",
+      "title": "@pathos-labs/dacs-verifier versioned package with licence and support entitlement",
+      "unit": "per versioned package",
+      "price": {
+        "amountDem": "1",
+        "amountOs": "1000000000"
+      },
+      "deliverable": "the packaged verifier (packages/verifier, MIT), its schemas, provenance.json and a support entitlement for that version",
+      "turnaround": "immediate for a published version",
+      "limits": {
+        "licence": "MIT",
+        "support": "issues on the repository for that version"
+      },
+      "fulfilment": "manual until the operator opens the package registry door (plan item s5-pkg-publish)",
+      "status": "builds; not yet on a registry"
+    },
+    {
+      "id": "pr-review",
+      "title": "Review-desk exact-head review of one standards PR revision",
+      "unit": "per PR revision",
+      "price": {
+        "amountDem": "10",
+        "amountOs": "10000000000"
+      },
+      "deliverable": "an executed exact-head review (validators, vectors and evaluator probes run at the head) posted on the PR with READ and EXECUTED separated",
+      "turnaround": "one day",
+      "limits": {
+        "maxDiffLines": 5000,
+        "scope": "conformance repositories only"
+      },
+      "fulfilment": "manual: request review from the seat; the desk drafts, the gate reviews, the seat posts",
+      "status": "available; free to the DACS working group today"
+    }
+  ],
+  "manualOrders": {
+    "applies": [
+      "interop-run",
+      "verifier-package",
+      "pr-review"
+    ],
+    "procedure": "1) the buyer asks for a quote on the service's channel naming scope; 2) the seat answers with a quote naming scope, acceptance criteria, delivery form, price and the merchant address; 3) the buyer pays that amount on Demos to the merchant address and posts the transaction hash on the channel; 4) delivery is posted on the channel and names the quote and the transaction hash; 5) acceptance is the buyer's reply, and a delivery that misses the quoted acceptance criteria is redone once at no charge",
+    "note": "no endpoint enforces this today; it is the written procedure the seat follows"
+  }
+}
