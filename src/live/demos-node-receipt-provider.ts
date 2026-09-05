@@ -24,9 +24,10 @@
  */
 import { jcsCanonical } from '../jcs.js';
 import { sha256 } from '@noble/hashes/sha2';
-import { claimRefFor } from '../adapters/demos/identity.js';
-import { unwrapTextAnchor } from '../demos/storage.js';
 import type { AnchorReceipt } from '../types/bundle.js';
+// No static import of ../demos/storage.js or ../adapters/demos/identity.js: both pull in the Demos
+// SDK, and the coordinator imports this module statically for every mode, including dry-run and
+// its spawned CLI tests. The claim-reference helper is loaded when a receipt is actually built.
 import type { AgreementAnchorResult } from '../adapters/dacs/agreement-commitment.js';
 
 /** Structural twin of the coordinator's ReceiptObservation (kept local: the coordinator imports this module). */
@@ -73,6 +74,11 @@ export function createDefaultNodeCall(rpc: string, fetchImpl: typeof fetch = fet
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Mirror of storage.ts wrapTextAnchor: a text anchor is stored as { v: 'dacs-ref-text:1', text }. */
+export function unwrapTextAnchor(data: unknown): string | null {
+  return isRecord(data) && data.v === 'dacs-ref-text:1' && typeof data.text === 'string' && Object.keys(data).length === 2 ? data.text : null;
+}
 const hexTx = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 
 /** Block content timestamps are seconds on this node while transaction timestamps are milliseconds. */
@@ -191,6 +197,7 @@ export function createDemosNodeReceiptProvider(config: { rpc: string }, options:
       }
       // statusState is 'included' here; finalized needs the block confirmed and the record to agree.
       const lifecycle: Lifecycle = blockSettled && txSettled ? 'finalized' : 'included';
+      const { claimRefFor } = await import('../adapters/demos/identity.js');
       return {
         receiptVersion: '1',
         substrate: `demos-node:${host}`,
