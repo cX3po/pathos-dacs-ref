@@ -43,7 +43,7 @@
       "turnaround": "seconds, synchronous",
       "limits": {
         "maxBodyBytes": 1048576,
-        "resourceIdBinding": "sha256 of the exact request bytes"
+        "resourceIdBinding": "verify: + first 16 hex of sha256 of the exact request bytes"
       },
       "fulfilment": "automatic: POST /verify on the d402-gated verify endpoint (src/live/verify-endpoint.mts)",
       "status": "available-on-testnet"

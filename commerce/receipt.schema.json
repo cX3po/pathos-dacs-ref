@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/cX3po/pathos-dacs-ref/commerce/receipt.schema.json",
   "title": "PATH-OS delivery receipt",
-  "description": "One signed receipt shape for every service delivery in commerce/offers.json. Signed by the seller under the pathos-delivery-receipt:v1: domain separator over sha256-hex of the JCS form of the receipt without its signature, where JCS is the repository's src/jcs.ts (RFC 8785 with the same string preprocessing every other PATH-OS attestation uses); use that helper or the packaged @pathos-labs/dacs-jcs to reproduce signatures byte for byte. src/lib/delivery-receipt.ts implements these checks and two more the schema cannot express: for verify-bundle, endpoint.resourceId must equal quoteRef and idempotencyKey and its hash part must equal inputHash; and issuedAt must be a real calendar date-time (2026-02-30T14:00:00Z and 24:00:00 are refused). The tests and the verifier run the code; this document is the shape's public description. The receipt attests delivery only: it does not verify the payment (the buyer checks the named transaction on chain for recipient, network and amount) and nothing is put on chain.",
+  "description": "One signed receipt shape for every service delivery in commerce/offers.json. Signed by the seller under the pathos-delivery-receipt:v1: domain separator over sha256-hex of the JCS form of the receipt without its signature, where JCS is the repository's src/jcs.ts (RFC 8785 with the same string preprocessing every other PATH-OS attestation uses); use that helper or the packaged @pathos-labs/dacs-jcs to reproduce signatures byte for byte. src/lib/delivery-receipt.ts implements these checks and two more the schema cannot express: for verify-bundle, endpoint.resourceId must equal quoteRef and idempotencyKey and its 16-hex part must be the prefix of inputHash (the endpoint derives resourceId from the first 16 hex of sha256(request bytes)); and issuedAt must be a real calendar date-time (2026-02-30T14:00:00Z and 24:00:00 are refused). The tests and the verifier run the code; this document is the shape's public description. The receipt attests delivery only: it does not verify the payment (the buyer checks the named transaction on chain for recipient, network and amount) and nothing is put on chain.",
   "type": "object",
   "required": [
     "v",
@@ -153,7 +153,7 @@
       "properties": {
         "resourceId": {
           "type": "string",
-          "pattern": "^verify:[0-9a-f]{64}$"
+          "pattern": "^verify:[0-9a-f]{16}$"
         },
         "redelivered": {
           "type": "boolean"

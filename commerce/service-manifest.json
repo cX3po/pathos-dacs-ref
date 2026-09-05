@@ -42,7 +42,7 @@
         "challenge": {
           "amount": "100000000",
           "recipient": "<merchant address>",
-          "resourceId": "verify:<sha256 of the request bytes>",
+          "resourceId": "verify:<first 16 hex of sha256 of the request bytes>",
           "description": "DACS attestation-bundle verification",
           "reason": "missing-proof"
         },

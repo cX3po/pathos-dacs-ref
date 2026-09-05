@@ -39,8 +39,8 @@ opens; `offers.json` then gets a fresh `network` block and new quotes.
 ## Proof of delivery
 
 `verify-bundle` returns an HTTP receipt `{txHash, from, amountOs, resourceId}` that names the
-on-chain payment and is bound to the SHA-256 of the exact request bytes; the same proof with the same bytes is redelivered, never
+on-chain payment, with `resourceId` derived from the first 16 hex of the sha256 of the exact request bytes; the same proof with the same bytes is redelivered, never
 billed twice (`docs/verify-endpoint.md`). The other three services deliver a report, a
 package with provenance, or a posted review at an exact head, as listed under
-`proofOfDelivery` in the manifest. A shared receipt schema across all four is the next item
-(`s6-commerce-receipts`).
+`proofOfDelivery` in the manifest. The shared signed receipt (`receipt.schema.json`, `src/lib/delivery-receipt.ts`) is emitted by the
+verify endpoint as `deliveryReceipt` when a seller key is configured (`docs/verify-endpoint.md`).
