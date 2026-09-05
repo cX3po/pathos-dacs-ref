@@ -184,6 +184,7 @@ const indeterminateCases: Array<[string, (f: Node) => void, RegExp]> = [
   ['fractional nonce', (f) => { ((f.tx as Node).content as Node).nonce = 1.5; }, /nonce/],
   ['unrecognised transaction disposition', (f) => { (f.tx as Node).status = 'bogus'; }, /no recognised disposition/],
   ['missing transaction disposition', (f) => { delete (f.tx as Node).status; }, /no recognised disposition/],
+  ['record pending while status says included', (f) => { (f.tx as Node).status = 'pending'; }, /disagree on inclusion/],
   ['non-string transaction disposition', (f) => { (f.tx as Node).status = 7; }, /no recognised disposition/],
   ['unsafe-integer nonce', (f) => { ((f.tx as Node).content as Node).nonce = Number.MAX_SAFE_INTEGER + 2; }, /nonce/],
   ['unrecognised block disposition', (f) => { (f.block as Node).status = 'bogus'; }, /unrecognised disposition/],

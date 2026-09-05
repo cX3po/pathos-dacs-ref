@@ -183,6 +183,9 @@ export function createDemosNodeReceiptProvider(config: { rpc: string }, options:
       if (txDisposition === undefined || !['confirmed', 'included', 'pending'].includes(txDisposition)) {
         return indeterminate(`transaction record carries no recognised disposition (${String(txDisposition).slice(0, 32)})`, observed);
       }
+      // The status endpoint says included in a block the record names; a record still marked
+      // pending contradicts that and is not read as an included receipt.
+      if (txDisposition === 'pending') return indeterminate('transaction record and node status disagree on inclusion', observed);
       if (blockDisposition !== 'confirmed' && blockDisposition !== 'derived') {
         return indeterminate('block carries an unrecognised disposition', observed);
       }
