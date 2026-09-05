@@ -63,7 +63,7 @@ finality observation remains `indeterminate`; it is never converted into a
 finalized receipt.
 
 `--receipt-provider demos-node` selects `demos-node-receipt-provider.ts`, which
-proves finality from the node's public read path only: the storage program
+establishes finality from the node's own statement over its public read path only: the storage program
 (owner, creating transaction, stored bytes), the creating transaction (status,
 block number, signer nonce), the node's transaction status, and the block that
 lists the transaction (`confirmed` status, hash, consensus timestamp). It emits
@@ -71,8 +71,9 @@ state `finalized` under profile `demos-por-bft:block-confirmed:v1` only when the
 transaction is `confirmed` in a `confirmed` block that lists it; `included`
 without a confirmed block stays `included`, which the adapters reject; missing or
 inconsistent reads return `indeterminate` with the fields observed. The receipt
-reports the bytes the node holds and their hash; the adapters compare them with
-the expected `contentHash`, so a tampered store fails rather than staying unknown.
+reports the JCS-canonicalised content after text-anchor unwrapping and the SHA-256
+of those canonical bytes; the adapters compare that hash with the expected
+`contentHash`, so a tampered store fails rather than staying unknown.
 The flag enters the parameter hash, so the dry run and the LIVE run must both
 name it. No credential is read and nothing is written by the provider.
 

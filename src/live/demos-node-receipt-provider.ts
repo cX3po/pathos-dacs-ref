@@ -1,7 +1,7 @@
 /**
  * CORE §5.1 finalized-receipt provider backed by the Demos node's public read path.
  *
- * The provider proves finality only from what the node establishes: the storage program
+ * The provider relays finality as the node states it, and only from what the node establishes: the storage program
  * (owner, creating transaction, stored bytes), the creating transaction (status, block
  * number, signer nonce), the node's transaction status, and the block that carries the
  * transaction (status `confirmed`, hash, consensus timestamp, ordered transaction list).
@@ -9,9 +9,10 @@
  * written. When any read is missing or inconsistent the provider returns a
  * ReceiptObservation (`indeterminate`) with the fields it did observe, never a receipt.
  *
- * The receipt reports what the node holds: the stored bytes and their hash. It does not
- * assert the caller's expected contentHash; the receipt-enforcing adapters compare and turn
- * a mismatch into their own `fail`, so a tampered store is a failure, not an unknown.
+ * The receipt reports the JCS-canonicalised content after text-anchor unwrapping and the SHA-256
+ * of those canonical bytes. It does not assert the caller's expected contentHash; the
+ * receipt-enforcing adapters compare and turn a mismatch into their own `fail`, so a tampered
+ * store is a failure, not an unknown.
  *
  * Finality model. The Demos node reports a transaction as `confirmed` once its block is
  * `confirmed` under PoR-BFT; the SDK's own broadcastAndWait treats `included` as terminal.
