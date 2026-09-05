@@ -13,6 +13,8 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createServer, request as httpRequest } from 'node:http';
 import { ed25519 } from '@noble/curves/ed25519';
 import { emitAttestationBundleV1 } from '../../src/lib/emit-bundle-v1.js';
@@ -20,6 +22,7 @@ import type { AttestationBundleV1 } from '../../src/types/bundle.js';
 import { createD402Service, amountToOs, type D402PaymentRequirement, type D402VerificationResult, type D402Verifier } from '../../src/adapters/demos/d402-service.js';
 import { createD402ProofStore } from '../../src/live/d402-organ.mjs';
 import { createVerifyEndpointHandler, readConfig, resourceForBody } from '../../src/live/verify-endpoint.mjs';
+import { verifyDeliveryReceipt } from '../../src/lib/delivery-receipt.js';
 import { MAX_VERIFY_BODY_BYTES, handleVerifyRequest } from '../../src/lib/verify-http.js';
 
 const RECIPIENT = '0x' + 'ab'.repeat(32);
@@ -64,13 +67,13 @@ class FakeVerifier implements D402Verifier {
   }
 }
 
-function setup(opts: { offline?: boolean; fetchAnchoredImpl?: any; maxDelivered?: number } = {}) {
+function setup(opts: { offline?: boolean; fetchAnchoredImpl?: any; maxDelivered?: number; seller?: any } = {}) {
   const fake = new FakeVerifier();
   const committed = new Set<string>();
   const reserved = new Set<string>();
   const delivered = new Map<string, string>();
   const service = createD402Service({ recipient: RECIPIENT, rpcUrl: 'https://unused.invalid', verifier: fake, usedProofs: createD402ProofStore(committed, reserved) });
-  const handler = createVerifyEndpointHandler({ service, amountOs: AMOUNT_OS, priceDem: '0.1', recipient: RECIPIENT, committed, reserved, delivered, maxDelivered: opts.maxDelivered, verify: { fetchAnchoredImpl: opts.fetchAnchoredImpl }, offline: opts.offline ?? true });
+  const handler = createVerifyEndpointHandler({ seller: opts.seller, service, amountOs: AMOUNT_OS, priceDem: '0.1', recipient: RECIPIENT, committed, reserved, delivered, maxDelivered: opts.maxDelivered, verify: { fetchAnchoredImpl: opts.fetchAnchoredImpl }, offline: opts.offline ?? true });
   const server = createServer((req, res) => { void handler(req, res).catch(() => { if (!res.headersSent) { res.writeHead(500); res.end(); } }); });
   return { fake, committed, reserved, delivered, server };
 }
@@ -147,6 +150,95 @@ test('paid POST /verify returns the verdict with a receipt, commits the proof, a
     assert.equal(wrong.status, 402);
     assert.equal(wrong.body.reason, 'mismatch');
   } finally { server.close(); }
+});
+
+test('with a seller key the paid verdict carries a signed delivery receipt; without one nothing changes', async () => {
+  const seller = mk(7);
+  const { server, fake } = setup({ seller: { name: 'PATH-OS test', privKey: seller.priv, pubKeyHex: seller.pubHex, networkId: 'demos:testnet', networkMode: 'rehearsal' } });
+  const port = await listen(server);
+  try {
+    const health = await call(port, 'GET', '/healthz');
+    assert.equal(health.body.sellerPubKeyHex, seller.pubHex);
+    assert.equal(health.body.networkMode, 'rehearsal');
+    const body = JSON.stringify({ bundle: makeBundle(), offline: true });
+    const resource = resourceForBody(body, AMOUNT_OS);
+    fake.memo = `resourceId:${resource.resourceId} - DACS attestation-bundle verification`;
+    const r = await call(port, 'POST', '/verify', body, { 'X-Payment-Proof': HASH });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const receipt = r.body.deliveryReceipt;
+    assert.ok(receipt, 'deliveryReceipt present');
+    const check = verifyDeliveryReceipt(receipt, seller.pubHex);
+    assert.ok(check.ok, JSON.stringify(check));
+    assert.equal(verifyDeliveryReceipt(receipt, mk(8).pubHex).ok, false, 'a different seller key does not verify it');
+    assert.equal(receipt.sku, 'verify-bundle');
+    assert.equal(receipt.payment.txHash, r.body.receipt.txHash);
+    assert.equal(receipt.payment.from, r.body.receipt.from);
+    assert.equal(receipt.payment.amountOs, r.body.receipt.amountOs);
+    assert.equal(receipt.endpoint.resourceId, r.body.receipt.resourceId);
+    assert.equal(receipt.quoteRef, resource.resourceId);
+    assert.equal(receipt.idempotencyKey, resource.resourceId);
+    assert.equal(receipt.inputHash, createHash('sha256').update(body).digest('hex'));
+    assert.ok(receipt.inputHash.startsWith(resource.resourceId.slice(7)));
+    const { receipt: _r, deliveryReceipt: _d, ...verdictOnly } = r.body;
+    assert.equal(receipt.resultHash, createHash('sha256').update(JSON.stringify(verdictOnly)).digest('hex'));
+    assert.equal(receipt.network.mode, 'rehearsal');
+    assert.equal(receipt.retrieval.kind, 'http-response');
+    // redelivery returns the same original receipt (one receipt per delivery), flagged on the plain receipt only
+    const again = await call(port, 'POST', '/verify', body, { 'X-Payment-Proof': HASH });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.receipt.redelivered, true);
+    assert.deepEqual(again.body.deliveryReceipt, receipt);
+  } finally { server.close(); }
+  // after cache eviction the re-verified redelivery carries no delivery receipt (no retained payer address)
+  const evicting = setup({ seller: { name: 'PATH-OS test', privKey: seller.priv, pubKeyHex: seller.pubHex, networkId: 'demos:testnet', networkMode: 'rehearsal' }, maxDelivered: 1 });
+  const port3 = await listen(evicting.server);
+  try {
+    const first = JSON.stringify({ bundle: makeBundle('receipt-evict-1') });
+    const second = JSON.stringify({ bundle: makeBundle('receipt-evict-2') });
+    evicting.fake.memo = `resourceId:${resourceForBody(first, AMOUNT_OS).resourceId}`;
+    const delivered = await call(port3, 'POST', '/verify', first, { 'X-Payment-Proof': HASH });
+    assert.equal(delivered.status, 200);
+    assert.ok(delivered.body.deliveryReceipt);
+    evicting.fake.memo = `resourceId:${resourceForBody(second, AMOUNT_OS).resourceId}`;
+    assert.equal((await call(port3, 'POST', '/verify', second, { 'X-Payment-Proof': `0x${'ee'.repeat(32)}` })).status, 200);
+    const again = await call(port3, 'POST', '/verify', first, { 'X-Payment-Proof': HASH });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.receipt.reverified, true);
+    assert.equal(again.body.deliveryReceipt, undefined, 'no receipt names a buyer the server did not retain');
+  } finally { evicting.server.close(); }
+  // no seller configured: the response shape is exactly as before
+  const plain = setup();
+  const port2 = await listen(plain.server);
+  try {
+    const body = JSON.stringify({ bundle: makeBundle(), offline: true });
+    const resource = resourceForBody(body, AMOUNT_OS);
+    plain.fake.memo = `resourceId:${resource.resourceId} - DACS attestation-bundle verification`;
+    const r = await call(port2, 'POST', '/verify', body, { 'X-Payment-Proof': HASH });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.deliveryReceipt, undefined);
+    const health = await call(port2, 'GET', '/healthz');
+    assert.equal(health.body.sellerPubKeyHex, undefined);
+  } finally { plain.server.close(); }
+});
+
+test('readConfig reads the seller key from a file, never argv, and refuses a bad one', () => {
+  const dir = mkdtempSync('/tmp/verify-seller-');
+  const good = join(dir, 'seller.key'); writeFileSync(good, 'ab'.repeat(32) + '\n');
+  const bad = join(dir, 'bad.key'); writeFileSync(bad, 'not-a-key');
+  const base = { VERIFY_RECIPIENT: RECIPIENT };
+  const none = readConfig(base);
+  assert.ok(!('error' in none) && none.seller === undefined);
+  const withKey = readConfig({ ...base, VERIFY_SELLER_KEY_FILE: good, VERIFY_NETWORK_MODE: 'rehearsal' });
+  assert.ok(!('error' in withKey), JSON.stringify(withKey));
+  assert.equal((withKey as any).seller.pubKeyHex, mk(0xab).pubHex);
+  assert.equal((withKey as any).seller.name, 'PATH-OS');
+  assert.match(JSON.stringify(readConfig({ ...base, VERIFY_SELLER_KEY_FILE: bad })), /64 hex/);
+  assert.match(JSON.stringify(readConfig({ ...base, VERIFY_SELLER_KEY_FILE: join(dir, 'missing') })), /not readable/);
+  assert.match(JSON.stringify(readConfig({ ...base, VERIFY_SELLER_KEY_FILE: good, VERIFY_NETWORK_MODE: 'LIVE' })), /rehearsal or live/);
+  const emptyEnv = readConfig({ ...base, VERIFY_SELLER_KEY_FILE: good, VERIFY_SELLER_NAME: '', VERIFY_NETWORK_ID: '', VERIFY_NETWORK_MODE: '' }) as any;
+  assert.equal(emptyEnv.seller.name, 'PATH-OS');
+  assert.equal(emptyEnv.seller.networkId, 'demos:testnet');
+  assert.equal(emptyEnv.seller.networkMode, 'rehearsal');
 });
 
 test('a paid request evicted from the redelivery cache is re-verified and served, never refused', async () => {

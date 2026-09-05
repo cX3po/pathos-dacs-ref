@@ -33,6 +33,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { demToOs } from '../adapters/dacs/pay-dem.js';
+import { signDeliveryReceipt, type DeliveryReceipt } from '../lib/delivery-receipt.js';
+import * as ed25519Curve from '@noble/ed25519';
 import { createD402Service, type D402Resource, type D402UsedProofs } from '../adapters/demos/d402-service.js';
 import { createNodeD402Verifier } from '../adapters/demos/d402-node-verifier.js';
 import { VERIFIER_API_VERSION } from '../lib/verify-document.js';
@@ -59,9 +61,14 @@ function schemasDir(): string {
  * The 16 hex characters are the first 64 bits of SHA-256: enough that a payer cannot find a second
  * body with the same id, and short enough for the memo the SDK writes on chain.
  */
-export function resourceForBody(bodyText: string, amountOs: string): D402Resource {
-  const bodyHash = createHash('sha256').update(bodyText).digest('hex').slice(0, 16);
+export function resourceForBytes(bodyBytes: Uint8Array, amountOs: string): D402Resource {
+  const bodyHash = createHash('sha256').update(bodyBytes).digest('hex').slice(0, 16);
   return { resourceId: `verify:${bodyHash}`, amount: amountOs, description: 'DACS attestation-bundle verification' };
+}
+
+/** Same as resourceForBytes over the UTF-8 encoding of the text (identical for every valid UTF-8 body). */
+export function resourceForBody(bodyText: string, amountOs: string): D402Resource {
+  return resourceForBytes(Buffer.from(bodyText, 'utf-8'), amountOs);
 }
 
 export interface VerifyEndpointOptions {
@@ -79,6 +86,36 @@ export interface VerifyEndpointOptions {
   /** Applied to every request (receipt-archive audit deployments). */
   offline?: boolean;
   schemasDir?: string;
+  /** When set, every paid 200 and every cache redelivery also carries `deliveryReceipt`, signed by this seller key (commerce/receipt.schema.json); an evicted re-verify carries none, since the payer address is not retained. */
+  seller?: VerifyEndpointSeller;
+}
+
+export interface VerifyEndpointSeller {
+  name: string;
+  privKey: Uint8Array;
+  pubKeyHex: string;
+  networkId: string;
+  networkMode: 'rehearsal' | 'live';
+}
+
+function sha256Hex(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+/** The signed delivery receipt for one paid verification; `verdictJson` is the exact verdict body delivered. */
+export function deliveryReceiptFor(seller: VerifyEndpointSeller, args: { bodyBytes: Uint8Array; verdictJson: string; txHash: string; from: string; amountOs: string; resourceId: string; redelivered?: boolean; reverified?: boolean; implementationVersion: string; now?: Date }): DeliveryReceipt {
+  const endpoint: { resourceId: string; redelivered?: boolean; reverified?: boolean } = { resourceId: args.resourceId };
+  if (args.redelivered) endpoint.redelivered = true;
+  if (args.reverified) endpoint.reverified = true;
+  return signDeliveryReceipt({
+    v: 'pathos-delivery-receipt:0.1', sku: 'verify-bundle', quoteRef: args.resourceId, buyer: args.from,
+    seller: { name: seller.name, pubKeyHex: seller.pubKeyHex },
+    network: { id: seller.networkId, mode: seller.networkMode },
+    payment: { txHash: args.txHash, from: args.from, amountOs: args.amountOs },
+    idempotencyKey: args.resourceId, inputHash: createHash('sha256').update(args.bodyBytes).digest('hex'), implementationVersion: args.implementationVersion,
+    resultHash: sha256Hex(args.verdictJson), issuedAt: (args.now ?? new Date()).toISOString(),
+    retrieval: { kind: 'http-response', ref: 'POST /verify' }, endpoint,
+  }, seller.privKey);
 }
 
 function json(response: ServerResponse, status: number, body: unknown): void {
@@ -87,7 +124,7 @@ function json(response: ServerResponse, status: number, body: unknown): void {
   response.end(payload);
 }
 
-function readBody(request: IncomingMessage): Promise<string | null> {
+function readBody(request: IncomingMessage): Promise<Buffer | null> {
   return new Promise((resolveBody, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -100,7 +137,7 @@ function readBody(request: IncomingMessage): Promise<string | null> {
       if (size > MAX_VERIFY_BODY_BYTES) { tooLarge = true; request.pause(); resolveBody(null); return; }
       chunks.push(chunk);
     });
-    request.on('end', () => { if (!tooLarge) resolveBody(Buffer.concat(chunks).toString('utf-8')); });
+    request.on('end', () => { if (!tooLarge) resolveBody(Buffer.concat(chunks)); });
     request.on('error', reject);
   });
 }
@@ -116,7 +153,7 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
     }
     const method = request.method ?? 'GET';
     if (method === 'GET' && url.pathname === '/healthz') {
-      json(response, 200, { ok: true, name: ENDPOINT_NAME, version: ENDPOINT_VERSION, apiVersion: VERIFIER_API_VERSION, priceDem: options.priceDem, amountOs: options.amountOs, recipient: options.recipient, offline: options.offline === true });
+      json(response, 200, { ok: true, name: ENDPOINT_NAME, version: ENDPOINT_VERSION, apiVersion: VERIFIER_API_VERSION, priceDem: options.priceDem, amountOs: options.amountOs, recipient: options.recipient, offline: options.offline === true, ...(options.seller ? { sellerPubKeyHex: options.seller.pubKeyHex, networkId: options.seller.networkId, networkMode: options.seller.networkMode } : {}) });
       return;
     }
     if (method === 'GET' && url.pathname in SCHEMA_FILES) {
@@ -128,16 +165,17 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
     if (url.pathname !== '/verify') { json(response, 404, { error: 'not-found' }); return; }
     if (method !== 'POST') { json(response, 405, { error: 'use POST /verify' }); return; }
 
-    const body = await readBody(request);
-    if (body === null) {
+    const bodyBytes = await readBody(request);
+    if (bodyBytes === null) {
       response.on('finish', () => request.destroy());
       json(response, 413, { error: `request body exceeds ${MAX_VERIFY_BODY_BYTES} bytes` });
       return;
     }
     // A body that can never yield a verdict is refused before any challenge: nobody is asked to pay for it.
+    const body = bodyBytes.toString('utf-8');
     const parsed = parseVerifyRequest(body);
     if (!parsed.ok) { json(response, 400, { error: parsed.error }); return; }
-    const resource = resourceForBody(body, options.amountOs);
+    const resource = resourceForBytes(bodyBytes, options.amountOs);
     const delivered = options.delivered ?? (options.delivered = new Map());
     // Watch this server's own chain reads: the verifier records an RPC failure as an indeterminate
     // step (never as absence), which is not an answer the payer should be billed for or served as one.
@@ -174,7 +212,10 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
         const reverifyIncomplete = reverified.status === 200 ? reverified.incomplete : undefined;
         if (rpcFailed || reverifyIncomplete !== undefined) { outage(rpcFailed ? 'a chain read failed on the server during re-verification' : reverifyIncomplete!); return; }
         if (reverified.status === 200) {
-          json(response, 200, { ...reverified.body, receipt: { txHash: JSON.parse(replayKey)[0], resourceId: resource.resourceId, redelivered: true, reverified: true } });
+          const reReceipt = { txHash: JSON.parse(replayKey)[0] as string, resourceId: resource.resourceId, redelivered: true, reverified: true };
+          // The payer address is not retained after cache eviction, so no delivery receipt is signed here:
+          // a receipt must never name a buyer the server did not see. The plain receipt carries the flags.
+          json(response, 200, { ...reverified.body, receipt: reReceipt });
           return;
         }
       }
@@ -201,7 +242,10 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
       outage(rpcFailed ? 'a chain read failed on the server during verification' : verified.incomplete!);
       return;
     }
-    const payload = JSON.stringify({ ...verified.body, receipt: { txHash: gated.payment.txHash, from: gated.payment.from, amountOs: gated.payment.amount, resourceId: resource.resourceId } });
+    const plainReceipt = { txHash: gated.payment.txHash, from: gated.payment.from, amountOs: gated.payment.amount, resourceId: resource.resourceId };
+    const deliveredBody: Record<string, unknown> = { ...verified.body, receipt: plainReceipt };
+    if (options.seller) deliveredBody.deliveryReceipt = deliveryReceiptFor(options.seller, { bodyBytes, verdictJson: JSON.stringify(verified.body), txHash: gated.payment.txHash, from: gated.payment.from, amountOs: gated.payment.amount, resourceId: resource.resourceId, implementationVersion: `${ENDPOINT_NAME}@${ENDPOINT_VERSION}/${VERIFIER_API_VERSION}` });
+    const payload = JSON.stringify(deliveredBody);
     try {
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(payload), connection: 'close' });
     } catch {
@@ -227,7 +271,7 @@ function deliveredKey(headers: IncomingMessage['headers'], resourceId: string): 
   return proofKey(value.trim(), resourceId);
 }
 
-export function readConfig(env: NodeJS.ProcessEnv = process.env): { recipient: string; rpcUrl: string; port: number; host: string; priceDem: string; amountOs: string } | { error: string } {
+export function readConfig(env: NodeJS.ProcessEnv = process.env): { recipient: string; rpcUrl: string; port: number; host: string; priceDem: string; amountOs: string; seller?: VerifyEndpointSeller } | { error: string } {
   const recipient = env.VERIFY_RECIPIENT;
   if (!recipient) return { error: 'VERIFY_RECIPIENT is required' };
   if (!/^0x[0-9a-f]{64}$/i.test(recipient)) return { error: 'VERIFY_RECIPIENT must be a Demos address (0x + 64 hex characters)' };
@@ -243,7 +287,19 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): { recipient: s
   }
   if (BigInt(amountOs) <= 0n) return { error: 'VERIFY_PRICE_DEM must be greater than zero (a free gate is not a gate)' };
   if (!Number.isInteger(port) || port < 0 || port > 65_535) return { error: `invalid VERIFY_PORT: ${env.VERIFY_PORT}` };
-  return { recipient, rpcUrl, port, host, priceDem, amountOs };
+  let seller: VerifyEndpointSeller | undefined;
+  if (env.VERIFY_SELLER_KEY_FILE) {
+    // The seller signing key is read from a file, never from argv or the environment value itself.
+    let hex: string;
+    try { hex = readFileSync(env.VERIFY_SELLER_KEY_FILE, 'utf8').trim(); } catch { return { error: 'VERIFY_SELLER_KEY_FILE is not readable' }; }
+    if (!/^[0-9a-f]{64}$/i.test(hex)) return { error: 'VERIFY_SELLER_KEY_FILE must hold a 32-byte ed25519 private key as 64 hex characters' };
+    const privKey = Uint8Array.from(Buffer.from(hex, 'hex'));
+    const pubKeyHex = Buffer.from(ed25519Curve.getPublicKey(privKey)).toString('hex');
+    const networkMode = env.VERIFY_NETWORK_MODE || 'rehearsal';
+    if (networkMode !== 'rehearsal' && networkMode !== 'live') return { error: 'VERIFY_NETWORK_MODE must be rehearsal or live' };
+    seller = { name: env.VERIFY_SELLER_NAME || 'PATH-OS', privKey, pubKeyHex, networkId: env.VERIFY_NETWORK_ID || 'demos:testnet', networkMode };
+  }
+  return { recipient, rpcUrl, port, host, priceDem, amountOs, seller };
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
@@ -260,7 +316,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     console.log(JSON.stringify(service.challenge(resourceForBody('{"bundle":{}}', config.amountOs)).body));
     return 0;
   }
-  const handler = createVerifyEndpointHandler({
+  const handler = createVerifyEndpointHandler({ seller: config.seller,
     service, amountOs: config.amountOs, priceDem: config.priceDem, recipient: config.recipient, committed, reserved,
     verify: { rpc: config.rpcUrl }, offline,
   });

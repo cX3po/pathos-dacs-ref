@@ -87,7 +87,7 @@ test('every required field is enforced by shape checks, and nothing throws on ga
     assert.equal(verifyDeliveryReceipt({ ...good, issuedAt: bad }).ok, false, bad);
   }
   assert.ok(isRfc3339DateTime('2028-02-29T23:59:59.5+05:30'));
-  assert.equal(verifyDeliveryReceipt({ ...good, endpoint: { resourceId: 'verify:' + 'a'.repeat(64) } }).ok, false, 'endpoint block on a manual SKU');
+  assert.equal(verifyDeliveryReceipt({ ...good, endpoint: { resourceId: 'verify:' + 'a'.repeat(16) } }).ok, false, 'endpoint block on a manual SKU');
   // Unpaired surrogate: not canonicalisable, must not throw.
   assert.equal(verifyDeliveryReceipt({ ...good, buyer: 'bad\ud800' }).ok, false);
 });
@@ -100,9 +100,9 @@ test('the verify-bundle example mirrors the endpoint receipt and the offers pric
   assert.ok(receipt.endpoint);
   assert.equal(receipt.endpoint!.resourceId, receipt.quoteRef);
   assert.equal(receipt.endpoint!.resourceId, receipt.idempotencyKey);
-  assert.match(receipt.endpoint!.resourceId, /^verify:[0-9a-f]{64}$/);
-  assert.equal(receipt.endpoint!.resourceId.slice(7), receipt.inputHash);
-  assert.equal(verifyDeliveryReceipt({ ...receipt, quoteRef: 'verify:' + 'f'.repeat(64) }).ok, false, 'resourceId must equal quoteRef');
+  assert.match(receipt.endpoint!.resourceId, /^verify:[0-9a-f]{16}$/);
+  assert.ok(receipt.inputHash.startsWith(receipt.endpoint!.resourceId.slice(7)));
+  assert.equal(verifyDeliveryReceipt({ ...receipt, quoteRef: 'verify:' + 'f'.repeat(16) }).ok, false, 'resourceId must equal quoteRef');
   assert.equal(verifyDeliveryReceipt({ ...receipt, endpoint: { ...receipt.endpoint, redelivered: 'yes' } }).ok, false);
   assert.equal(verifyDeliveryReceipt({ ...receipt, endpoint: { ...receipt.endpoint, extra: 1 } }).ok, false);
   // Endpoint receipt fields {txHash, from, amountOs, resourceId} all have a home in the delivery receipt.

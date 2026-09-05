@@ -45,7 +45,7 @@ export interface DeliveryReceiptBody {
   issuedAt: string;
   /** Where the deliverable is fetched: an HTTP response, a thread comment, an issue attachment, a review id. */
   retrieval: { kind: 'http-response' | 'thread-comment' | 'issue-attachment' | 'pr-review'; ref: string };
-  /** Present only for verify-bundle, mirroring the endpoint's own receipt. */
+  /** Present only for verify-bundle, mirroring the endpoint's own receipt. resourceId is `verify:` + the first 16 hex of sha256(request bytes), as src/live/verify-endpoint.mts derives it. */
   endpoint?: { resourceId: string; redelivered?: boolean; reverified?: boolean };
 }
 
@@ -106,9 +106,9 @@ export function checkReceiptShape(value: unknown): string | null {
   if (r.sku === 'verify-bundle') {
     if (!endpoint || typeof endpoint !== 'object' || Array.isArray(endpoint)) return 'verify-bundle receipts carry an endpoint block';
     const resourceId = endpoint.resourceId;
-    if (!NON_EMPTY(resourceId) || !/^verify:[0-9a-f]{64}$/.test(resourceId)) return 'endpoint.resourceId must be verify:<sha256>';
+    if (!NON_EMPTY(resourceId) || !/^verify:[0-9a-f]{16}$/.test(resourceId)) return 'endpoint.resourceId must be verify:<first 16 hex of sha256(request)>';
     if (resourceId !== r.quoteRef || resourceId !== r.idempotencyKey) return 'endpoint.resourceId must equal quoteRef and idempotencyKey';
-    if (resourceId.slice(7) !== r.inputHash) return 'endpoint.resourceId must name inputHash';
+    if (!(r.inputHash as string).startsWith(resourceId.slice(7))) return 'endpoint.resourceId must be the prefix of inputHash';
     for (const flag of ['redelivered', 'reverified'] as const) {
       if (flag in endpoint && typeof endpoint[flag] !== 'boolean') return `endpoint.${flag} must be boolean`;
     }

@@ -37,6 +37,29 @@ Three rules protect the payer:
 
 Verdicts are never coerced: pass, fail or indeterminate come from the verifier's rollup.
 
+## Delivery receipt (optional, signed)
+
+With `VERIFY_SELLER_KEY_FILE` set to a file holding a 32-byte ed25519 private key as 64 hex
+characters, every paid `200` also carries `deliveryReceipt`: the signed shape in
+`commerce/receipt.schema.json` (`src/lib/delivery-receipt.ts`), with `sku: verify-bundle`,
+`quoteRef` and `idempotencyKey` equal to the `resourceId`, `payment.txHash`, `payment.from` and
+`payment.amountOs` equal to the plain receipt's `txHash`, `from` and `amountOs`, `inputHash` the sha256
+of the exact request bytes, `resultHash` the sha256 of the verdict body, and `endpoint.resourceId`.
+A redelivery served from the cache returns the same original delivery receipt (one receipt per
+delivery); a redelivery after cache eviction re-verifies and returns the plain `receipt` with
+`redelivered` and `reverified` set but no `deliveryReceipt`, because the payer address is not
+retained and a receipt must never name a buyer the server did not see. `GET /healthz` then
+reports `sellerPubKeyHex`, `networkId` and `networkMode` so a buyer knows which key to trust.
+`VERIFY_SELLER_NAME` (default `PATH-OS`), `VERIFY_NETWORK_ID` (default `demos:testnet`) and
+`VERIFY_NETWORK_MODE` (`rehearsal`, the default, or `live`) fill the receipt's seller and network
+fields. The key is read from the file only; it is never taken from argv or logged. Without the
+variable the response shape is unchanged. One behaviour changed for every deployment: `resourceId`
+is now derived from the raw request bytes rather than their UTF-8 decoding, which is identical for
+every valid UTF-8 body and differs only for a body that carries invalid UTF-8 inside a JSON string.
+
+`resourceId` is `verify:` followed by the first 16 hex characters of the sha256 of the request
+bytes; the receipt's `inputHash` carries the full digest and starts with those 16 characters.
+
 ## One implementation
 
 Verification is `handleVerifyRequest()` from `src/lib/verify-http.ts`, the same handler the

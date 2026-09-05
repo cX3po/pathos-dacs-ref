@@ -38,13 +38,13 @@ export function exampleBodies(): DeliveryReceiptBody[] {
   return [
     {
       v: DELIVERY_RECEIPT_VERSION, sku: 'verify-bundle',
-      quoteRef: `verify:${verifyInput}`, buyer: BUYER, seller: SELLER, network: NETWORK,
+      quoteRef: `verify:${verifyInput.slice(0, 16)}`, buyer: BUYER, seller: SELLER, network: NETWORK,
       payment: { txHash: TX(1), from: BUYER, amountOs: '100000000' },
-      idempotencyKey: `verify:${verifyInput}`,
+      idempotencyKey: `verify:${verifyInput.slice(0, 16)}`,
       inputHash: verifyInput, implementationVersion: '@pathos-labs/dacs-verifier@0.1.0',
       resultHash: sha('example verify verdict bytes'), issuedAt: ISSUED,
       retrieval: { kind: 'http-response', ref: 'POST /verify 200 with X-Payment-Proof' },
-      endpoint: { resourceId: `verify:${verifyInput}`, redelivered: false },
+      endpoint: { resourceId: `verify:${verifyInput.slice(0, 16)}`, redelivered: false },
     },
     {
       v: DELIVERY_RECEIPT_VERSION, sku: 'interop-run',

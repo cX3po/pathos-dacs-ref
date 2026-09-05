@@ -1,7 +1,7 @@
 {
   "v": "pathos-delivery-receipt:0.1",
   "sku": "verify-bundle",
-  "quoteRef": "verify:e3511a527433a5f58b1541ced20b64c0ffbe500e70577ced99cdc33c817ed583",
+  "quoteRef": "verify:e3511a527433a5f5",
   "buyer": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "seller": {
     "name": "PATH-OS (example key)",
@@ -16,7 +16,7 @@
     "from": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "amountOs": "100000000"
   },
-  "idempotencyKey": "verify:e3511a527433a5f58b1541ced20b64c0ffbe500e70577ced99cdc33c817ed583",
+  "idempotencyKey": "verify:e3511a527433a5f5",
   "inputHash": "e3511a527433a5f58b1541ced20b64c0ffbe500e70577ced99cdc33c817ed583",
   "implementationVersion": "@pathos-labs/dacs-verifier@0.1.0",
   "resultHash": "c14407c95c87370cf4cc6bc63a12e0b5ee6cc5b320cacfcc0d696ef40ec09606",
@@ -26,11 +26,11 @@
     "ref": "POST /verify 200 with X-Payment-Proof"
   },
   "endpoint": {
-    "resourceId": "verify:e3511a527433a5f58b1541ced20b64c0ffbe500e70577ced99cdc33c817ed583",
+    "resourceId": "verify:e3511a527433a5f5",
     "redelivered": false
   },
   "signature": {
     "algorithm": "ed25519",
-    "hex": "913fb86fc4a9bbb305afd63769010a9ed02befc595e2755bcbd938be34619220523ae12926795ea67cd95fb574b8f875fa8ba61ca867b07d633fa9336e6eda04"
+    "hex": "93f91a94ecce71b26f5ad5ab9c3ea7a03c4d22ec1ebdef3a3034d0e12cc6cf399e87e5c9b0d222f8ba3614060e1922f430e07e09749228e9b9d3113621ad7b00"
   }
 }
