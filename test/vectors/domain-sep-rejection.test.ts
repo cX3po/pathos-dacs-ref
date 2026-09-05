@@ -104,8 +104,8 @@ test('§B.7 — registry separator count (13 registry + 13 dacs-x extension)', (
     `expected 13 §B.7-registry separators, got ${Object.keys(DOMAIN_SEPARATORS).length}`);
   assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 13,
     `expected 13 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);
-  assert.equal(Object.keys(PATHOS_EXTENSION_SEPARATORS).length, 4,
-    `expected 4 PATH-OS extension separators, got ${Object.keys(PATHOS_EXTENSION_SEPARATORS).length}`);
+  assert.equal(Object.keys(PATHOS_EXTENSION_SEPARATORS).length, 5,
+    `expected 5 PATH-OS extension separators, got ${Object.keys(PATHOS_EXTENSION_SEPARATORS).length}`);
   // Pin the exact canonical strings — a count check alone can't catch a remove-one/add-one substitution.
   assert.equal(DOMAIN_SEPARATORS.BUNDLE_BINDING, 'dacs-bundle-binding:v1:');
   assert.equal(DOMAIN_SEPARATORS.FAULT_BUNDLE, 'dacs-fault-bundle:v1:');

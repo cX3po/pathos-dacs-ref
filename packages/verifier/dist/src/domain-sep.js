@@ -147,6 +147,7 @@ export const PATHOS_EXTENSION_SEPARATORS = {
     BRIDGE_RELEASE_ATTESTATION: 'dacs-bridge-release-attestation:v1:', // signed_bytes = sep || utf8(sha256-hex(JCS(releaseCommitment)))
     TANK_LOCK_ATTESTATION: 'dacs-tank-lock-attestation:v1:', // signed_bytes = sep || utf8(sha256-hex(JCS(tankLockCommitment)))
     TANK_REFUND_ATTESTATION: 'dacs-tank-refund-attestation:v1:', // signed_bytes = sep || utf8(sha256-hex(JCS(tankRefundCommitment)))
+    DELIVERY_RECEIPT: 'pathos-delivery-receipt:v1:', // signed_bytes = sep || utf8(sha256-hex(JCS(receipt without signature)))
 };
 /**
  * §B.7 closure rule. Throws on unknown separator. Admits the closed v0.1 §B.7 registry

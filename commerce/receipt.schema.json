@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cX3po/pathos-dacs-ref/commerce/receipt.schema.json",
+  "title": "PATH-OS delivery receipt",
+  "description": "One signed receipt shape for every service delivery in commerce/offers.json. Signed by the seller under the pathos-delivery-receipt:v1: domain separator over sha256-hex of the JCS form of the receipt without its signature, where JCS is the repository's src/jcs.ts (RFC 8785 with the same string preprocessing every other PATH-OS attestation uses); use that helper or the packaged @pathos-labs/dacs-jcs to reproduce signatures byte for byte. src/lib/delivery-receipt.ts implements these checks and two more the schema cannot express: for verify-bundle, endpoint.resourceId must equal quoteRef and idempotencyKey and its hash part must equal inputHash; and issuedAt must be a real calendar date-time (2026-02-30T14:00:00Z and 24:00:00 are refused). The tests and the verifier run the code; this document is the shape's public description. The receipt attests delivery only: it does not verify the payment (the buyer checks the named transaction on chain for recipient, network and amount) and nothing is put on chain.",
+  "type": "object",
+  "required": [
+    "v",
+    "sku",
+    "quoteRef",
+    "buyer",
+    "seller",
+    "network",
+    "payment",
+    "idempotencyKey",
+    "inputHash",
+    "implementationVersion",
+    "resultHash",
+    "issuedAt",
+    "retrieval",
+    "signature"
+  ],
+  "properties": {
+    "v": {
+      "const": "pathos-delivery-receipt:0.1"
+    },
+    "sku": {
+      "enum": [
+        "verify-bundle",
+        "interop-run",
+        "verifier-package",
+        "pr-review"
+      ]
+    },
+    "quoteRef": {
+      "type": "string",
+      "minLength": 1,
+      "description": "the 402 resourceId for verify-bundle; the quote id for manual orders"
+    },
+    "buyer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seller": {
+      "type": "object",
+      "required": [
+        "name",
+        "pubKeyHex"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pubKeyHex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "required": [
+        "id",
+        "mode"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "rehearsal",
+            "live"
+          ]
+        }
+      }
+    },
+    "payment": {
+      "type": "object",
+      "required": [
+        "txHash",
+        "from",
+        "amountOs"
+      ],
+      "properties": {
+        "txHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "amountOs": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        }
+      }
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 1,
+      "description": "repeating a delivery with this key returns the same deliverable; not being billed twice is the seller's stated policy, enforced in code only for verify-bundle"
+    },
+    "inputHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256 of the exact input bytes"
+    },
+    "implementationVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resultHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256 of the delivered result bytes"
+    },
+    "issuedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "retrieval": {
+      "type": "object",
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "http-response",
+            "thread-comment",
+            "issue-attachment",
+            "pr-review"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "description": "verify-bundle only: mirrors the endpoint's own receipt",
+      "required": [
+        "resourceId"
+      ],
+      "properties": {
+        "resourceId": {
+          "type": "string",
+          "pattern": "^verify:[0-9a-f]{64}$"
+        },
+        "redelivered": {
+          "type": "boolean"
+        },
+        "reverified": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "signature": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "hex"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "ed25519"
+        },
+        "hex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{128}$"
+        }
+      }
+    }
+  },
+  "if": {
+    "properties": {
+      "sku": {
+        "const": "verify-bundle"
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "endpoint"
+    ]
+  },
+  "else": {
+    "not": {
+      "required": [
+        "endpoint"
+      ]
+    }
+  }
+}

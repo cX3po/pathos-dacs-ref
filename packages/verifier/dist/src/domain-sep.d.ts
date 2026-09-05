@@ -122,6 +122,7 @@ export declare const PATHOS_EXTENSION_SEPARATORS: {
     readonly BRIDGE_RELEASE_ATTESTATION: "dacs-bridge-release-attestation:v1:";
     readonly TANK_LOCK_ATTESTATION: "dacs-tank-lock-attestation:v1:";
     readonly TANK_REFUND_ATTESTATION: "dacs-tank-refund-attestation:v1:";
+    readonly DELIVERY_RECEIPT: "pathos-delivery-receipt:v1:";
 };
 export type DomainSeparator = (typeof DOMAIN_SEPARATORS)[keyof typeof DOMAIN_SEPARATORS] | (typeof ADDITIVE_DOMAIN_SEPARATORS)[keyof typeof ADDITIVE_DOMAIN_SEPARATORS] | (typeof LEGACY_READ_SEPARATORS)[keyof typeof LEGACY_READ_SEPARATORS] | (typeof DACS_X_EXTENSION_SEPARATORS)[keyof typeof DACS_X_EXTENSION_SEPARATORS] | (typeof REVIEWED_DACS_X_EXTENSION_SEPARATORS)[keyof typeof REVIEWED_DACS_X_EXTENSION_SEPARATORS] | (typeof PATHOS_EXTENSION_SEPARATORS)[keyof typeof PATHOS_EXTENSION_SEPARATORS];
 export type DomainSeparatorKey = keyof typeof DOMAIN_SEPARATORS;

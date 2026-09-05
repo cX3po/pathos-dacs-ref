@@ -1,0 +1,32 @@
+{
+  "v": "pathos-delivery-receipt:0.1",
+  "sku": "verifier-package",
+  "quoteRef": "quote:verifier-package:0.1.0",
+  "buyer": "did:example:integrator",
+  "seller": {
+    "name": "PATH-OS (example key)",
+    "pubKeyHex": "e7024c0e9eb41e3498954efa1e000e8a20497cf1f319558cf00f1ced2aece19b"
+  },
+  "network": {
+    "id": "demos:testnet",
+    "mode": "rehearsal"
+  },
+  "payment": {
+    "txHash": "0x0000000000000000000000000000000000000000000000000000000000000003",
+    "from": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "amountOs": "1000000000"
+  },
+  "idempotencyKey": "verifier-package:@pathos-labs/dacs-verifier@0.1.0",
+  "inputHash": "de0f8c212ef051cddcfcf050574eea96d8d0e69ff6dace3c543947947b251acd",
+  "implementationVersion": "@pathos-labs/dacs-verifier@0.1.0",
+  "resultHash": "eb07526dc088efecdbd76780e9e90151652f7a276cb9af5de347f59f39fceddb",
+  "issuedAt": "2026-09-05T14:00:00.000Z",
+  "retrieval": {
+    "kind": "issue-attachment",
+    "ref": "https://github.com/cX3po/pathos-dacs-ref/issues/example"
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "hex": "3d32ffd7e0fa1606df260a1c27a2ddd807416d929d97a1bc420d5862fabacbb488f31ca861282e3604eef06d17c6b00eb14b76c1f94fa8f547c119ef4e871107"
+  }
+}
