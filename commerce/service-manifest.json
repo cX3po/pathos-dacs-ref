@@ -1,0 +1,107 @@
+{
+  "v": "pathos-service-manifest:0.1",
+  "provider": {
+    "name": "PATH-OS",
+    "repository": "https://github.com/cX3po/pathos-dacs-ref",
+    "signingKey": {
+      "scheme": "key",
+      "identifier": "unset-until-deploy",
+      "note": "the deployment's merchant key; receipts are bound to the on-chain payment, not to this manifest"
+    }
+  },
+  "pricing": "commerce/offers.json",
+  "profiles": {
+    "verifier": "DACS-5 attestation bundles and settlement evidence as implemented by packages/verifier (apiVersion from GET /healthz)",
+    "interopRunner": "dacs-adapter/1 (conformance/shared-suite/ADAPTER-PROTOCOL.md)",
+    "canonicalisation": "RFC 8785 JCS as implemented by src/jcs.ts"
+  },
+  "network": {
+    "id": "demos:testnet",
+    "mode": "rehearsal",
+    "mainnet": {
+      "enabled": false
+    }
+  },
+  "services": [
+    {
+      "id": "verify-bundle",
+      "kind": "http",
+      "endpoint": {
+        "baseUrl": "unset-until-deploy",
+        "healthz": "GET /healthz",
+        "schemas": [
+          "GET /schemas/verify-request.json",
+          "GET /schemas/verify-verdict.json"
+        ],
+        "operation": "POST /verify",
+        "gate": "d402: 402 {amount, recipient, resourceId, description, reason} until paid; repeat the same bytes with X-Payment-Proof: <txHash>"
+      },
+      "openapi": "commerce/openapi.json#/paths/~1verify",
+      "example": {
+        "request": "POST /verify with the exact bundle JSON as the body; see packages/verifier/schemas/verify-request.schema.json",
+        "challenge": {
+          "amount": "100000000",
+          "recipient": "<merchant address>",
+          "resourceId": "verify:<sha256 of the request bytes>",
+          "description": "DACS attestation-bundle verification",
+          "reason": "missing-proof"
+        },
+        "paid": {
+          "headers": {
+            "X-Payment-Proof": "<txHash>"
+          }
+        }
+      }
+    },
+    {
+      "id": "interop-run",
+      "kind": "manual",
+      "channel": "https://github.com/DACS-Agent-commerce/DACS-Standard/issues/270",
+      "operations": {
+        "submit": "post the adapter command and commit on the thread",
+        "status": "the thread",
+        "result": "report posted on the thread or sent privately first"
+      },
+      "example": {
+        "request": "adapter: node path/to/adapter.mjs; commit: <sha>; families: canonicalisation, bundle-binding"
+      },
+      "order": "paid order per commerce/offers.json#/manualOrders: quote on the channel, payment on Demos to the merchant address, delivery names the quote and the transaction hash"
+    },
+    {
+      "id": "verifier-package",
+      "kind": "artifact",
+      "artifact": "packages/verifier (name @pathos-labs/dacs-verifier, version from packages/verifier/package.json, provenance in packages/verifier/provenance.json)",
+      "operations": {
+        "submit": "open an issue on the repository naming the version and the entitlement wanted; the quote answers there",
+        "status": "the issue",
+        "result": "tarball (npm pack at the tagged version) plus provenance.json and checksum attached to the issue; registry publication itself waits for the operator's door (plan item s5-pkg-publish)"
+      },
+      "example": {
+        "request": "npm pack in packages/verifier at the tagged version"
+      },
+      "order": "paid order per commerce/offers.json#/manualOrders: quote on the channel, payment on Demos to the merchant address, delivery names the quote and the transaction hash",
+      "channel": "https://github.com/cX3po/pathos-dacs-ref/issues (title: package order <version>)"
+    },
+    {
+      "id": "pr-review",
+      "kind": "manual",
+      "channel": "GitHub review request to the seat on the PR",
+      "operations": {
+        "submit": "request review from cX3po on the PR",
+        "status": "the PR",
+        "result": "an exact-head review posted on the PR"
+      },
+      "example": {
+        "request": "review requested on DACS-Agent-commerce/DACS-Standard#<n> at head <sha>"
+      },
+      "order": "paid order per commerce/offers.json#/manualOrders: quote on the channel, payment on Demos to the merchant address, delivery names the quote and the transaction hash"
+    }
+  ],
+  "proofOfDelivery": {
+    "verify-bundle": "receipt {txHash, from, amountOs, resourceId, redelivered?, reverified?} in the 200 body naming the on-chain payment; the payment is re-verifiable on chain, the verdict and the receipt themselves are not recorded on chain",
+    "interop-run": "report pinned to the Standard next head and adapter commits, blinded inputs published",
+    "verifier-package": "provenance.json plus the tarball checksum",
+    "pr-review": "the posted review id at the exact head, with executed figures"
+  },
+  "manualOrders": "commerce/offers.json#/manualOrders"
+}

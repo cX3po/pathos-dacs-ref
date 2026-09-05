@@ -1,0 +1,311 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PATH-OS DACS services",
+    "version": "0.1.0",
+    "description": "The HTTP surface of the four PATH-OS services described in commerce/offers.json. Only verify-bundle is an HTTP operation today; the other three are fulfilled manually and are listed under x-skus so one manifest names every service.",
+    "license": {
+      "name": "MIT",
+      "url": "https://github.com/cX3po/pathos-dacs-ref/blob/main/LICENSE"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8403",
+      "description": "local deployment of src/live/verify-endpoint.mts (VERIFY_HOST/VERIFY_PORT); the public host is set at deploy"
+    }
+  ],
+  "x-network": {
+    "id": "demos:testnet",
+    "mode": "rehearsal",
+    "mainnet": {
+      "enabled": false
+    }
+  },
+  "x-skus": {
+    "verify-bundle": {
+      "operation": "POST /verify",
+      "pricing": "commerce/offers.json#/skus/0"
+    },
+    "interop-run": {
+      "operation": "manual",
+      "pricing": "commerce/offers.json#/skus/1"
+    },
+    "verifier-package": {
+      "operation": "artifact",
+      "pricing": "commerce/offers.json#/skus/2"
+    },
+    "pr-review": {
+      "operation": "manual",
+      "pricing": "commerce/offers.json#/skus/3"
+    }
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Free liveness and price discovery",
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "description": "name, version, verifier apiVersion, price and recipient",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Healthz"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schemas/verify-request.json": {
+      "get": {
+        "summary": "The verifier's request schema",
+        "operationId": "verifyRequestSchema",
+        "responses": {
+          "200": {
+            "description": "JSON Schema"
+          }
+        }
+      }
+    },
+    "/schemas/verify-verdict.json": {
+      "get": {
+        "summary": "The verifier's verdict schema",
+        "operationId": "verifyVerdictSchema",
+        "responses": {
+          "200": {
+            "description": "JSON Schema"
+          }
+        }
+      }
+    },
+    "/verify": {
+      "post": {
+        "summary": "d402-gated DACS attestation-bundle verification (sku verify-bundle)",
+        "operationId": "verify",
+        "description": "First call answers 402 with a payment requirement whose resourceId is bound to the SHA-256 of the exact request bytes. Pay on Demos, then repeat the same bytes with X-Payment-Proof: <txHash>. The same proof with the same bytes is redelivered, never billed twice. A body that can never yield a verdict answers 400 before any challenge. A chain-read failure on the server during verification answers 503 with proofRetained: true; a payment proof the node cannot verify is refused as 402 unverifiable.",
+        "parameters": [
+          {
+            "name": "X-Payment-Proof",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Demos transaction hash of the d402 payment for this resourceId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://raw.githubusercontent.com/cX3po/pathos-dacs-ref/main/packages/verifier/schemas/verify-request.schema.json",
+                "description": "also served by the deployment at GET /schemas/verify-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VerifyDocumentResult plus receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "the body can never yield a verdict; no payment was requested"
+          },
+          "402": {
+            "description": "payment required, or a refused proof with reason missing-proof, malformed-proof, unverifiable, mismatch or replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequirement"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "body over 1 MiB"
+          },
+          "503": {
+            "description": "verification did not complete on this server; the proof is retained and pays for the retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Retained"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Healthz": {
+        "type": "object",
+        "required": [
+          "ok",
+          "name",
+          "version",
+          "apiVersion",
+          "priceDem",
+          "amountOs",
+          "recipient",
+          "offline"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "apiVersion": {
+            "type": "string"
+          },
+          "priceDem": {
+            "type": "string",
+            "description": "canonical DEM string"
+          },
+          "amountOs": {
+            "type": "string",
+            "description": "integer base units"
+          },
+          "recipient": {
+            "type": "string",
+            "description": "merchant Demos address"
+          },
+          "offline": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PaymentRequirement": {
+        "type": "object",
+        "required": [
+          "amount",
+          "recipient",
+          "resourceId",
+          "description"
+        ],
+        "properties": {
+          "amount": {
+            "type": "string",
+            "description": "integer OS"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string",
+            "pattern": "^verify:[0-9a-f]{64}$"
+          },
+          "description": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "missing-proof",
+              "malformed-proof",
+              "unverifiable",
+              "mismatch",
+              "replayed"
+            ]
+          }
+        }
+      },
+      "Receipt": {
+        "type": "object",
+        "required": [
+          "txHash",
+          "from",
+          "amountOs",
+          "resourceId"
+        ],
+        "properties": {
+          "txHash": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "amountOs": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "redelivered": {
+            "type": "boolean"
+          },
+          "reverified": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VerifyResponse": {
+        "type": "object",
+        "required": [
+          "apiVersion",
+          "bundleKind",
+          "exitCode",
+          "verdict",
+          "receipt"
+        ],
+        "description": "VerifyDocumentResult (served at GET /schemas/verify-verdict.json; required apiVersion, bundleKind, exitCode, verdict) plus receipt",
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "bundleKind": {
+            "type": "string"
+          },
+          "exitCode": {
+            "type": "integer"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "indeterminate"
+            ]
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Retained": {
+        "type": "object",
+        "required": [
+          "proofRetained"
+        ],
+        "properties": {
+          "proofRetained": {
+            "type": "boolean",
+            "const": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

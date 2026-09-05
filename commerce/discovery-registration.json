@@ -1,0 +1,51 @@
+{
+  "v": "dacs-1-listing:0.1",
+  "id": "pathos-verify-bundle",
+  "version": 1,
+  "logical_address": "unset-until-signed",
+  "seller": {
+    "displayName": "PATH-OS",
+    "identity": {
+      "primary": {
+        "scheme": "key",
+        "identifier": "unset-until-deploy"
+      }
+    }
+  },
+  "capability": {
+    "key": "dacs5-verify",
+    "description": "DACS attestation-bundle verification behind a d402 payment gate: POST /verify, 402 until paid, verdict plus an HTTP receipt that names the on-chain payment. Pricing and the other three services: commerce/offers.json."
+  },
+  "price": {
+    "amount": "0.1",
+    "currency": "DEM",
+    "perUnit": "request"
+  },
+  "requiredCapabilities": [
+    "sr-2-anchored-storage"
+  ],
+  "buyerRequirements": {
+    "primaryAcceptable": [
+      "key"
+    ],
+    "requiredClaims": [],
+    "verificationRecipes": {}
+  },
+  "acceptedRails": [
+    "pay-dem"
+  ],
+  "acceptedNegotiation": [
+    "negotiate-fixed-price"
+  ],
+  "publishedAt": "unset-until-signed",
+  "signature": "unsigned-draft",
+  "x-pathos": {
+    "availability": {
+      "demos:testnet": true,
+      "demos:mainnet": false
+    },
+    "publish": "sign and anchor with `npm run listing-pub` at deploy; this file is the unsigned draft and is never indexed as is",
+    "offers": "commerce/offers.json",
+    "manifest": "commerce/service-manifest.json"
+  }
+}
