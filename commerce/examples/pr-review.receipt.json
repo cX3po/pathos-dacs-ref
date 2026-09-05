@@ -1,0 +1,32 @@
+{
+  "v": "pathos-delivery-receipt:0.1",
+  "sku": "pr-review",
+  "quoteRef": "quote:pr-review:DACS-Standard#397@1538392e",
+  "buyer": "did:example:author",
+  "seller": {
+    "name": "PATH-OS (example key)",
+    "pubKeyHex": "e7024c0e9eb41e3498954efa1e000e8a20497cf1f319558cf00f1ced2aece19b"
+  },
+  "network": {
+    "id": "demos:testnet",
+    "mode": "rehearsal"
+  },
+  "payment": {
+    "txHash": "0x0000000000000000000000000000000000000000000000000000000000000004",
+    "from": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "amountOs": "10000000000"
+  },
+  "idempotencyKey": "pr-review:DACS-Agent-commerce/DACS-Standard#397@1538392eb1ae759a1a5e2a6d9105fce36e73d00f",
+  "inputHash": "e38c4e2e5e388e9289fc301ccaf14eb23a7ee82405a2f470ea7389006779da62",
+  "implementationVersion": "review desk exact-head method 2026-09",
+  "resultHash": "6bb5a9dfb84a59c8638ad9cc5372b62fa9887aab2a2ec607ad2f8db60dd6766c",
+  "issuedAt": "2026-09-05T14:00:00.000Z",
+  "retrieval": {
+    "kind": "pr-review",
+    "ref": "https://github.com/DACS-Agent-commerce/DACS-Standard/pull/397#pullrequestreview-example"
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "hex": "ae817f073929fa97370d80e0ff1de0d089bace007cfa07772e52bf0c08217615537ec8c42de2bc0b9b8c0ec7f8aef1c6714e2237323ecf3142ad436dc7b70403"
+  }
+}

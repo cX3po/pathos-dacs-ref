@@ -1,0 +1,36 @@
+{
+  "v": "pathos-delivery-receipt:0.1",
+  "sku": "verify-bundle",
+  "quoteRef": "verify:e3511a527433a5f58b1541ced20b64c0ffbe500e70577ced99cdc33c817ed583",
+  "buyer": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "seller": {
+    "name": "PATH-OS (example key)",
+    "pubKeyHex": "e7024c0e9eb41e3498954efa1e000e8a20497cf1f319558cf00f1ced2aece19b"
+  },
+  "network": {
+    "id": "demos:testnet",
+    "mode": "rehearsal"
+  },
+  "payment": {
+    "txHash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "from": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "amountOs": "100000000"
+  },
+  "idempotencyKey": "verify:e3511a527433a5f58b1541ced20b64c0ffbe500e70577ced99cdc33c817ed583",
+  "inputHash": "e3511a527433a5f58b1541ced20b64c0ffbe500e70577ced99cdc33c817ed583",
+  "implementationVersion": "@pathos-labs/dacs-verifier@0.1.0",
+  "resultHash": "c14407c95c87370cf4cc6bc63a12e0b5ee6cc5b320cacfcc0d696ef40ec09606",
+  "issuedAt": "2026-09-05T14:00:00.000Z",
+  "retrieval": {
+    "kind": "http-response",
+    "ref": "POST /verify 200 with X-Payment-Proof"
+  },
+  "endpoint": {
+    "resourceId": "verify:e3511a527433a5f58b1541ced20b64c0ffbe500e70577ced99cdc33c817ed583",
+    "redelivered": false
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "hex": "913fb86fc4a9bbb305afd63769010a9ed02befc595e2755bcbd938be34619220523ae12926795ea67cd95fb574b8f875fa8ba61ca867b07d633fa9336e6eda04"
+  }
+}

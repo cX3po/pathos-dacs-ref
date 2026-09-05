@@ -1,0 +1,32 @@
+{
+  "v": "pathos-delivery-receipt:0.1",
+  "sku": "interop-run",
+  "quoteRef": "quote:interop-run:example-1",
+  "buyer": "did:example:implementer",
+  "seller": {
+    "name": "PATH-OS (example key)",
+    "pubKeyHex": "e7024c0e9eb41e3498954efa1e000e8a20497cf1f319558cf00f1ced2aece19b"
+  },
+  "network": {
+    "id": "demos:testnet",
+    "mode": "rehearsal"
+  },
+  "payment": {
+    "txHash": "0x0000000000000000000000000000000000000000000000000000000000000002",
+    "from": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "amountOs": "5000000000"
+  },
+  "idempotencyKey": "interop-run:adapter@0123456789abcdef:next@3426faae",
+  "inputHash": "e40f42d7397c73287f0c8a20cdf77a3439a475589e427f87f5bdb4c15233cc65",
+  "implementationVersion": "shared-suite cross-run.mjs@9028ff0",
+  "resultHash": "22b9c7e1643f91d4a53a4a8f25d5a07f9bb16dedb1ef8ffc2a86bef3630a92d3",
+  "issuedAt": "2026-09-05T14:00:00.000Z",
+  "retrieval": {
+    "kind": "thread-comment",
+    "ref": "https://github.com/DACS-Agent-commerce/DACS-Standard/issues/270#issuecomment-example"
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "hex": "c5bde4843191e278974a986100006eb6731b2b2f8fba30b3fa7aa95fa756488cfb8e76ab0acab5ef024027332024f856db5551a540c8b66345b35c41da797806"
+  }
+}
