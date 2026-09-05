@@ -57,10 +57,24 @@ exits 2 with reason `policy`. With an allowing testnet policy, LIVE resolves its
 journal, completes native-payment authorization, constructs the durable journals
 and authorization gate, checks the exact dry-run hash, then exits 2 with reason
 `capability` at the CORE §5.1 check, before dotenv or credentials are loaded,
-because this repository has no provider that authenticates all finalized-receipt
-fields. A node storage read can report stored
-content and creation metadata, but its finality observation remains
-`indeterminate`; it is not converted into a finalized receipt.
+unless the run names a finality-proving receipt source. The default observer
+reads storage back and reports stored content and creation metadata, but its
+finality observation remains `indeterminate`; it is never converted into a
+finalized receipt.
+
+`--receipt-provider demos-node` selects `demos-node-receipt-provider.ts`, which
+proves finality from the node's public read path only: the storage program
+(owner, creating transaction, stored bytes), the creating transaction (status,
+block number, signer nonce), the node's transaction status, and the block that
+lists the transaction (`confirmed` status, hash, consensus timestamp). It emits
+state `finalized` under profile `demos-por-bft:block-confirmed:v1` only when the
+transaction is `confirmed` in a `confirmed` block that lists it; `included`
+without a confirmed block stays `included`, which the adapters reject; missing or
+inconsistent reads return `indeterminate` with the fields observed. The receipt
+reports the bytes the node holds and their hash; the adapters compare them with
+the expected `contentHash`, so a tampered store fails rather than staying unknown.
+The flag enters the parameter hash, so the dry run and the LIVE run must both
+name it. No credential is read and nothing is written by the provider.
 
 ## Files
 - `organ-gateway.mts` — the DACS-1→5 orchestrator (dry-run + live)

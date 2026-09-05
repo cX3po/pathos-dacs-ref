@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { jcsHashHex } from '../jcs.js';
+import { createDemosNodeReceiptProvider } from './demos-node-receipt-provider.js';
 import type { AgreementAnchorResult, CommittedAgreement } from '../adapters/dacs/agreement-commitment.js';
 import type { AdapterSigner } from '../adapters/dacs/agreement-commitment.js';
 import type { CompletedSessionEvidence, FinalizedBundleSet } from '../adapters/dacs/bundle-finalizer.js';
@@ -40,6 +41,9 @@ export interface DacsTestnetConfig {
   spendCapDem: number;
   rpc: string;
   fixtureSeedHex?: string;
+  /** CORE §5.1 receipt source for LIVE. `demos-node` proves finality from the node's confirmed
+   *  block; the default observer only reads storage back and refuses LIVE at the capability check. */
+  receiptProvider?: 'observer' | 'demos-node';
 }
 
 export type ColdVerdict = { outcome: 'pass' | 'fail' | 'indeterminate'; detail: string };
@@ -113,7 +117,8 @@ export class DacsTestnetRefusal extends Error {
 export interface ReceiptObservation {
   outcome: 'indeterminate';
   detail: string;
-  observed?: { nativeAddress: string; writer: string; sizeBytes: number; creationTransaction?: string; creationTime: string; contentHash: string };
+  /** Whatever the source did establish (address, writer, hashes, block data); never a finality claim. */
+  observed?: Record<string, unknown>;
 }
 
 export type LiveNodeReceiptObservation = ReceiptObservation;
@@ -128,6 +133,8 @@ interface LiveAdapterWiring {
   handles: { buyer: DemosHandle; seller: DemosHandle };
   anchor(request: { logicalAddress: string; content: unknown; contentHash: string }): Promise<AgreementAnchorResult>;
   fetchAnchored(address: string): Promise<unknown>;
+  /** The anchor this session wrote under a logical address, so a cold receipt read can name the native object. */
+  anchored?(logicalAddress: string): AgreementAnchorResult | undefined;
 }
 
 export interface LiveSettlementSeams {
@@ -187,7 +194,7 @@ export interface LiveSettlementDependency {
 export async function createLiveSettlementDependency(
   config: DacsTestnetConfig,
   env: NodeJS.ProcessEnv = process.env,
-  receiptProvider: CoreReceiptProvider = createNodeReceiptProvider(config),
+  receiptProvider: CoreReceiptProvider = selectReceiptProvider(config),
   seamOverrides: Partial<LiveSettlementSeams> = {},
 ): Promise<LiveSettlementDependency> {
   const seams = { ...defaultLiveSettlementSeams(), ...seamOverrides };
@@ -269,7 +276,7 @@ export async function createLiveSettlementDependency(
 export async function createLiveAdapterWiring(
   config: DacsTestnetConfig,
   env: NodeJS.ProcessEnv = process.env,
-  receiptProvider: CoreReceiptProvider = createNodeReceiptProvider(config),
+  receiptProvider: CoreReceiptProvider = selectReceiptProvider(config),
 ): Promise<LiveAdapterWiring> {
   try {
     const capability = receiptProvider.describe();
@@ -287,6 +294,7 @@ export async function createLiveAdapterWiring(
   const buyer = { ...buyerHandle, name: 'buyer', role: 'buyer-reviewer' as const, mnemonicEnv: 'DEMOS_MNEMONIC', claim: claimRefFor(buyerHandle.address) };
   const seller = { ...sellerHandle, name: 'seller', role: 'seller' as const, mnemonicEnv: 'DEMOS_SELLER_MNEMONIC', claim: claimRefFor(sellerHandle.address) };
   const asSigner = (handle: typeof buyer | typeof seller): AdapterSigner => ({ claim: handle.claim, sign: (domain, hash) => signDomainHashAsAgent(handle, domain, hash) });
+  const anchorsByLogical = new Map<string, AgreementAnchorResult>();
   return {
     handles: { buyer: buyerHandle, seller: sellerHandle },
     signers: { buyer: asSigner(buyer), seller: asSigner(seller), orchestrator: asSigner(seller) },
@@ -294,9 +302,12 @@ export async function createLiveAdapterWiring(
       const handle = request.logicalAddress.endsWith(':buyer') ? buyerHandle : sellerHandle;
       const result = await storage.anchor(handle, request.logicalAddress, request.content as Record<string, unknown> | string);
       if (result.nonce === undefined) throw new DacsTestnetRefusal('capability', 'SR-2 anchor result did not bind a nonce');
-      return { logicalAddress: request.logicalAddress, nativeAddress: result.storageAddress,
+      const anchored: AgreementAnchorResult = { logicalAddress: request.logicalAddress, nativeAddress: result.storageAddress,
         transactionRef: { kind: 'demos', value: result.txHash }, writer: handle === buyerHandle ? buyer.claim : seller.claim, nonce: result.nonce };
+      anchorsByLogical.set(request.logicalAddress, anchored);
+      return anchored;
     },
+    anchored: (logicalAddress) => anchorsByLogical.get(logicalAddress),
     async fetchAnchored(address) {
       const result = await storage.fetchAnchored(config.rpc, address);
       if (!result) throw new Error('anchor unavailable');
@@ -305,7 +316,7 @@ export async function createLiveAdapterWiring(
   };
 }
 
-/** The repository's only receipt observer; node read-back does not prove finality. */
+/** Read-only storage observer; node read-back alone does not prove finality (see demos-node-receipt-provider for the one that does). */
 export function createNodeReceiptProvider(config: Pick<DacsTestnetConfig, 'rpc'>): CoreReceiptProvider {
   return {
     describe: () => ({ kind: 'core-5.1-receipts', provesFinality: false, source: 'demos-node-storage-observer' }),
@@ -325,7 +336,7 @@ export function createNodeReceiptProvider(config: Pick<DacsTestnetConfig, 'rpc'>
 export async function createLiveDependencies(
   config: DacsTestnetConfig,
   env: NodeJS.ProcessEnv = process.env,
-  receiptProvider: CoreReceiptProvider = createNodeReceiptProvider(config),
+  receiptProvider: CoreReceiptProvider = selectReceiptProvider(config),
   settlementSeams: Partial<LiveSettlementSeams> = {},
 ): Promise<DacsTestnetDependencies> {
   const { wiring, settlePayment } = await createLiveSettlementDependency(config, env, receiptProvider, settlementSeams);
@@ -338,7 +349,10 @@ export async function createLiveDependencies(
   const { verifyDomainHashAgentSignature } = await import('../adapters/demos/identity.js');
   const commitments = new Map<string, import('../adapters/dacs/bundle-finalizer.js').ResolvedCommitment>();
   const fetchReceipt = async (request: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult }): Promise<AnchorReceipt> => {
-    const result = await receiptProvider.fetch(request);
+    // A cold read names only the logical address; the anchor this session wrote under that name
+    // gives the provider the native object to read. The provider still checks the node's own
+    // programName and storageAddress against both, so a wrong or tampered entry stays indeterminate.
+    const result = await receiptProvider.fetch(withSessionAnchor(request, wiring));
     if (!('receiptVersion' in result)) throw new DacsTestnetRefusal('capability', 'receipt provider did not establish CORE §5.1 finality');
     return result;
   };
@@ -447,15 +461,31 @@ export async function createLiveDependencies(
   return deps;
 }
 
-export function parameterHash(config: Pick<DacsTestnetConfig, 'organ' | 'query' | 'priceDem' | 'spendCapDem'>): string {
+export function parameterHash(config: Pick<DacsTestnetConfig, 'organ' | 'query' | 'priceDem' | 'spendCapDem' | 'receiptProvider'>): string {
   return jcsHashHex({
-    version: 'dacs-testnet-coordinator-params:1',
+    version: 'dacs-testnet-coordinator-params:2',
     organ: config.organ,
     query: config.query,
     price: config.priceDem,
     cap: config.spendCapDem,
+    receipts: config.receiptProvider ?? 'observer',
     pipeline: COORDINATOR_PIPELINE,
   });
+}
+
+/** A cold receipt request names only the logical address; the anchor this session wrote under that
+ *  name gives the provider the native object to read. An explicit anchor on the request wins. */
+export function withSessionAnchor<T extends { logicalAddress: string; anchor?: AgreementAnchorResult }>(
+  request: T, wiring: Pick<LiveAdapterWiring, 'anchored'>,
+): T {
+  if (request.anchor) return request;
+  const anchor = wiring.anchored?.(request.logicalAddress);
+  return anchor ? { ...request, anchor } : request;
+}
+
+/** The receipt source a config selects: the finality-proving node provider only when asked for by name. */
+export function selectReceiptProvider(config: Pick<DacsTestnetConfig, 'rpc' | 'receiptProvider'>): CoreReceiptProvider {
+  return config.receiptProvider === 'demos-node' ? createDemosNodeReceiptProvider(config) : createNodeReceiptProvider(config);
 }
 
 export function rollupColdVerifications(agreement: ColdVerdict, bundle: ColdVerdict): DacsTestnetRunResult['rollup'] {
@@ -595,10 +625,10 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
   };
 }
 
-interface CliOptions { dryRun: boolean; json: boolean; help: boolean; jobId: string; fixtureSeedHex?: string }
+interface CliOptions { dryRun: boolean; json: boolean; help: boolean; jobId: string; fixtureSeedHex?: string; receiptProvider?: 'observer' | 'demos-node' }
 
 function parseCli(argv: readonly string[], env: NodeJS.ProcessEnv): CliOptions {
-  let explicitDry = false, json = false, help = false, jobId: string | undefined, fixtureSeedHex: string | undefined;
+  let explicitDry = false, json = false, help = false, jobId: string | undefined, fixtureSeedHex: string | undefined, receiptProvider: 'observer' | 'demos-node' | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === '--dry-run') explicitDry = true;
@@ -610,6 +640,10 @@ function parseCli(argv: readonly string[], env: NodeJS.ProcessEnv): CliOptions {
     } else if (arg === '--fixture-seed') {
       fixtureSeedHex = argv[++i];
       if (fixtureSeedHex === undefined) throw new DacsTestnetRefusal('usage', '--fixture-seed requires a value');
+    } else if (arg === '--receipt-provider') {
+      const value = argv[++i];
+      if (value !== 'observer' && value !== 'demos-node') throw new DacsTestnetRefusal('usage', '--receipt-provider must be observer or demos-node');
+      receiptProvider = value;
     }
     else throw new DacsTestnetRefusal('usage', `unknown option: ${arg}`);
   }
@@ -618,10 +652,10 @@ function parseCli(argv: readonly string[], env: NodeJS.ProcessEnv): CliOptions {
   if (env.LIVE === '1' && explicitDry) throw new DacsTestnetRefusal('usage', 'LIVE=1 and --dry-run are contradictory mode selections');
   if (env.LIVE === '1' && fixtureSeedHex !== undefined) throw new DacsTestnetRefusal('usage', '--fixture-seed is refused in LIVE mode');
   if (fixtureSeedHex !== undefined && !/^[0-9a-fA-F]+$/.test(fixtureSeedHex)) throw new DacsTestnetRefusal('usage', '--fixture-seed must be hexadecimal');
-  return { dryRun: env.LIVE !== '1', json, help, jobId, ...(fixtureSeedHex ? { fixtureSeedHex: fixtureSeedHex.toLowerCase() } : {}) };
+  return { dryRun: env.LIVE !== '1', json, help, jobId, ...(fixtureSeedHex ? { fixtureSeedHex: fixtureSeedHex.toLowerCase() } : {}), ...(receiptProvider ? { receiptProvider } : {}) };
 }
 
-const HELP = `Usage: node --import tsx src/live/dacs-testnet-run.mts [--dry-run] [--job-id ID] [--fixture-seed HEX] [--json]\n\nLIVE=1 selects LIVE. --dry-run is the explicit default and overrides no LIVE request.`;
+const HELP = `Usage: node --import tsx src/live/dacs-testnet-run.mts [--dry-run] [--job-id ID] [--fixture-seed HEX] [--receipt-provider observer|demos-node] [--json]\n\nLIVE=1 selects LIVE. --dry-run is the explicit default and overrides no LIVE request.\n--receipt-provider demos-node selects the finality-proving CORE §5.1 receipt source (the node's confirmed block); it enters the parameter hash, so the dry run and the LIVE run must both name it.`;
 
 export async function main(
   argv = process.argv.slice(2),
@@ -636,6 +670,7 @@ export async function main(
       jobId: cli.jobId, mode, organ: 'nws_alerts', query: env.ORGAN_QUERY ?? '35.2271,-80.8431',
       priceDem: '1', spendCapDem: Number(env.GATEWAY_SPEND_CAP_DEM ?? '50'),
       rpc: env.DEMOS_RPC ?? 'https://demosnode.discus.sh/', ...(cli.fixtureSeedHex ? { fixtureSeedHex: cli.fixtureSeedHex } : {}),
+      ...(cli.receiptProvider ? { receiptProvider: cli.receiptProvider } : {}),
     };
     if (!Number.isFinite(config.spendCapDem) || config.spendCapDem < 0) throw new DacsTestnetRefusal('config', 'invalid spend cap configuration');
     const deps = dependencyFactory !== undefined
