@@ -466,8 +466,8 @@ export function verifyMockAp2AttestedReceiptRecord(
     || pay.verdict !== AP2_SIMULATION_VERDICT) {
     throw new Error('AP2 extension: linked payment evidence lacks signed mock/simulation assurance');
   }
-  if (pay.jobId !== rec.jobId || pay.phase !== rec.phase || pay.phaseIndex !== rec.phaseIndex
-    || pay.outcome !== 'success') {
+  // SB-1: the evidence body carries no phaseIndex; the record's phaseIndex is bound by its anchor address (dacs4:ap2-receipt:{jobId}:{phaseIndex}).
+  if (pay.jobId !== rec.jobId || pay.phase !== rec.phase || pay.outcome !== 'success') {
     throw new Error('AP2 extension: record and payment evidence job/phase/outcome linkage mismatch');
   }
   if (pay.jobId !== verifiedAgreement.jobId || pay.phase !== verifiedAgreement.rail
@@ -486,7 +486,7 @@ export function verifyMockAp2AttestedReceiptRecord(
     throw new Error('AP2 extension: payment evidence must link exactly one AP2 provider receipt');
   }
   const [txRef] = pay.paymentTxRefs;
-  if (!txRef || txRef.rail !== PAY_AP2_RAIL_ID
+  if (!txRef || !('rail' in txRef) || txRef.rail !== PAY_AP2_RAIL_ID
     || txRef.txHash !== `ap2:${r.providerTxId}` || txRef.kind !== 'payment') {
     throw new Error('AP2 extension: payment evidence txRef does not link this AP2 provider receipt');
   }

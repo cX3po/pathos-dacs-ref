@@ -171,6 +171,17 @@ export function paymentRailId(phase: { kind?: unknown; parameters?: unknown }): 
   const rail = typeof params.rail === 'string' && params.rail.length > 0 ? params.rail : String(phase.kind);
   return rail;
 }
+/**
+ * DACS-4 §9.5.8 SB-1: the phase index is not an evidence field; it is recovered from the PC-2 anchor address
+ * (`dacs4:payment:{jobId}:{railId}:{phaseIndex}` or `dacs4:delivery:{jobId}:{phaseIndex}`). Null when the
+ * address is not one of those forms.
+ */
+export function phaseIndexOfEvidenceAddress(logicalAddress: string | undefined): number | null {
+  if (!logicalAddress || !/^dacs4:(payment|delivery):/.test(logicalAddress)) return null;
+  const tail = logicalAddress.slice(logicalAddress.lastIndexOf(':') + 1);
+  return /^(0|[1-9][0-9]*)$/.test(tail) ? Number(tail) : null;
+}
+
 export function paymentLogicalAddress(jobId: string, railId: string, phaseIndex: number): string {
   return `dacs4:payment:${jobId}:${encodeURIComponent(railId)}:${phaseIndex}`;
 }
@@ -243,7 +254,11 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     if (jcsHashHex(evidence) !== ref.contentHash.replace(/^sha256:/, '')) throw new BundleFinalizationError('evidence-hash', `evidence hash mismatch for phase ${phase.index}`);
     const structural = verifySettlementEvidenceV1(evidence);
     if (structural.decision !== 'pass') throw new BundleFinalizationError('evidence-shape', structural.reasons.join('; '));
-    if (evidence.jobId !== input.jobId || evidence.phase !== phase.kind || evidence.phaseIndex !== phase.index) throw new BundleFinalizationError('seb-binding', `evidence does not bind phase (${phase.index},${phase.kind})`);
+    // SB-1: the phase index binds through the anchor address; a legacy in-body phaseIndex (evidence anchored before 2026-09-06) must agree with it.
+    const addressIndex = phaseIndexOfEvidenceAddress(phase.evidenceLogicalAddress);
+    const bodyIndex = evidence.phaseIndex;
+    const indexBound = addressIndex === phase.index && (bodyIndex === undefined || bodyIndex === phase.index);
+    if (evidence.jobId !== input.jobId || evidence.phase !== phase.kind || !indexBound) throw new BundleFinalizationError('seb-binding', `evidence does not bind phase (${phase.index},${phase.kind})`);
     if ((evidence.outcome === 'success') !== (phase.outcome === 'ok')) throw new BundleFinalizationError('seb-outcome', `evidence outcome contradicts phase ${phase.index}`);
     const signature = object(evidence.signature);
     const signerKey = claimKey(signature.signer), orchestratorSignerKey = claimKey(phase.orchestrator);

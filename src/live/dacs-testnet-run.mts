@@ -557,7 +557,7 @@ export async function createLiveDependencies(
     async deliver(_agreement, run) {
       const deliverable = await runOrganBridge(env, run);
       const deliverableAnchor = await wiring.anchor({ logicalAddress: anchorNames.deliverable(run.jobId), content: deliverable, contentHash: jcsHashHex(deliverable) });
-      const evidence = await signEvidence(emitSettlementEvidenceV1({ kind: 'delivery', jobId: run.jobId, phase: 'deliver-storage-program', phaseIndex: 3,
+      const evidence = await signEvidence(emitSettlementEvidenceV1({ kind: 'delivery', jobId: run.jobId, phase: 'deliver-storage-program',
         outcome: 'success', deliverableContentHash: jcsHashHex(deliverable), deliverableAnchorKind: 'storage-program',
         deliverableAnchorLocator: deliverableAnchor.nativeAddress, observedAt: Date.now() }));
       const logicalAddress = anchorNames.deliveryEvidence(run.jobId, 3);

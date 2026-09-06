@@ -25,8 +25,8 @@
  *         producers canonicalise before any SettlementEvidence hash) and
  *         paymentAmount MUST be strictly > 0 ("PriceTerm.amount positivity",
  *         DACS-4 §9.2); a fee is never negative.
- *       · paymentTxRefs entries are {rail,txHash,kind?} — rail+txHash required,
- *         kind optional (SDK isChainTxRef convergence, F3).
+ *       · paymentTxRefs entries are §9.7 ChainTxRef arms (exact keys per arm, as the pinned
+ *         dacs-sdk's isChainTxRef checks) or the legacy {rail,txHash,kind?} form.
  *   - DELIVERY evidence:
  *       · MUST NOT carry settlementFinality (PC-6).
  *       · deliverableContentHash MUST be a lowercase 64-hex sha256.
@@ -86,17 +86,30 @@ const FINALITY_MODELS: ReadonlySet<string> = new Set([
 ]);
 const FINALITY_COMMITMENTS: ReadonlySet<string> = new Set(['processed', 'confirmed', 'finalized']);
 
+const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+const nonNegInt = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+const onlyKeys = (o: Record<string, unknown>, allowed: string[]): boolean => Object.keys(o).every((k) => allowed.includes(k));
+
 /**
- * A §9.7 ChainTxRef entry. The SDK's isChainTxRef (settlement.ts L506) requires
- * ONLY rail+txHash (non-empty strings); `kind` is OPTIONAL. The emitter still
- * EMITS kind for the success fixtures — but the verifier MUST NOT reject an
- * entry that omits it. (F3)
+ * A §9.7 ChainTxRef entry in one of the arms the pinned dacs-sdk validates (isChainTxRef: exact keys per arm),
+ * or the legacy {rail, txHash, kind?} form that our AP2 extension emits and that evidence anchored before
+ * 2026-09-06 carries (rail + txHash required, kind optional).
  */
 function isPaymentTxRef(tx: unknown): boolean {
-  return isObject(tx)
-    && typeof tx.rail === 'string' && tx.rail.length > 0
-    && typeof tx.txHash === 'string' && tx.txHash.length > 0
-    && (tx.kind === undefined || typeof tx.kind === 'string');
+  if (!isObject(tx)) return false;
+  if ('rail' in tx) return nonEmpty(tx.rail) && nonEmpty(tx.txHash) && (tx.kind === undefined || typeof tx.kind === 'string');
+  switch (tx.kind) {
+    case 'demos': return onlyKeys(tx, ['kind', 'txHash', 'blockNumber']) && nonEmpty(tx.txHash) && (tx.blockNumber === undefined || nonNegInt(tx.blockNumber));
+    case 'storage-program': return onlyKeys(tx, ['kind', 'address', 'writeTxHash']) && nonEmpty(tx.address) && nonEmpty(tx.writeTxHash);
+    case 'evm': return onlyKeys(tx, ['kind', 'chainId', 'txHash']) && nonNegInt(tx.chainId) && nonEmpty(tx.txHash);
+    case 'evm-event': return onlyKeys(tx, ['kind', 'chainId', 'txHash', 'logIndex']) && nonNegInt(tx.chainId) && nonEmpty(tx.txHash) && nonNegInt(tx.logIndex);
+    case 'x402': return onlyKeys(tx, ['kind', 'httpResource', 'paymentReceiptHash', 'settlementTxHash', 'chainId', 'protocolVersion'])
+      && nonEmpty(tx.httpResource) && nonEmpty(tx.paymentReceiptHash) && nonEmpty(tx.protocolVersion)
+      && (tx.settlementTxHash === undefined || nonEmpty(tx.settlementTxHash)) && (tx.chainId === undefined || nonNegInt(tx.chainId));
+    case 'ap2': return onlyKeys(tx, ['kind', 'mandateId', 'providerRef', 'protocolVersion', 'receiptAttestation'])
+      && nonEmpty(tx.mandateId) && nonEmpty(tx.providerRef) && nonEmpty(tx.protocolVersion) && (tx.receiptAttestation === undefined || isObject(tx.receiptAttestation));
+    default: return false;
+  }
 }
 
 /** §9.7 SettlementFinalityRecord shape validation. */
@@ -186,7 +199,7 @@ export function verifySettlementEvidenceV1(e: unknown): VerifySettlementEvidence
     }
     if (txRefs !== undefined) {
       if (!Array.isArray(txRefs) || !txRefs.every(isPaymentTxRef)) {
-        fail('shape: each paymentTxRefs entry must be a {rail,txHash,kind?} object (rail+txHash required; kind optional)');
+        fail('shape: each paymentTxRefs entry must be a §9.7 ChainTxRef arm (demos, storage-program, evm, evm-event, x402, ap2; exact keys) or the legacy {rail,txHash,kind?} form');
       }
     }
     if (amount !== undefined) {

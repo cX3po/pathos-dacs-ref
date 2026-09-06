@@ -101,7 +101,7 @@ function buildReceipt() {
 function buildMockPaymentEvidence(receipt: Ap2ProviderReceipt, buyer = generateKeypair()) {
   let evidence: MockAp2PaymentEvidence = {
     ...emitSettlementEvidenceV1({
-      kind: 'payment', jobId: JOB, phase: PAY_AP2_RAIL_ID, phaseIndex: 3, outcome: 'success',
+      kind: 'payment', jobId: JOB, phase: PAY_AP2_RAIL_ID, outcome: 'success',
       paymentTxRefs: [{ rail: PAY_AP2_RAIL_ID, txHash: `ap2:${receipt.providerTxId}`, kind: 'payment' }],
       paymentAmount: AMT, paymentCurrency: CUR,
       finalityModel: 'provider-receipt', finalityObservedAt: receipt.capturedAt, observedAt: 2,
@@ -206,7 +206,7 @@ test('AP2-2: non-captured / unsigned receipt fails closed', () => {
 
 test('AP2-4: emitted §9.7 pay-ap2 payment evidence carries finalityModel provider-receipt and verifies structurally', () => {
   const ev = signSettlementEvidenceV1(emitSettlementEvidenceV1({
-    kind: 'payment', jobId: JOB, phase: PAY_AP2_RAIL_ID, phaseIndex: 3, outcome: 'success',
+    kind: 'payment', jobId: JOB, phase: PAY_AP2_RAIL_ID, outcome: 'success',
     paymentTxRefs: [{ rail: PAY_AP2_RAIL_ID, txHash: 'ap2:mock_pi_x', kind: 'payment' }],
     paymentAmount: AMT, paymentCurrency: CUR,
     finalityModel: 'provider-receipt', finalityObservedAt: 1, observedAt: 2,

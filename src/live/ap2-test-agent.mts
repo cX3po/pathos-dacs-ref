@@ -199,7 +199,7 @@ log('DACS-4', `AP2-2 attested fetch (${receiptAttestation.type}, scope=${receipt
 // §9.7 — the pay-ap2 payment SettlementEvidence (finality: provider-receipt, AP2-4).
 // txHash = the rail's canonical reference (SB-1 discipline): ap2:{providerTxId}.
 const emittedPayEvidence = emitSettlementEvidenceV1({
-  kind: 'payment', jobId, phase: PAY_AP2_RAIL_ID, phaseIndex: PAY_PHASE_INDEX, outcome: 'success',
+  kind: 'payment', jobId, phase: PAY_AP2_RAIL_ID, outcome: 'success',
   paymentTxRefs: [{ rail: PAY_AP2_RAIL_ID, txHash: `ap2:${providerReceipt.providerTxId}`, kind: 'payment' }],
   paymentAmount: PRICE_AP2, paymentCurrency: CURRENCY,
   finalityModel: 'provider-receipt', finalityObservedAt: capturedAt, observedAt: now(),
@@ -257,7 +257,7 @@ const deliverableObj = {
 const deliverableContentHash = jcsHashHex(deliverableObj);
 const deliverableLocator = anchorString(sellerOwner, anchorNames.deliverable(jobId), jcsString(deliverableObj));
 const deliveryEvidence = signSettlementEvidenceV1(emitSettlementEvidenceV1({
-  kind: 'delivery', jobId, phase: 'deliver-storage-program', phaseIndex: DELIVER_PHASE_INDEX, outcome: 'success',
+  kind: 'delivery', jobId, phase: 'deliver-storage-program', outcome: 'success',
   deliverableContentHash, deliverableAnchorKind: 'storage-program', deliverableAnchorLocator: deliverableLocator,
   observedAt: now(),
 }), `cci:${sellerCci}`, sellerKeys.privKey);

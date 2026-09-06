@@ -14,7 +14,7 @@
  *
  * CLOSED, SANITIZING CONSTRUCTOR (F1): the emitter does NOT reuse caller-supplied
  * nested objects wholesale. EVERY nested object is rebuilt from explicit whitelisted
- * scalar subfields — paymentTxRefs entries → {rail,txHash,kind}; paymentAmount →
+ * scalar subfields — paymentTxRefs entries → their ChainTxRef arm's members; paymentAmount →
  * {amount,currency}; settlementFinality → {model,finalityBlocks?,finalityCommitmentLevel?,
  * finalityObservedAt}; deliverableAnchor → {kind,locator}. Any extra subfield a caller
  * smuggles in (e.g. paymentAmount.extra) is DROPPED before hashing, so a caller cannot
@@ -48,31 +48,33 @@ import type {
 interface EmitBase {
   jobId: string;
   phase: string;
-  /**
-   * Pipeline phase index. Matches the SDK/cross-impl fixture convention (phaseIndex
-   * carried in the evidence body); the spec §9.7 type block does not list it — to be
-   * reconciled with RB. (F4)
-   */
-  phaseIndex: number;
   outcome: 'success' | 'failure';
   observedAt: number;
   /** Optional object-form signature ({algorithm,signer,value}). Omitted by default. */
   signature?: SettlementSignatureV1;
 }
 
-/**
- * One payment tx reference, supplied as PRIMITIVES (not a nested object). The emitter
- * reconstructs the §9.7 ChainTxRef from exactly these three scalars.
- */
-export interface EmitPaymentTxRef {
-  rail: string;
-  txHash: string;
-  kind: string;
+/** One payment tx reference: a §9.7 ChainTxRef arm, or the legacy {rail, txHash, kind} form. Rebuilt per arm from whitelisted scalars. */
+export type EmitPaymentTxRef = PaymentTxRefV1;
+
+function rebuildTxRef(ref: EmitPaymentTxRef): PaymentTxRefV1 {
+  if ('rail' in ref) return { rail: ref.rail, txHash: ref.txHash, kind: ref.kind };
+  switch (ref.kind) {
+    case 'demos': return { kind: 'demos', txHash: ref.txHash, ...(ref.blockNumber !== undefined ? { blockNumber: ref.blockNumber } : {}) };
+    case 'storage-program': return { kind: 'storage-program', address: ref.address, writeTxHash: ref.writeTxHash };
+    case 'evm': return { kind: 'evm', chainId: ref.chainId, txHash: ref.txHash };
+    case 'evm-event': return { kind: 'evm-event', chainId: ref.chainId, txHash: ref.txHash, logIndex: ref.logIndex };
+    case 'x402': return { kind: 'x402', httpResource: ref.httpResource, paymentReceiptHash: ref.paymentReceiptHash, protocolVersion: ref.protocolVersion,
+      ...(ref.settlementTxHash !== undefined ? { settlementTxHash: ref.settlementTxHash } : {}), ...(ref.chainId !== undefined ? { chainId: ref.chainId } : {}) };
+    case 'ap2': return { kind: 'ap2', mandateId: ref.mandateId, providerRef: ref.providerRef, protocolVersion: ref.protocolVersion,
+      ...(ref.receiptAttestation !== undefined ? { receiptAttestation: ref.receiptAttestation } : {}) };
+    default: throw new Error(`unknown ChainTxRef kind ${String((ref as { kind: unknown }).kind)}`);
+  }
 }
 
 export interface EmitPaymentParams extends EmitBase {
   kind: 'payment';
-  /** Each entry is reconstructed to EXACTLY {rail,txHash,kind} — extras dropped. */
+  /** Each entry is rebuilt from its arm's whitelisted members — extras dropped. */
   paymentTxRefs: EmitPaymentTxRef[];
   /** Reconstructed to EXACTLY {amount,currency}. */
   paymentAmount: string;
@@ -113,12 +115,8 @@ export type EmitSettlementEvidenceV1Params = EmitPaymentParams | EmitDeliveryPar
  */
 export function emitSettlementEvidenceV1(params: EmitSettlementEvidenceV1Params): SettlementEvidenceV1 {
   if (params.kind === 'payment') {
-    // Rebuild each tx ref from EXACTLY the three whitelisted scalars — extras dropped.
-    const paymentTxRefs: PaymentTxRefV1[] = params.paymentTxRefs.map((ref) => ({
-      rail: ref.rail,
-      txHash: ref.txHash,
-      kind: ref.kind,
-    }));
+    // Rebuild each tx ref from its arm's whitelisted members — extras dropped.
+    const paymentTxRefs: PaymentTxRefV1[] = params.paymentTxRefs.map(rebuildTxRef);
     // Rebuild paymentAmount from scalars.
     const paymentAmount: SettlementPriceV1 = {
       amount: params.paymentAmount,
@@ -128,7 +126,6 @@ export function emitSettlementEvidenceV1(params: EmitSettlementEvidenceV1Params)
       evidenceVersion: '1',
       jobId: params.jobId,
       phase: params.phase,
-      phaseIndex: params.phaseIndex,
       outcome: params.outcome,
       paymentTxRefs,
       paymentAmount,
@@ -159,7 +156,6 @@ export function emitSettlementEvidenceV1(params: EmitSettlementEvidenceV1Params)
     evidenceVersion: '1',
     jobId: params.jobId,
     phase: params.phase,
-    phaseIndex: params.phaseIndex,
     outcome: params.outcome,
     deliverableContentHash: params.deliverableContentHash,
     // Rebuild deliverableAnchor from EXACTLY {kind,locator} — extras dropped.
