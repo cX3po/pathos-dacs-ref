@@ -75,6 +75,16 @@ export function createDefaultNodeCall(rpc: string, fetchImpl: typeof fetch = fet
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
+/** Block numbers arrive from the node as JSON numbers or decimal strings (both observed); other shapes are absent. */
+export function nodeBlockNumber(raw: unknown): number | undefined {
+  if (typeof raw === 'number') return Number.isSafeInteger(raw) && raw >= 0 ? raw : undefined;
+  if (typeof raw === 'string' && /^(0|[1-9][0-9]{0,15})$/.test(raw)) {
+    const n = Number(raw);
+    return Number.isSafeInteger(n) ? n : undefined;
+  }
+  return undefined;
+}
+
 /** Mirror of storage.ts wrapTextAnchor: a text anchor is stored as { v: 'dacs-ref-text:1', text }. */
 export function unwrapTextAnchor(data: unknown): string | null {
   return isRecord(data) && data.v === 'dacs-ref-text:1' && typeof data.text === 'string' && Object.keys(data).length === 2 ? data.text : null;
@@ -151,7 +161,7 @@ export function createDemosNodeReceiptProvider(config: { rpc: string }, options:
       if (nonce === undefined) return indeterminate('creating transaction carries no usable nonce', observed);
       observed.nonce = nonce;
       const txStatus = typeof tx.status === 'string' ? tx.status : undefined;
-      const blockNumber = typeof tx.blockNumber === 'number' && Number.isSafeInteger(tx.blockNumber) && tx.blockNumber >= 0 ? tx.blockNumber : undefined;
+      const blockNumber = nodeBlockNumber(tx.blockNumber);
       observed.transactionStatus = txStatus;
       if (blockNumber !== undefined) observed.blockNumber = blockNumber;
 
@@ -165,13 +175,13 @@ export function createDemosNodeReceiptProvider(config: { rpc: string }, options:
       }
       if (statusState !== 'included') return indeterminate(`creating transaction is ${statusState} and not yet in a block`, observed);
       if (blockNumber === undefined) return indeterminate('node reports inclusion but the transaction record names no block', observed);
-      if (!isRecord(status) || status.blockNumber !== blockNumber) {
+      if (!isRecord(status) || nodeBlockNumber(status.blockNumber) !== blockNumber) {
         return indeterminate('node transaction status and transaction record disagree on the block number', observed);
       }
 
       const block = await nodeCall('getBlockByNumber', { blockNumber });
       if (!isRecord(block) || !isRecord(block.content)) return indeterminate('block unavailable from the node', observed);
-      if (block.number !== blockNumber) return indeterminate('node returned a different block than requested', observed);
+      if (nodeBlockNumber(block.number) !== blockNumber) return indeterminate('node returned a different block than requested', observed);
       const blockHash = typeof block.hash === 'string' && block.hash.length > 0 ? block.hash : undefined;
       if (blockHash === undefined) return indeterminate('block carries no hash', observed);
       observed.blockHash = blockHash;

@@ -40,6 +40,16 @@ function responseHash(payload: DemosBroadcastWaitPayload): string | undefined {
   return undefined;
 }
 
+/** A block number as the node reports it: a non-negative safe integer, as a JSON number or a decimal string. */
+export function nodeBlockNumber(raw: unknown): number | undefined {
+  if (typeof raw === 'number') return Number.isSafeInteger(raw) && raw >= 0 ? raw : undefined;
+  if (typeof raw === 'string' && /^(0|[1-9][0-9]{0,15})$/.test(raw)) {
+    const n = Number(raw);
+    return Number.isSafeInteger(n) ? n : undefined;
+  }
+  return undefined;
+}
+
 /** Parse only the documented terminal status, retaining the signed hash as identity. */
 export function parseBroadcastWaitResult(
   payload: DemosBroadcastWaitPayload,
@@ -51,8 +61,9 @@ export function parseBroadcastWaitResult(
   }
 
   const state = typeof payload.status?.state === 'string' ? payload.status.state : undefined;
-  const rawBlockNumber = payload.status?.blockNumber;
-  const blockNumber = typeof rawBlockNumber === 'number' ? rawBlockNumber : undefined;
+  // The node has returned blockNumber both as a JSON number and as a decimal string (observed 2026-09-06);
+  // both are the same finality witness. Anything else is treated as absent.
+  const blockNumber = nodeBlockNumber(payload.status?.blockNumber);
   return {
     ok: state === 'included',
     hash: signedHash,
