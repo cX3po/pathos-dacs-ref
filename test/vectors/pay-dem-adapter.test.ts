@@ -286,8 +286,25 @@ test('alternate pre-inclusion state fails without evidence', async () => {
     clientWith({ ok: true, hash: 'h', state: ['con', 'firmed'].join(''), blockNumber: 7 }),
     authorizedHooks,
   );
-  assert.deepEqual(outcome, { ok: false, reason: 'pay-dem did not observe included state (state=confirmed)' });
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.ok === false && outcome.reason, 'pay-dem did not observe included state (state=confirmed)');
   assert.equal('evidence' in outcome, false);
+  // The transfer reached the chain (a hash exists): the failure carries the witness, never a bare refusal.
+  const witness = outcome.ok === false ? outcome.witness : undefined;
+  assert.deepEqual(witness && { stage: witness.stage, txHash: witness.txHash, state: witness.state, blockNumber: witness.blockNumber }, { stage: 'post-broadcast', txHash: 'h', state: 'confirmed', blockNumber: 7 });
+  assert.deepEqual(witness?.rawWitness, { ok: true, hash: 'h', state: 'confirmed', blockNumber: 7 });
+});
+
+test('a failure before any transaction hash exists carries no witness; a failure after the hash carries it', async () => {
+  const pre = await settlePayDemCore(params(), clientWith({ ok: false, hash: '', message: 'signing failed' }), authorizedHooks);
+  assert.equal(pre.ok, false); assert.equal(pre.ok === false && pre.witness, undefined);
+  const post = await settlePayDemCore(params(), clientWith({ ok: false, hash: 'h2', state: 'pending', message: 'broadcast wait timed out' }), authorizedHooks);
+  assert.equal(post.ok, false);
+  const witness = post.ok === false ? post.witness : undefined;
+  assert.equal(witness?.stage, 'post-broadcast'); assert.equal(witness?.txHash, 'h2'); assert.equal(witness?.state, 'pending');
+  assert.equal(post.ok === false && post.reason, 'broadcast wait timed out');
+  const noBlock = await settlePayDemCore(params(), clientWith({ ok: true, hash: 'h3', state: 'included' }), authorizedHooks);
+  assert.equal(noBlock.ok === false && noBlock.witness?.txHash, 'h3');
 });
 
 test('alternate post-inclusion alias fails without evidence', async () => {

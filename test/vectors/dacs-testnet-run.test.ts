@@ -222,3 +222,47 @@ test('LIVE with policy unset exits 2 as policy and never prints environment valu
   assert.match(result.stderr, /"reason":"policy"/);
   assert.ok(!`${result.stdout}${result.stderr}`.includes(sentinel));
 });
+
+test('a payment that reached the chain but was not witnessed ends as a settlement FAIL carrying the witness, and a rerun of the same job refuses to pay again', async () => {
+  const { SettlementWitnessFailure, main } = await import('../../src/live/dacs-testnet-run.mjs');
+  const { createDryRunDependencies } = await import('../../src/live/testnet-run-fixtures.js');
+  const run = { ...config, mode: 'live' as const };
+  const envTarget: NodeJS.ProcessEnv = { GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(run) };
+  const handle = { address: 'wallet', rpc: run.rpc, demos: {} } as never;
+  const anchor = { logicalAddress: 'payment', nativeAddress: 'native-payment', transactionRef: { kind: 'demos', value: 'tx' }, writer: `did:demos:agent:${'11'.repeat(32)}`, nonce: '1' };
+  const provider: CoreReceiptProvider = { describe: () => ({ kind: 'core-5.1-receipts', provesFinality: true, source: 'test' }), async fetch() { return { outcome: 'indeterminate', detail: 'unused' }; } };
+  const gate = { authorize: async () => ({ verdict: 'PROCEED' as const, nowIso: new Date().toISOString() }), journalOutcome: async () => {}, beforeBroadcast: async () => {} };
+  const witness = { stage: 'post-broadcast' as const, txHash: '0x' + 'ab'.repeat(32), state: 'pending', rawWitness: { ok: false, hash: '0x' + 'ab'.repeat(32), state: 'pending', message: 'timeout' } };
+  const seamsFor = (rows: unknown[], settled: unknown): Partial<LiveSettlementSeams> => ({
+    loadPolicy: async () => ({ network: 'testnet', rpcHosts: ['example.invalid'], perTransactionCapDem: '10', dailyCapDem: '20', killSwitchFile: '/tmp/no-kill' }),
+    resolveJournalPath: async () => '/tmp/pay-witness.jsonl',
+    connect: async () => ({ handles: { buyer: handle, seller: handle }, signers: { buyer: { claim: anchor.writer, sign: async () => new Uint8Array([1]) }, seller: { claim: anchor.writer, sign: async () => new Uint8Array([1]) }, orchestrator: { claim: anchor.writer, sign: async () => new Uint8Array([1]) } }, anchor: async () => anchor, fetchAnchored: async () => ({}) }),
+    readJournal: async () => rows, killSwitchPresent: async () => false,
+    authorizeTransfer: async () => ({ verdict: 'PROCEED', nowIso: new Date().toISOString() }),
+    createOutcomeJournal: async () => async () => {}, createJournal: async () => async () => {}, createAuthorizationGate: async () => gate,
+    balance: async () => 100, preflight: async () => ({ verdict: 'PROCEED', estCostDem: 9, reasons: [] }),
+    settle: (async () => settled) as LiveSettlementSeams['settle'],
+  });
+  // Post-broadcast failure: the dependency raises the witness, not a refusal.
+  const live = await createLiveSettlementDependency(run, envTarget, provider, seamsFor([], { ok: false, reason: 'broadcast wait timed out', witness }));
+  await assert.rejects(live.settlePayment({} as never, run), (e: unknown) => e instanceof SettlementWitnessFailure && e.witness.txHash === witness.txHash && e.message === 'broadcast wait timed out');
+  // Pre-broadcast failure (no witness): still the 'spend' refusal.
+  const refused = await createLiveSettlementDependency(run, envTarget, provider, seamsFor([], { ok: false, reason: 'policy said no' }));
+  await assert.rejects(refused.settlePayment({} as never, run), (e: unknown) => e instanceof DacsTestnetRefusal && e.code === 'spend');
+  // A journal that already holds a prepared transfer for this job and phase: the rerun refuses before settling.
+  let settleCalled = false;
+  const rerun = await createLiveSettlementDependency(run, envTarget, provider, { ...seamsFor([{ txHash: '0xprior', nonce: 1, payer: 'wallet', payee: 'seller', amountOs: '1', network: 'demos', recovery: { settlementKey: `pay-dem:${run.jobId}:2` } }], { ok: false, reason: 'unused' }), settle: (async () => { settleCalled = true; return { ok: false, reason: 'unused' }; }) as LiveSettlementSeams['settle'] });
+  await assert.rejects(rerun.settlePayment({} as never, run), (e: unknown) => e instanceof DacsTestnetRefusal && e.code === 'policy' && /0xprior/.test(e.message));
+  assert.equal(settleCalled, false);
+  // The session result keeps the witness: rollup FAIL, code settlement-failed, the transaction hash in error.settlement.
+  const out = process.stdout.write.bind(process.stdout); const chunks: string[] = [];
+  process.stdout.write = ((c: string | Uint8Array) => { chunks.push(String(c)); return true; }) as typeof process.stdout.write;
+  let rc: number;
+  try {
+    rc = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (cfg) => { const deps = createDryRunDependencies(cfg); return { ...deps, settlePayment: async () => { throw new SettlementWitnessFailure('broadcast wait timed out', witness); } }; });
+  } finally { process.stdout.write = out; }
+  const result = JSON.parse(chunks.join('').trim().split('\n').pop()!);
+  assert.equal(rc, 1); assert.equal(result.rollup, 'FAIL');
+  assert.equal(result.error.code, 'settlement-failed'); assert.equal(result.error.settlement.txHash, witness.txHash); assert.equal(result.error.settlement.state, 'pending');
+  assert.deepEqual(result.phases.find((p: { kind: string }) => p.kind === 'pay-dem'), { index: 2, kind: 'pay-dem', outcome: 'FAIL' });
+});

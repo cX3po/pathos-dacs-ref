@@ -113,13 +113,25 @@ export interface DacsTestnetRunResult {
   anchors: Partial<Record<'listing' | 'agreement' | 'commitment' | 'paymentEvidence' | 'deliverable' | 'deliveryEvidence' | 'buyerBundle' | 'sellerBundle', string>>;
   paramHash: string;
   authorizeLiveWith?: string;
-  error?: { stage: string; code: 'phase-failed' | 'verification-failed'; detail: string };
+  error?: { stage: string; code: 'phase-failed' | 'verification-failed' | 'settlement-failed'; detail: string; settlement?: Readonly<import('../adapters/dacs/pay-dem.js').PayDemSettlementWitness> };
 }
 
 export class DacsTestnetRefusal extends Error {
   constructor(public readonly code: 'usage' | 'config' | 'policy' | 'spend' | 'capability', message: string) {
     super(message);
     this.name = 'DacsTestnetRefusal';
+  }
+}
+
+/**
+ * A payment reached the chain but could not be witnessed to inclusion. Unlike a refusal (nothing was spent), this
+ * ends the session as a settlement FAIL that keeps the transaction hash, the observed state and the raw node result
+ * in the run result, so the DEM that may have moved is never lost behind a generic 'spend' refusal.
+ */
+export class SettlementWitnessFailure extends Error {
+  constructor(message: string, public readonly witness: Readonly<import('../adapters/dacs/pay-dem.js').PayDemSettlementWitness>) {
+    super(message);
+    this.name = 'SettlementWitnessFailure';
   }
 }
 
@@ -216,10 +228,11 @@ export async function createLiveSettlementDependency(
   // (2) Apply the complete native-payment policy before capability, credentials, or RPC connection.
   const nowIso = new Date().toISOString();
   const amountOs = (await import('../adapters/dacs/pay-dem.js')).demToOs(config.priceDem);
+  const journalRows = await seams.readJournal(journalPath);
   const authorization = await seams.authorizeTransfer(policyResult, {
     amountOs,
     rpcUrl: config.rpc,
-    spentTodayOs: (await import('./pay-policy.js')).spentTodayFromJournal(await seams.readJournal(journalPath), nowIso),
+    spentTodayOs: (await import('./pay-policy.js')).spentTodayFromJournal(journalRows, nowIso),
     killSwitchPresent: await seams.killSwitchPresent(expandHome(policyResult.killSwitchFile)),
     nowIso,
   });
@@ -256,6 +269,15 @@ export async function createLiveSettlementDependency(
   }
 
   return { wiring, settlePayment: async (_agreement, run) => {
+    // A transfer already prepared for this job and phase (a prior run broadcast, or tried to, and its witness is
+    // unresolved) is never paid again on a rerun: the journal row names the transaction to resolve first.
+    const settlementKey = `pay-dem:${run.jobId}:2`;
+    const prepared = journalRows.find((row) => row && typeof row === 'object' && !Array.isArray(row)
+      && ((row as { recovery?: { settlementKey?: unknown } }).recovery?.settlementKey === settlementKey));
+    if (prepared) {
+      const txHash = String((prepared as { txHash?: unknown }).txHash ?? 'unknown');
+      throw new DacsTestnetRefusal('policy', `a pay-dem transfer for ${settlementKey} was already prepared (tx ${txHash}); resolve its witness before paying again`);
+    }
     // (7) The real adapter retains authorize, durable outcome, and last-moment beforeBroadcast gates.
     const settled = await seams.settle({
       buyer: wiring.handles.buyer, sellerAddress: wiring.handles.seller.address, amountOs,
@@ -263,7 +285,10 @@ export async function createLiveSettlementDependency(
       journal: paymentJournal, authorizeTransfer: gate.authorize,
       journalTransferOutcome: gate.journalOutcome, beforeBroadcast: gate.beforeBroadcast,
     });
-    if (!settled.ok) throw new DacsTestnetRefusal('spend', 'pay-dem settlement was refused');
+    if (!settled.ok) {
+      if (settled.witness) throw new SettlementWitnessFailure(settled.reason, settled.witness);
+      throw new DacsTestnetRefusal('spend', 'pay-dem settlement was refused');
+    }
     const logicalAddress = (await import('../adapters/dacs/bundle-finalizer.js')).paymentLogicalAddress(run.jobId, 'pay-dem', 2);
     const signatureValue = await wiring.signers.orchestrator.sign((await import('../domain-sep.js')).DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE,
       (await import('../lib/emit-settlement-evidence-v1.js')).evidenceHashV1(settled.evidence));
@@ -729,6 +754,12 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
   } catch (error) {
     if (error instanceof DacsTestnetRefusal) throw error;
     phases.push({ index: 2, kind: 'pay-dem', outcome: 'FAIL' });
+    if (error instanceof SettlementWitnessFailure) {
+      // The payment reached the chain: a settlement FAIL with its witness, never a generic refusal.
+      const result = failed('payment');
+      result.error = { stage: 'payment', code: 'settlement-failed', detail: `payment: ${error.message}`, settlement: error.witness };
+      return result;
+    }
     return failed('payment');
   }
 
