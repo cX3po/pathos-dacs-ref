@@ -369,7 +369,7 @@ test('abort journaling releases the lease when authorization timestamp validatio
   const outcomes: string[] = [];
   const gate = testAuthorizationGate({
     acquireLock: () => ({ release() { released = true; } }),
-    durableOutcomeJournal: async (outcome) => { outcomes.push(outcome.outcome); },
+    durableOutcomeJournal: async (outcome) => { outcomes.push('outcome' in outcome ? outcome.outcome : outcome.resolution); },
   });
   const authorization = await gate.authorize({ amountOs: 1n, rpcUrl: authorizationInput.rpcUrl });
   assert.equal(authorization.verdict, 'PROCEED');
@@ -493,7 +493,7 @@ test('a kill switch that appears after authorization blocks the pre-broadcast pa
   const gate = testAuthorizationGate({
     acquireLock: () => ({ release() { released += 1; } }),
     killSwitchPresent: () => killSwitch,
-    durableOutcomeJournal: async (outcome) => { written.push(outcome.outcome); },
+    durableOutcomeJournal: async (outcome) => { written.push('outcome' in outcome ? outcome.outcome : outcome.resolution); },
   });
   const authorization = await gate.authorize({ amountOs: 1n, rpcUrl: authorizationInput.rpcUrl });
   assert.equal(authorization.verdict, 'PROCEED');

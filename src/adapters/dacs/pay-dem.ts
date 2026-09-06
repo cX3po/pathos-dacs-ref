@@ -102,7 +102,28 @@ export type PayDemSettleOutcome =
       finality: { model: 'bft-final' };
       meterError?: MeterErrorResult;
     })
-  | { ok: false; reason: string; recovery?: Readonly<PayDemAuthorizationAbortContext> };
+  | { ok: false; reason: string; recovery?: Readonly<PayDemAuthorizationAbortContext>; witness?: Readonly<PayDemSettlementWitness> };
+
+/**
+ * A payment that reached the chain but could not be witnessed to inclusion (no included state, no usable block
+ * number, a wait timeout). It is not a refusal: DEM may have moved. The transaction hash, the last observed state
+ * and the raw node result are kept so the settlement can be resolved, and a rerun must not pay again blindly.
+ */
+/** The closed set of transfer states a witness may name: the two the core vouches for and a failure marker; every other node string (including any alias the core does not interpret) is reported as 'unknown'. */
+export const WITNESS_STATES = ['pending', 'included', 'failed', 'unknown'] as const;
+export type WitnessState = typeof WITNESS_STATES[number];
+export function normaliseWitnessState(value: unknown): WitnessState {
+  return typeof value === 'string' && (WITNESS_STATES as readonly string[]).includes(value) ? (value as WitnessState) : 'unknown';
+}
+
+export interface PayDemSettlementWitness {
+  stage: 'post-broadcast';
+  txHash: string;
+  state?: WitnessState;
+  blockNumber?: number;
+  /** The node's transfer result reduced to its identity fields (ok, hash, state, blockNumber); never free text. */
+  rawWitness: { ok: boolean; hash: string; state?: WitnessState; blockNumber?: number };
+}
 
 function requireCapturedInputs(params: PayDemCoreParams, client: DemosNativeClient) {
   const recipient = params.recipient;
@@ -210,14 +231,23 @@ export async function settlePayDemCore(
   });
 
   const blockNumber = result.blockNumber;
-  if (!result.ok) return { ok: false, reason: result.message ?? 'pay-dem transfer failed' };
-  if (!result.hash) return { ok: false, reason: 'pay-dem transfer returned no transaction hash' };
-  if (result.state !== INCLUDED_STATE) {
-    return { ok: false, reason: `pay-dem did not observe included state (state=${String(result.state)})` };
-  }
-  if (!Number.isSafeInteger(blockNumber) || (blockNumber as number) < 0) {
-    return { ok: false, reason: 'pay-dem included result lacks a finality-witness block number' };
-  }
+  // Once a transaction hash exists the transfer may be on the chain: every failure from here carries the witness.
+  // Reasons are fixed strings authored here; node or SDK text never enters the witness or the run result. The observed
+  // state is normalised to a closed set (anything else is 'unknown') and the block number is kept only when it is a
+  // non-negative safe integer; the transaction hash must be hex.
+  const witnessState = normaliseWitnessState(result.state);
+  const witnessBlock = Number.isSafeInteger(blockNumber) && (blockNumber as number) >= 0 ? (blockNumber as number) : undefined;
+  // The hash is kept as an opaque bounded token (printable ASCII, no whitespace); its format is the node's, not ours to assume.
+  const witnessHash = typeof result.hash === 'string' && /^[\x21-\x7e]{1,130}$/.test(result.hash) ? result.hash : undefined;
+  const witness = (reason: string): PayDemSettleOutcome => ({
+    ok: false, reason,
+    witness: Object.freeze({ stage: 'post-broadcast' as const, txHash: witnessHash as string, state: witnessState, ...(witnessBlock === undefined ? {} : { blockNumber: witnessBlock }),
+      rawWitness: Object.freeze({ ok: result.ok === true, hash: witnessHash as string, state: witnessState, ...(witnessBlock === undefined ? {} : { blockNumber: witnessBlock }) }) }),
+  });
+  if (!result.ok) return witnessHash ? witness('pay-dem transfer failed after broadcast') : { ok: false, reason: 'pay-dem transfer failed' };
+  if (!witnessHash) return { ok: false, reason: 'pay-dem transfer returned no transaction hash' };
+  if (result.state !== INCLUDED_STATE) return witness('pay-dem did not observe included state');
+  if (witnessBlock === undefined) return witness('pay-dem included result lacks a finality-witness block number');
 
   const finalityObservedAt = Date.now();
   const evidence = emitSettlementEvidenceV1({

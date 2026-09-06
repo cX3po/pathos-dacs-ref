@@ -245,12 +245,22 @@ export interface PayDemJournalOutcome {
   amountOs: string;
   /** `aborted-before-broadcast` records a transfer that never reached broadcast. */
   outcome: string;
+  settlementKey?: string;
+  txHash?: string;
+}
+
+/** A settlement resolution: the prepared transfer for `settlementKey` ended as settled (evidence anchored) or refunded. No amount: it is not spend. */
+export interface PayDemJournalResolution {
+  timestamp: string;
+  resolution: 'settled' | 'refunded';
+  settlementKey: string;
+  txHash: string;
 }
 
 /** Append a policy-accounting outcome to the same durable JSONL journal. */
 export function createPayDemOutcomeJournal(path: string = DEFAULT_PAY_DEM_JOURNAL) {
   const target = resolvePayDemJournalPath(path);
-  return async (outcome: Readonly<PayDemJournalOutcome>): Promise<void> => {
+  return async (outcome: Readonly<PayDemJournalOutcome | PayDemJournalResolution>): Promise<void> => {
     utcDateOrThrow(outcome.timestamp);
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     const handle = await open(target, 'a', 0o600);
