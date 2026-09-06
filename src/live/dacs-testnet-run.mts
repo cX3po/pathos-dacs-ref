@@ -13,6 +13,7 @@ import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { execFile } from 'node:child_process';
+import { statSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { jcsHashHex } from '../jcs.js';
@@ -418,11 +419,14 @@ export function organDeliverableFrom(raw: string, run: Pick<DacsTestnetConfig, '
 }
 
 /** Configuration the LIVE deliverable needs, checked before any phase runs (so before payment). */
-export function requireOrganBridgeConfig(env: NodeJS.ProcessEnv, run: Pick<DacsTestnetConfig, 'organ'>): { cli: string; py: string } {
+export function requireOrganBridgeConfig(env: NodeJS.ProcessEnv, run: Pick<DacsTestnetConfig, 'organ'>, exists: (path: string) => boolean = (path) => { try { return statSync(path).isFile(); } catch { return false; } }): { cli: string; py: string } {
   const cli = env.ORGAN_CLI;
   if (!cli || cli.trim() !== cli) throw new DacsTestnetRefusal('config', 'LIVE delivery requires ORGAN_CLI (the proof-organ bridge); a placeholder deliverable is never anchored in LIVE');
+  if (!exists(cli)) throw new DacsTestnetRefusal('config', 'ORGAN_CLI does not name an existing file');
+  const py = env.AXIOM_PY ?? 'python3';
+  if (py.includes('/') && !exists(py)) throw new DacsTestnetRefusal('config', 'AXIOM_PY does not name an existing interpreter');
   if (!ORGAN_ANSWER_PROJECTIONS.has(run.organ)) throw new DacsTestnetRefusal('config', `organ ${run.organ} has no public answer schema for LIVE delivery`);
-  return { cli, py: env.AXIOM_PY ?? 'python3' };
+  return { cli, py };
 }
 
 export type OrganExec = (file: string, args: string[], options: { timeout: number; maxBuffer: number; env: NodeJS.ProcessEnv }) => Promise<{ stdout: string }>;

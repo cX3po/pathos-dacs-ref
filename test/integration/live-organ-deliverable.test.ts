@@ -86,12 +86,15 @@ test('prototype-inherited names are not organs and cannot bypass the schema', ()
   assert.throws(() => organDeliverableFrom(JSON.stringify({ ...good, answer: { constructor: 'x' } }), run), isDelivery);
 });
 
-test('bridge configuration is a config refusal, checked without running anything', () => {
-  assert.throws(() => requireOrganBridgeConfig({}, run), (e: unknown) => isConfig(e) && /ORGAN_CLI/.test((e as Error).message));
-  assert.throws(() => requireOrganBridgeConfig({ ORGAN_CLI: ' x.py' }, run), isConfig);
-  assert.throws(() => requireOrganBridgeConfig({ ORGAN_CLI: 'x.py' }, { organ: 'unknown_organ' }), isConfig);
-  assert.deepEqual(requireOrganBridgeConfig({ ORGAN_CLI: 'x.py' }, run), { cli: 'x.py', py: 'python3' });
-  assert.deepEqual(requireOrganBridgeConfig({ ORGAN_CLI: 'x.py', AXIOM_PY: '/venv/bin/python3' }, run), { cli: 'x.py', py: '/venv/bin/python3' });
+test('bridge configuration is a config refusal, checked without running anything, and the script must exist', () => {
+  const present = () => true;
+  assert.throws(() => requireOrganBridgeConfig({}, run, present), (e: unknown) => isConfig(e) && /ORGAN_CLI/.test((e as Error).message));
+  assert.throws(() => requireOrganBridgeConfig({ ORGAN_CLI: ' x.py' }, run, present), isConfig);
+  assert.throws(() => requireOrganBridgeConfig({ ORGAN_CLI: 'x.py' }, { organ: 'unknown_organ' }, present), isConfig);
+  assert.throws(() => requireOrganBridgeConfig({ ORGAN_CLI: '/nonexistent/bridge.py' }, run), (e: unknown) => isConfig(e) && /existing file/.test((e as Error).message));
+  assert.throws(() => requireOrganBridgeConfig({ ORGAN_CLI: 'x.py', AXIOM_PY: '/nonexistent/python3' }, run, (p) => p === 'x.py'), (e: unknown) => isConfig(e) && /interpreter/.test((e as Error).message));
+  assert.deepEqual(requireOrganBridgeConfig({ ORGAN_CLI: 'x.py' }, run, present), { cli: 'x.py', py: 'python3' });
+  assert.deepEqual(requireOrganBridgeConfig({ ORGAN_CLI: 'x.py', AXIOM_PY: '/venv/bin/python3' }, run, present), { cli: 'x.py', py: '/venv/bin/python3' });
 });
 
 test('the bridge is invoked with the configured interpreter, script, organ and query; only PATH and HOME reach it; timeout and buffer are bounded', async () => {
@@ -100,19 +103,28 @@ test('the bridge is invoked with the configured interpreter, script, organ and q
     calls.push({ file, args, options: { ...options, env: { ...options.env } } });
     return { stdout: JSON.stringify(good) };
   };
-  const env = { ORGAN_CLI: '/opt/axiom/tools/organ_answer.py', AXIOM_PY: '/opt/venv/bin/python3', PATH: '/usr/bin', HOME: '/home/x', DEMOS_MNEMONIC: 'SECRET-WORDS', GATEWAY_LIVE_APPROVED: '1' };
+  const dir = mkdtempSync(join(tmpdir(), 'organ-bridge-'));
+  const script = join(dir, 'organ_answer.py'); writeFileSync(script, '# placeholder for the existence check\n');
+  const env = { ORGAN_CLI: script, AXIOM_PY: 'python3-from-path', PATH: '/usr/bin', HOME: '/home/x', DEMOS_MNEMONIC: 'SECRET-WORDS', GATEWAY_LIVE_APPROVED: '1' };
   const d = await runOrganBridge(env, run, exec);
+  rmSync(dir, { recursive: true, force: true });
   assert.equal(d.organ, 'nws_alerts');
-  assert.equal(calls[0]!.file, '/opt/venv/bin/python3');
-  assert.deepEqual(calls[0]!.args, ['/opt/axiom/tools/organ_answer.py', 'nws_alerts', '35.2271,-80.8431']);
+  assert.equal(calls[0]!.file, 'python3-from-path');
+  assert.deepEqual(calls[0]!.args, [script, 'nws_alerts', '35.2271,-80.8431']);
   assert.deepEqual(calls[0]!.options.env, { PATH: '/usr/bin', HOME: '/home/x' });
   assert.equal(calls[0]!.options.timeout, 60_000);
   assert.equal(calls[0]!.options.maxBuffer, 1_048_576);
 });
 
 test('a bridge that fails at runtime is a delivery failure, not a config refusal', async () => {
-  const failing = async () => { throw new Error('exit 1'); };
-  await assert.rejects(runOrganBridge({ ORGAN_CLI: 'x.py' }, run, failing), isDelivery);
+  const dir = mkdtempSync(join(tmpdir(), 'organ-bridge-'));
+  try {
+    const script = join(dir, 'x.py'); writeFileSync(script, '');
+    const failing = async () => { throw new Error('exit 1'); };
+    await assert.rejects(runOrganBridge({ ORGAN_CLI: script }, run, failing), isDelivery);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('a real bridge script runs through the default executor and yields the deliverable', async () => {
@@ -124,7 +136,7 @@ test('a real bridge script runs through the default executor and yields the deli
     assert.equal(d.organ, 'nws_alerts');
     assert.equal(d.answer.basis, `query ${run.query.length}`);
     const missing = join(dir, 'missing.js');
-    await assert.rejects(runOrganBridge({ ORGAN_CLI: missing, AXIOM_PY: process.execPath, PATH: process.env.PATH, HOME: process.env.HOME }, run), isDelivery);
+    await assert.rejects(runOrganBridge({ ORGAN_CLI: missing, AXIOM_PY: process.execPath, PATH: process.env.PATH, HOME: process.env.HOME }, run), isConfig);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -165,11 +177,20 @@ test('LIVE dependencies refuse at construction, before any phase, when ORGAN_CLI
 });
 
 test('with the bridge configured, a runtime bridge failure during deliver is a delivery failure that anchors nothing', async () => {
-  const anchors: string[] = [];
-  const env = { GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(liveConfig), PATH: process.env.PATH, HOME: process.env.HOME, ORGAN_CLI: '/nonexistent/bridge.js', AXIOM_PY: process.execPath };
-  const deps = await createLiveDependencies(liveConfig, env, provider, fakeSeams(anchors));
-  await assert.rejects(deps.deliver({} as never, liveConfig), isDelivery);
-  assert.deepEqual(anchors, []);
+  const dir = mkdtempSync(join(tmpdir(), 'organ-bridge-'));
+  try {
+    const script = join(dir, 'failing.js');
+    writeFileSync(script, 'process.exit(3);\n');
+    const anchors: string[] = [];
+    const env = { GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(liveConfig), PATH: process.env.PATH, HOME: process.env.HOME, ORGAN_CLI: script, AXIOM_PY: process.execPath };
+    const deps = await createLiveDependencies(liveConfig, env, provider, fakeSeams(anchors));
+    await assert.rejects(deps.deliver({} as never, liveConfig), isDelivery);
+    assert.deepEqual(anchors, []);
+    // A configured path that does not exist is refused at construction, before any phase.
+    await assert.rejects(createLiveDependencies(liveConfig, { ...env, ORGAN_CLI: join(dir, 'missing.js') }, provider, fakeSeams(anchors)), isConfig);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('with a working bridge, deliver anchors the projected deliverable and its evidence, never the nonce', async () => {
