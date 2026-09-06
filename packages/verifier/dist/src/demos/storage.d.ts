@@ -102,6 +102,21 @@ export declare function anchorFactsFromNode(rpc: string, storageAddress: string,
  * @param storageAddress stor- prefixed address
  * @returns FetchResult, or null if not found
  */
+/** Programs listed for one owner beyond this count are not proven complete: a missing name is then an error, never absence. */
+export declare const OWNER_LISTING_COMPLETENESS_BOUND = 100;
+/**
+ * Resolve a party's program by listing the programs the owner has written (`getStorageProgramsByOwner`)
+ * and matching the exact program name, then reading the record at the node-assigned address. This is the
+ * owner-bound resolution the verifier uses for two-sided bundle copies: on Demos the node assigns the
+ * native address and the derived DACS-5 address is the program NAME (the name index has been observed
+ * not to list a fresh program while the owner listing did, 2026-09-06). Discipline: a malformed listing,
+ * two same-owner records of that name, or a listing at or beyond the completeness bound without the
+ * name all THROW (indeterminate for the caller); null means the owner has no program of that name.
+ */
+export declare function resolveByOwnerListing(rpc: string, expectedOwner: string, programName: string, options?: {
+    fetchImpl?: typeof fetch;
+    fetchAnchoredImpl?: typeof fetchAnchored;
+}): Promise<FetchResult | null>;
 export declare function fetchAnchored(rpc: string, storageAddress: string, options?: FetchAnchoredOptions): Promise<FetchResult | null>;
 /**
  * Verify that the bytes anchored at `storageAddress` match an expected SHA-256.

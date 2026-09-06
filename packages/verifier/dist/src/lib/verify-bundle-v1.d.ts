@@ -17,7 +17,7 @@
  * the caller comparing two single-side verdicts; this function verifies ONE bundle.
  */
 import type { AttestationBundleV1, BundleSignature, CurrentAttestationBundle } from '../types/bundle.js';
-import { fetchAnchored } from '../demos/storage.js';
+import { fetchAnchored, type FetchResult } from '../demos/storage.js';
 /**
  * §10.4.2 two-sided anchor derivation for a v0.1 bundle's jobId — identical contract to the
  * legacy `computeAnchorPair` in verify-bundle.ts:
@@ -88,6 +88,12 @@ export interface VerifyBundleV1Options {
     /** Inject a custom fetchAnchored — tests use this to mock the chain. */
     fetchAnchoredImpl?: typeof fetchAnchored;
     /**
+     * Inject the owner-bound name resolution used when a party copy is not at its derived address.
+     * Demos assigns the native storage address; the coordinator records the derived §10.4.2 address
+     * as the program NAME, so the copy is found by (party owner, derived name). Default: resolveByName.
+     */
+    resolveByNameImpl?: (rpc: string, expectedOwner: string, programName: string) => Promise<FetchResult | null>;
+    /**
      * Enforcing vs fixture mode for the structural+signature stage of BOTH the local bundle AND
      * the two chain-anchored counterparty copies (see verifyBundleV1).
      *
@@ -118,6 +124,8 @@ export interface BundleV1FullVerdict extends BundleV1Verdict {
     /** Final rollup across structural+sig, two-sided, and the attestation walk (§7.5.1). */
     rollup: ChainOutcome;
 }
+/** The substrate owner address behind a party's claim: a cci key is the ed25519 public key, which is the Demos address. */
+export declare function partyOwnerAddress(bundle: AttestationBundleV1, role: 'buyer' | 'seller'): string | null;
 /**
  * Full v0.1 verification — the contract the CLI MUST use for `bundleVersion:"1"` bundles.
  * Runs the single-bundle structural+signature check, the §10.4.2/§10.4.3 two-sided anchoring
