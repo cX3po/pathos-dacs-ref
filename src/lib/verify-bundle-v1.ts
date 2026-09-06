@@ -469,12 +469,14 @@ function authorizedArtifactSigners(
   return null;
 }
 
-type ArtifactKind = 'listing' | 'agreement' | 'evidence' | 'vet' | 'commitment';
+type ArtifactKind = 'listing' | 'agreement' | 'evidence' | 'verify-result' | 'vet' | 'commitment';
 function classifyArtifact(artifact: Record<string, unknown>): ArtifactKind | null {
   if (artifact.finalityCommitmentVersion !== undefined) return 'commitment';
   if (artifact.listingVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('listing'))) return 'listing';
   if (artifact.agreementVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('agreement'))) return 'agreement';
   if (artifact.evidenceVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('settlement-evidence'))) return 'evidence';
+  // A DACS-2 §7.5 VerifyResult (resultVersion) signs under its own separator; a §7.7 composite (recordVersion) under the composite one.
+  if (artifact.resultVersion !== undefined) return 'verify-result';
   if (artifact.recordVersion !== undefined || (typeof artifact.v === 'string' && (artifact.v.includes('verify') || artifact.v.includes('attestation')))) return 'vet';
   return null;
 }
@@ -496,7 +498,8 @@ function verifyReferencedArtifact(
   const separator = kind === 'listing' ? DOMAIN_SEPARATORS.LISTING
     : kind === 'agreement' ? DOMAIN_SEPARATORS.AGREEMENT
       : kind === 'evidence' ? DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE
-        : kind === 'commitment' ? ADDITIVE_DOMAIN_SEPARATORS.FINALITY_COMMITMENT : DOMAIN_SEPARATORS.COMPOSITE_VERIFY;
+        : kind === 'commitment' ? ADDITIVE_DOMAIN_SEPARATORS.FINALITY_COMMITMENT
+          : kind === 'verify-result' ? DOMAIN_SEPARATORS.VERIFY_RESULT : DOMAIN_SEPARATORS.COMPOSITE_VERIFY;
   if (kind === 'commitment') {
     // The commitment must be this job's and must bind exactly the bundle's buyer and seller.
     if (artifact.jobId !== bundle.jobId) return { outcome: 'fail', detail: `commitment artifact is for job ${String(artifact.jobId)}, not ${bundle.jobId}` };

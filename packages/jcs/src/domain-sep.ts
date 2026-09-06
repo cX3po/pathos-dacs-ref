@@ -38,6 +38,7 @@ export const DOMAIN_SEPARATORS = {
   SESSION_BINDING: 'dacs-session-binding:v1:',             // §6.3.2 — COMPOSITE: sep || session_key || bundle_hash (session-key root binding)
 
   // DACS-2 Vet
+  VERIFY_RESULT: 'dacs-verifyresult:v1:',                   // §7.5 — DACS-2 VerifyResult: sep || JCS-hash(record minus signature) (CORE §B.7)
   COMPOSITE_VERIFY: 'dacs-composite:v1:',                   // §7.7 — DACS-2 composite verification record
 
   // DACS-3 Negotiate

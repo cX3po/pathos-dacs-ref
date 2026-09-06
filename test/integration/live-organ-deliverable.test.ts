@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { jcsHashHex } from '../../src/jcs.js';
+import { sha256 } from '@noble/hashes/sha2';
+import { ed25519 } from '@noble/curves/ed25519';
+import { sign } from '../../src/lib/sign.js';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -251,7 +254,12 @@ test('the live listing and agreement pass the agreement adapter with a fabricate
   const { jcsCanonical } = await import('../../src/jcs.js');
   const contents = new Map<string, unknown>();
   const anchorsWritten: Array<{ logicalAddress: string; nativeAddress: string; transactionRef: { kind: string; value: string }; writer: string; nonce: string }> = [];
-  const claim = `did:demos:agent:${'22'.repeat(32)}`;
+  // Real ed25519 keys: the vet phase verifies the listing, the identity presentations and the records it emits, so a
+  // zero-filled stand-in signature would end the session at the vet instead of exercising the agreement adapter.
+  const keyOf = (label: string) => { const privateKey = sha256(new TextEncoder().encode(`live-organ-deliverable:${label}`)); const publicKey = ed25519.getPublicKey(privateKey);
+    return { claim: `did:demos:agent:${Buffer.from(publicKey).toString('hex')}`, sign: async (domain: string, hash: string) => sign(domain, new TextEncoder().encode(hash), privateKey) }; };
+  const buyerKey = keyOf('buyer'); const sellerKey = keyOf('seller');
+  const claim = sellerKey.claim;
   const seams = fakeSeams([]);
   const baseConnect = seams.connect!;
   seams.connect = async (...args: Parameters<NonNullable<LiveSettlementSeams['connect']>>) => {
@@ -259,7 +267,7 @@ test('the live listing and agreement pass the agreement adapter with a fabricate
     let ordinal = 0;
     return {
       ...wiring,
-      signers: { buyer: { claim: `did:demos:agent:${'11'.repeat(32)}`, sign: async () => new Uint8Array(64) }, seller: { claim, sign: async () => new Uint8Array(64) }, orchestrator: { claim, sign: async () => new Uint8Array(64) } },
+      signers: { buyer: buyerKey, seller: sellerKey, orchestrator: sellerKey },
       anchor: async (request: { logicalAddress: string; content: unknown; contentHash: string }) => {
         const nativeAddress = `stor-${String(ordinal++).padStart(40, '0')}`;
         contents.set(nativeAddress, request.content); contents.set(request.logicalAddress, request.content);
@@ -292,12 +300,20 @@ test('the live listing and agreement pass the agreement adapter with a fabricate
     const published = await deps.publishListing(liveConfig);
     assert.equal(published.anchor.writer, claim);
     assert.deepEqual((published.listing.offering as Record<string, unknown>).deliverable, { kind: 'storage-program' }, 'DACS-1 listing carries a DeliverableSpec');
-    // The listing signature is a stand-in here, so the vet reports it without throwing.
     const vet = await deps.vetListing(published, liveConfig);
-    assert.ok(['pass', 'fail'].includes(vet.outcome));
-    const agreement = await deps.emitAgreement(published, liveConfig);
+    assert.equal(vet.outcome, 'pass', vet.detail);
+    assert.ok(vet.vetRecordRefs, 'the vet phase returns the party records the agreement cites');
+    // The runner hands the vet records to the agreement; without them the agreement is refused.
+    await assert.rejects(deps.emitAgreement(published, liveConfig), (e: unknown) => e instanceof DacsTestnetRefusal && e.code === 'policy' && /no party vet records/.test(e.message));
+    const agreement = await deps.emitAgreement({ ...published, vetRecordRefs: vet.vetRecordRefs }, liveConfig);
     assert.ok(agreement.committed.commitmentHash.length === 64);
-    assert.equal(anchorsWritten.length, 3, 'listing, agreement and commitment anchors');
+    const logicalPrefixes = anchorsWritten.map((a) => a.logicalAddress.replace(/%3A/g, ':').split(':').slice(0, 2).join(':'));
+    assert.deepEqual(logicalPrefixes, ['dacs1:did', 'pathos:identity-bundle', 'dacs2:' + liveConfig.jobId, 'dacs2:composite', 'dacs2:' + liveConfig.jobId, 'dacs2:composite', 'dacs3:agreement', 'dacs3:commit'],
+      'listing, buyer identity bundle, a VerifyResult and composite per party, agreement and commitment anchors');
+    for (const party of agreement.committed.agreement.parties as unknown as Array<{ role: 'buyer' | 'seller'; vetRecordRef: { anchor: { locator: string } }; bundleHash: string }>) {
+      assert.equal(party.vetRecordRef.anchor.locator, vet.vetRecordRefs![party.role].composite.anchor.locator, `${party.role} cites its composite`);
+      assert.equal(party.bundleHash, vet.vetRecordRefs![party.role].bundleHash);
+    }
     assert.deepEqual((agreement.committed.agreement.terms as unknown as Record<string, unknown>).deliverable, { deliverableType: 'storage-program', hash: jcsHashHex({ kind: 'storage-program' }) }, 'the agreement carries the DeliverableRef derived from the listing DeliverableSpec');
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -1,6 +1,7 @@
 /** Deterministic, public test material and in-memory DACS coordinator dependencies. */
 
 import * as ed25519 from '@noble/ed25519';
+import { vetParties } from './party-vet.js';
 import { dacs1Listing, presentSellerIdentity, signDacs1Listing, listingDeliverableRef } from './listing-wire.js';
 import { signatureExcludedHash } from '../lib/content-hash.js';
 import { sha256, sha512 } from '@noble/hashes/sha2';
@@ -37,6 +38,7 @@ import type {
   DeliveryResult,
   FinalizationResult,
   PublishedListing,
+  VetVerdict,
 } from './dacs-testnet-run.mjs';
 
 ed25519.etc.sha512Sync = (...messages: Uint8Array[]) => sha512(ed25519.etc.concatBytes(...messages));
@@ -172,15 +174,26 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
       if (resolved.contentHash !== discovery.index.listings[0]!.contentHash) throw new Error('fixture discovery hash mismatch');
       return { listing, listingRef: { listingId, version: 1, contentHash }, anchor: listingAnchor };
     },
-    async vetListing(published) {
-      try { await verifyBundleListing(published.listing, { verifySignature }); return { outcome: 'pass', detail: 'seller listing claim and signature verified' }; }
+    async vetListing(published, run) {
+      try { await verifyBundleListing(published.listing, { verifySignature }); }
       catch (error) { return { outcome: 'fail', detail: error instanceof Error ? error.message : 'listing vet failed' }; }
+      const listingRef = { anchor: { kind: 'storage-program' as const, locator: published.anchor.nativeAddress }, contentHash: published.listingRef.contentHash };
+      let vetted;
+      try {
+        vetted = await vetParties({ jobId: run.jobId, listing: published.listing, listingRef, signers: { buyer: signer(buyer), seller: signer(seller) },
+          anchor, verifySignature: (request) => verifySignature(request as Parameters<typeof verifySignature>[0]), now: FIXTURE_NOW });
+      } catch (error) {
+        return { outcome: 'fail', detail: error instanceof Error ? error.message : 'party vet failed' };
+      }
+      return { outcome: 'pass', detail: 'seller listing claim and signature verified; party vet composites anchored', vetRecordRefs: vetted.refs, records: vetted.records,
+        singleFetch: { executed: false, trustLevel: 'not-applicable', reason: 'no lei: claim presented; the GLEIF single-fetch recipe does not apply' } };
     },
     async emitAgreement(published, run): Promise<AgreementResult> {
-      const vetRef: AttestationRef = { anchor: { kind: 'storage-program', locator: published.anchor.nativeAddress }, contentHash: signatureExcludedHash(published.listing) };
+      const vet = published.vetRecordRefs;
+      if (!vet) throw new Error('agreement refused: the vet phase anchored no party vet records');
       const parties: AgreementPartyV1[] = [
-        { role: 'buyer', bundleHash: jcsHashHex({ role: 'buyer', claim: buyer.claim }), primaryClaim: buyer.claim, vetRecordRef: vetRef },
-        { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: seller.claim }), primaryClaim: seller.claim, vetRecordRef: vetRef },
+        { role: 'buyer', bundleHash: vet.buyer.bundleHash, primaryClaim: buyer.claim, vetRecordRef: vet.buyer.composite },
+        { role: 'seller', bundleHash: vet.seller.bundleHash, primaryClaim: seller.claim, vetRecordRef: vet.seller.composite },
       ];
       const committed = await commitAgreement({ jobId: run.jobId, listing: published.listing, listingRef: published.listingRef, parties,
         terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: listingDeliverableRef(published.listing), deadline: FIXTURE_NOW + 3_600_000 } },
@@ -212,9 +225,11 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
     },
     async finalize(input): Promise<FinalizationResult> {
       const agreement = input.agreement.committed;
+      const vet = input.listing.vetRecordRefs;
+      if (!vet) throw new Error('finalization refused: the session carries no party vet records');
       const parties = [
-        { role: 'buyer' as const, bundleHash: jcsHashHex({ role: 'buyer', claim: buyer.claim }), primaryClaim: buyer.claim },
-        { role: 'seller' as const, bundleHash: jcsHashHex({ role: 'seller', claim: seller.claim }), primaryClaim: seller.claim },
+        { role: 'buyer' as const, bundleHash: vet.buyer.bundleHash, primaryClaim: buyer.claim },
+        { role: 'seller' as const, bundleHash: vet.seller.bundleHash, primaryClaim: seller.claim },
       ];
       const phaseResults = [
         { index: 0, kind: 'negotiate-fixed-price', outcome: 'ok' as const, orchestrator: orchestrator.claim },

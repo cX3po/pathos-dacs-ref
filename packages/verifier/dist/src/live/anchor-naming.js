@@ -49,6 +49,8 @@ export const anchorNames = {
     deliverable: (jobId) => `dacs4:deliverable:${jobId}`,
     deliveryEvidence: (jobId, phaseIndex) => `dacs4:delivery:${jobId}:${phaseIndex}`,
     bundle: (jobId, role) => `dacs5:bundle:${jobId}:${role}`,
+    /** A party's presented IdentityBundle (DACS-1 §6.3.2), anchored by that party so the vet phase's evidence is readable cold. The Standard names no address for a bundle; this one is ours. */
+    identityBundle: (jobId, role) => `pathos:identity-bundle:${jobId}:${role}`,
 };
 /**
  * Resolve an anchored program by (expected owner, canonical name) via exact-name
