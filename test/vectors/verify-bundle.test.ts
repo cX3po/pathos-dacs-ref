@@ -158,10 +158,8 @@ test('dahr-stub: attestation → indeterminate even with matching content-hash p
       endedAt: '2026-05-28T00:00:01Z',
       outcome: 'pass',
       attestations: [{
-        anchor: { substrate: 'demos', locator: `stor-stub-${fakeHash.slice(0, 32)}` },
+        anchor: { kind: 'storage-program', locator: `stor-stub-${fakeHash.slice(0, 32)}` },
         contentHash: fakeHash,
-        type: 'dahr-stub:gleif-cbp:1',
-        producedAt: '2026-05-28T00:00:00.500Z',
       }],
     }],
     finalisedAt: '2026-05-28T01:00:00Z',
@@ -186,10 +184,9 @@ test('stub locator with mismatched prefix → fail (catches forged stub)', async
     phases: [{
       phaseId: 'vet', startedAt: '', endedAt: '', outcome: 'pass',
       attestations: [{
-        anchor: { substrate: 'demos', locator: 'stor-stub-00000000000000000000000000000000' }, // does NOT match the contentHash below
+        anchor: { kind: 'storage-program', locator: 'stor-stub-00000000000000000000000000000000' }, // does NOT match the contentHash below
         contentHash: 'ff'.repeat(32), // hash prefix would be ff...; locator is 00...; mismatch
         type: 'dahr-stub:gleif-cbp:1',
-        producedAt: '',
       }],
     }],
     finalisedAt: '',
@@ -211,4 +208,28 @@ test('hexToBytes + bytesToHex round-trip', () => {
   const prefixed = '0x' + input;
   const bytes2 = hexToBytes(prefixed);
   assert.equal(bytesToHex(bytes2), input);
+});
+
+test('legacy dahr-stub: marker on a real locator with matching bytes → indeterminate (stub refusal is type-level, not locator-level)', async () => {
+  const { privKey, pubKey } = generateKeypair();
+  const data = JSON.stringify({ recipe: 'gleif-cbp:1', status: 'ACTIVE' });
+  const contentHash = bytesToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data))));
+  const locator = `stor-${'ab'.repeat(20)}`;
+  const bundle: AttestationBundle = {
+    v: 'dacs-5-bundle:0.1', jobId: 'stub-marker-real-locator', role: 'buyer',
+    party: { v: 'dacs-1:0.1', primary: { scheme: 'cci', identifier: bytesToHex(pubKey) }, claims: [], issuedAt: '', presentation: { kind: 'siwd' } },
+    counterparty: { primary: { scheme: 'cci', identifier: 'ff'.repeat(32) } },
+    state: 'completed',
+    phases: [{ phaseId: 'vet', startedAt: '', endedAt: '', outcome: 'pass',
+      attestations: [{ anchor: { kind: 'storage-program', locator }, contentHash, type: 'dahr-stub:gleif-cbp:1' }] }],
+    finalisedAt: '',
+  };
+  const canonical = jcsCanonical(bundle);
+  const bundleHash = jcsHash(bundle);
+  const sig = sign(DOMAIN_SEPARATORS.BUNDLE, canonical, privKey, bundleHash);
+  const signed: AttestationBundle = { ...bundle, signature: Buffer.from(sig).toString('base64') };
+  const fetchAnchoredImpl = (async (_rpc: string, addr: string) => addr === locator ? { storageAddress: addr, owner: '0xowner', data, sizeBytes: data.length, createdAt: '' } : null) as never;
+  const verdict = await verifyBundle(signed, { skipTwoSidedLookup: true, fetchAnchoredImpl });
+  assert.equal(verdict.decision, 'indeterminate', `bytes match but the stub marker MUST keep the verdict indeterminate; steps=${JSON.stringify(verdict.steps)}`);
+  assert.ok(verdict.steps.some((s) => /stub/i.test(String(s.detail))), 'the step names the stub marker');
 });

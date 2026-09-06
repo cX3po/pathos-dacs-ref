@@ -23,7 +23,7 @@
  */
 
 import type { LegacyIdentityBundle, ClaimRef } from './identity.js';
-import type { CompositeVerificationRecord, VerifyResult, AttestationRef } from './verify-result.js';
+import type { CompositeVerificationRecord, VerifyResult, AttestationRef, LegacyAttestationRef } from './verify-result.js';
 
 /** The phase outcomes captured in a session record. */
 export type PhaseOutcome = 'pass' | 'fail' | 'indeterminate' | 'aborted-by-counterparty' | 'aborted-by-self' | 'failed-substrate';
@@ -35,7 +35,7 @@ export interface PhaseRecord {
   endedAt: string;   // ISO 8601
   outcome: PhaseOutcome;
   /** Attestations produced or referenced during this phase */
-  attestations: AttestationRef[];
+  attestations: LegacyAttestationRef[];
   /** Free-text or structured detail */
   detail?: Record<string, unknown>;
 }

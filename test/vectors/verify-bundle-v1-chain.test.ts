@@ -35,6 +35,8 @@ import { jcsCanonical } from '../../src/jcs.js';
 import { resolveByOwnerListing, OWNER_LISTING_COMPLETENESS_BOUND, type fetchAnchored as FetchAnchored, type FetchResult } from '../../src/demos/storage.js';
 
 const enc = new TextEncoder();
+// Hermetic: absence at the derived address must not fall through to the node's owner listing or name index.
+const offline = { resolveByNameImpl: async () => null };
 const hexOf = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 const sha256Hex = (s: string) => hexOf(sha256(enc.encode(s)));
 const mk = (fill: number) => { const priv = new Uint8Array(32).fill(fill); return { priv, pubHex: hexOf(ed25519.getPublicKey(priv)) }; };
@@ -100,7 +102,7 @@ test('BLOCKER 1: v0.1 both anchors present + consistent → pass (attestationsVe
   const jobId = 'v1-twosided-pass';
   // FIX 1 — buyer-role copy at buyer addr, seller-role copy at seller addr. Local = buyer copy.
   const { buyerCopy, map } = twoSidedMap({ jobId });
-  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.rollup, 'pass', JSON.stringify({ reasons: v.reasons, two: v.twoSided }));
   assert.equal(v.twoSided.outcome, 'pass');
   assert.equal(v.attestationsFailed, 0);
@@ -109,7 +111,7 @@ test('BLOCKER 1: v0.1 both anchors present + consistent → pass (attestationsVe
 test('BLOCKER 1: v0.1 UNANCHORED (neither anchor present) → indeterminate, NOT a default pass', async () => {
   const jobId = 'v1-unanchored';
   const bundle = makeV1({ jobId });
-  const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(new Map()) });
+  const v = await verifyBundleV1Full(bundle, { ...offline, fetchAnchoredImpl: mockFetch(new Map()) });
   assert.equal(v.twoSided.outcome, 'indeterminate');
   assert.equal(v.rollup, 'indeterminate', 'unanchored v1 must NOT pass by default');
 });
@@ -119,7 +121,7 @@ test('§10.4.3(b): lone FULLY-SIGNED buyer anchor → pass (anchoring omission, 
   const bundle = makeV1({ jobId }); // makeV1 signs with BOTH parties → full §10.4.1 signature set
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(bundle)]]); // seller missing
-  const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(bundle, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'pass');
   assert.match(v.twoSided.detail, /anchoring omission/);
   assert.equal(v.rollup, 'pass');
@@ -136,7 +138,7 @@ test('§10.4.3(b): lone SINGLE-SIGNED copy with ABORT outcome → pass (§10.11 
   ]);
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(lone)]]);
-  const v = await verifyBundleV1Full(lone, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(lone, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'pass');
   assert.match(v.twoSided.detail, /bundle-suppression/);
 });
@@ -146,7 +148,7 @@ test('§10.4.3(b) guard: lone copy with anchoredByRole ↔ address mismatch → 
   const bundle = makeV1({ jobId, anchoredByRole: 'seller' }); // declares seller…
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(bundle)]]); // …but anchored at the BUYER address
-  const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(bundle, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'fail');
   assert.match(v.twoSided.detail, /anchoredByRole mismatch/);
 });
@@ -157,7 +159,7 @@ test('§10.4.3(b) guard: local bundle not byte-equal to the lone anchored copy �
   const local = makeV1({ jobId, buyerFill: 0x41, sellerFill: 0x42 }); // same jobId, different signers/bytes
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(anchored)]]);
-  const v = await verifyBundleV1Full(local, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(local, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'fail');
   assert.match(v.twoSided.detail, /not byte-equal to the lone/);
 });
@@ -169,7 +171,7 @@ test('§10.4.3(b) guard: lone fully-"signed" copy with INVALID signature bytes �
   const forged = { ...bundle, signatures: bundle.signatures.map((s) => ({ ...s, value: '00'.repeat(64) })) } as AttestationBundleV1;
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(forged)]]);
-  const v = await verifyBundleV1Full(forged, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(forged, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.notEqual(v.twoSided.outcome, 'pass');
   assert.notEqual(v.rollup, 'pass');
 });
@@ -192,7 +194,7 @@ test('§10.4.3(d): errorClass-only contradiction (same phase outcome) IS a canon
   const sellerSigned = emitAttestationBundleV1(su, signers);
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(buyerSigned)], [pair.seller, JSON.stringify(sellerSigned)]]);
-  const v = await verifyBundleV1Full(buyerSigned, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(buyerSigned, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'fail');
   assert.match(v.twoSided.detail, /errorClass/);
 });
@@ -216,7 +218,7 @@ test('§10.4.3 ruling #224: phaseSummary INDEX-SET mismatch (phase in one copy o
   const sellerSigned = emitAttestationBundleV1(su, signers);
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(buyerSigned)], [pair.seller, JSON.stringify(sellerSigned)]]);
-  const v = await verifyBundleV1Full(buyerSigned, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(buyerSigned, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'fail');
   assert.match(v.twoSided.detail, /index-set divergence/);
 });
@@ -231,7 +233,7 @@ test('§10.4.3(b): lone SINGLE-SIGNED copy with NON-abort outcome → indetermin
   ]);
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(lone)]]);
-  const v = await verifyBundleV1Full(lone, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(lone, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'indeterminate');
   assert.match(v.twoSided.detail, /no valid bundle/);
 });
@@ -243,7 +245,7 @@ test('BLOCKER 1: v0.1 buyer/seller divergence (outcome contradiction) → fail (
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(buyerCopy)], [pair.seller, JSON.stringify(sellerCopy)]]);
   // Verify the buyer copy locally (it IS byte-equal to the buyer anchor) — divergence is the reject reason.
-  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'fail');
   assert.match(v.twoSided.detail, /divergence/);
   assert.equal(v.rollup, 'fail');
@@ -256,7 +258,7 @@ test('BLOCKER 1: v0.1 third bundle riding along the jobId → fail (not byte-equ
   // A different bundle (different signers) sharing the jobId — declares anchoredByRole buyer so it
   // passes the local-side role guard, but its bytes match NEITHER real anchor → ride-along fail.
   const third = makeV1({ jobId, anchoredByRole: 'buyer', buyerFill: 0x41, sellerFill: 0x42 });
-  const v = await verifyBundleV1Full(third, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(third, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'fail');
   assert.match(v.twoSided.detail, /not byte-equal to EITHER/);
   assert.equal(v.rollup, 'fail');
@@ -266,7 +268,7 @@ test('BLOCKER 1: v0.1 RPC error on an anchor fetch → indeterminate (not a fals
   const jobId = 'v1-rpcerr';
   const bundle = makeV1({ jobId });
   const pair = computeAnchorPairV1(jobId);
-  const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(new Map(), new Set([pair.buyer])) });
+  const v = await verifyBundleV1Full(bundle, { ...offline, fetchAnchoredImpl: mockFetch(new Map(), new Set([pair.buyer])) });
   assert.equal(v.twoSided.outcome, 'indeterminate');
   assert.match(v.twoSided.detail, /RPC error/);
 });
@@ -285,10 +287,10 @@ test('dacs-sdk#38: unsigned hash-matching referenced artifact fails closed', asy
   const jobId = 'v1-ref-ok';
   const evidence = JSON.stringify({ evidenceVersion: '1', jobId, phase: 'pay-dem', outcome: 'success', observedAt: 1735689600000 });
   const locator = 'stor-' + sha256Hex('evidence-anchor');
-  const ref = { anchor: { substrate: 'demos' as const, locator }, contentHash: sha256Hex(evidence), type: 'dahr:settlement', producedAt: '2026-06-07T00:00:00Z' };
+  const ref = { anchor: { kind: 'storage-program' as const, locator }, contentHash: sha256Hex(evidence) };
   const { buyerCopy, map } = twoSidedMap({ jobId, settlementEvidence: [ref] });
   map.set(locator, evidence);
-  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.attestationsVerified, 0, JSON.stringify(v.attestationSteps));
   assert.equal(v.attestationsFailed, 1);
   assert.match(v.attestationSteps[0]!.detail, /unsigned.*integrity, not authorship/);
@@ -303,10 +305,10 @@ test('dacs-sdk#38: properly signed referenced artifact still passes', async () =
   const value = Buffer.from(sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, enc.encode(artifactHash), buyer.priv)).toString('base64');
   const evidence = JSON.stringify({ ...unsigned, signature: { algorithm: 'ed25519', signer: `cci:${buyer.pubHex}`, value } });
   const locator = 'stor-' + sha256Hex('signed-evidence-anchor');
-  const ref = { anchor: { substrate: 'demos' as const, locator }, contentHash: sha256Hex(evidence), type: 'dahr:settlement', producedAt: '2026-06-07T00:00:00Z' };
+  const ref = { anchor: { kind: 'storage-program' as const, locator }, contentHash: sha256Hex(evidence) };
   const { buyerCopy, map } = twoSidedMap({ jobId, settlementEvidence: [ref] });
   map.set(locator, evidence);
-  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.attestationsVerified, 1, JSON.stringify(v.attestationSteps));
   assert.equal(v.attestationsFailed, 0);
   assert.equal(v.rollup, 'pass', JSON.stringify(v.attestationSteps));
@@ -315,11 +317,11 @@ test('dacs-sdk#38: properly signed referenced artifact still passes', async () =
 test('BLOCKER 2: v0.1 AttestationRef whose anchor is MISSING → fail (cited evidence does not exist)', async () => {
   const jobId = 'v1-ref-missing';
   const locator = 'stor-' + sha256Hex('missing-anchor');
-  const ref = { anchor: { substrate: 'demos' as const, locator }, contentHash: sha256Hex('whatever'), type: 'dahr:settlement', producedAt: '2026-06-07T00:00:00Z' };
+  const ref = { anchor: { kind: 'storage-program' as const, locator }, contentHash: sha256Hex('whatever') };
   const bundle = makeV1({ jobId, settlementEvidence: [ref] });
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(bundle)], [pair.seller, JSON.stringify(bundle)]]); // locator absent
-  const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(bundle, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.attestationsFailed, 1, JSON.stringify(v.attestationSteps));
   assert.equal(v.rollup, 'fail');
 });
@@ -328,14 +330,14 @@ test('BLOCKER 2: v0.1 AttestationRef content-hash MISMATCH → fail (§7.5.2)', 
   const jobId = 'v1-ref-mismatch';
   const locator = 'stor-' + sha256Hex('tampered-anchor');
   // contentHash claims one thing; the anchored bytes hash to another.
-  const ref = { anchor: { substrate: 'demos' as const, locator }, contentHash: sha256Hex('the-real-evidence'), type: 'dahr:vet', producedAt: '2026-06-07T00:00:00Z' };
+  const ref = { anchor: { kind: 'storage-program' as const, locator }, contentHash: sha256Hex('the-real-evidence') };
   const bundle = makeV1({ jobId, vetRecords: [ref] });
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([
     [pair.buyer, JSON.stringify(bundle)], [pair.seller, JSON.stringify(bundle)],
     [locator, 'SOMETHING-ELSE-ENTIRELY'], // hashes to a different value than contentHash
   ]);
-  const v = await verifyBundleV1Full(bundle, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(bundle, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.attestationsFailed, 1, JSON.stringify(v.attestationSteps));
   assert.match(v.attestationSteps[0]!.detail, /content-hash mismatch/);
   assert.equal(v.rollup, 'fail');
@@ -344,7 +346,7 @@ test('BLOCKER 2: v0.1 AttestationRef content-hash MISMATCH → fail (§7.5.2)', 
 test('BLOCKER 2: v0.1 bundle with NO refs → attestationsVerified=0/failed=0, still passes when anchored', async () => {
   const jobId = 'v1-no-refs';
   const { buyerCopy, map } = twoSidedMap({ jobId });
-  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.attestationsVerified, 0);
   assert.equal(v.attestationsFailed, 0);
   assert.equal(v.rollup, 'pass');
@@ -359,7 +361,7 @@ test('FIX 1: buyer-address anchor declaring anchoredByRole "seller" → fail (ad
   const local = makeV1({ jobId, anchoredByRole: 'buyer' });
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(buyerImpostor)], [pair.seller, JSON.stringify(sellerCopy)]]);
-  const v = await verifyBundleV1Full(local, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(local, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'fail', JSON.stringify(v.twoSided));
   assert.match(v.twoSided.detail, /anchoredByRole mismatch/);
   assert.match(v.twoSided.detail, /buyer address/);
@@ -373,7 +375,7 @@ test('FIX 1: seller-address anchor declaring anchoredByRole "buyer" → fail (ad
   const local = makeV1({ jobId, anchoredByRole: 'buyer' });
   const pair = computeAnchorPairV1(jobId);
   const map = new Map([[pair.buyer, JSON.stringify(buyerCopy)], [pair.seller, JSON.stringify(sellerImpostor)]]);
-  const v = await verifyBundleV1Full(local, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(local, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'fail', JSON.stringify(v.twoSided));
   assert.match(v.twoSided.detail, /anchoredByRole mismatch/);
   assert.match(v.twoSided.detail, /seller address/);
@@ -383,7 +385,7 @@ test('FIX 1: seller-address anchor declaring anchoredByRole "buyer" → fail (ad
 test('FIX 1: role-matched copies at the right addresses → pass (positive control)', async () => {
   const jobId = 'fix1-role-matched-pass';
   const { buyerCopy, map } = twoSidedMap({ jobId });
-  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'pass', JSON.stringify(v.twoSided));
   assert.equal(v.rollup, 'pass');
 });
@@ -438,7 +440,7 @@ test('FIX 3: counterparty (seller) anchor with UNVERIFIABLE signatures → indet
   // DEFAULT (enforcing) — the unverifiable seller anchor must NOT be accepted. §7.5.1 do-not-collapse:
   // an unresolvable-key anchor is UNDECIDABLE → indeterminate, not a hard fail (fixed 2026-06-19; was 'fail').
   // FIX 3's security property ("not accepted") is preserved — indeterminate ≠ pass.
-  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'indeterminate', JSON.stringify(v.twoSided));
   assert.match(v.twoSided.detail, /undecidable/);
   assert.equal(v.rollup, 'indeterminate');
@@ -475,22 +477,22 @@ test('Demos-assigned addresses: party copies absent at the derived address resol
     if (owner === sellerOwner && name === pair.seller) return found(native.seller, owner);
     return null;
   };
-  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map), resolveByNameImpl });
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map), resolveByNameImpl });
   assert.equal(v.twoSided.outcome, 'pass', JSON.stringify(v.twoSided));
   assert.equal(v.rollup, 'pass', JSON.stringify(v.reasons));
   assert.deepEqual(asked.sort(), ['buyer-owner:buyer-name', 'seller-owner:seller-name']);
   // Nothing under the party's own key (a name squatter under another owner is absent for this party) → indeterminate, not a pass.
-  const none = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map), resolveByNameImpl: async () => null });
+  const none = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map), resolveByNameImpl: async () => null });
   assert.equal(none.twoSided.outcome, 'indeterminate');
   assert.match(none.twoSided.detail, /by address or by owner-bound name/);
   // A resolver transport failure is an error, never absence.
-  const down = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map), resolveByNameImpl: async () => { throw new Error('search transport down'); } });
+  const down = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map), resolveByNameImpl: async () => { throw new Error('search transport down'); } });
   assert.equal(down.twoSided.outcome, 'indeterminate');
   assert.match(down.twoSided.detail, /name resolution for (buyer|seller)/);
   // Copies present at the derived addresses never consult the resolver.
   const legacy = twoSidedMap({ jobId: 'v1-derived-present' });
   let consulted = 0;
-  const l = await verifyBundleV1Full(legacy.buyerCopy, { fetchAnchoredImpl: mockFetch(legacy.map), resolveByNameImpl: async () => { consulted++; return null; } });
+  const l = await verifyBundleV1Full(legacy.buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(legacy.map), resolveByNameImpl: async () => { consulted++; return null; } });
   assert.equal(l.twoSided.outcome, 'pass'); assert.equal(consulted, 0);
 });
 
@@ -502,22 +504,22 @@ test('object-anchored referenced artifacts hash by JCS: a signed evidence OBJECT
   const value = Buffer.from(sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, enc.encode(artifactHash), buyer.priv)).toString('base64');
   const evidence = { ...unsigned, signature: { algorithm: 'ed25519', signer: `cci:${buyer.pubHex}`, value } };
   const locator = 'stor-' + sha256Hex('object-evidence-anchor');
-  const ref = { anchor: { substrate: 'demos' as const, locator }, contentHash: hexOf(sha256(jcsCanonical(evidence))), type: 'dahr:settlement', producedAt: '2026-06-07T00:00:00Z' };
+  const ref = { anchor: { kind: 'storage-program' as const, locator }, contentHash: hexOf(sha256(jcsCanonical(evidence))) };
   const { buyerCopy, map } = twoSidedMap({ jobId, settlementEvidence: [ref] });
   const objectMap = new Map<string, unknown>(map); objectMap.set(locator, evidence);
-  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(objectMap) });
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(objectMap) });
   assert.equal(v.attestationsVerified, 1, JSON.stringify(v.attestationSteps));
   assert.equal(v.attestationsFailed, 0);
   assert.equal(v.rollup, 'pass', JSON.stringify(v.attestationSteps));
   // The same object with one field changed no longer matches the cited content hash.
   const tampered = new Map<string, unknown>(map); tampered.set(locator, { ...evidence, outcome: 'failed' });
-  const t = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(tampered) });
+  const t = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(tampered) });
   assert.equal(t.attestationsFailed, 1, JSON.stringify(t.attestationSteps));
   assert.match(t.attestationSteps[0]!.detail, /content-hash mismatch/);
   assert.equal(t.rollup, 'fail');
   // An anchored record with no data at all is indeterminate, not a pass.
   const empty = new Map<string, unknown>(map); empty.set(locator, null);
-  const n = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(empty) });
+  const n = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(empty) });
   assert.equal(n.attestationSteps[0]!.outcome, 'indeterminate');
 });
 
@@ -532,12 +534,12 @@ test('finality-commitment referenced artifact: pinned orchestrator signs this jo
   const commitmentFor = (job: string, signerKey: { priv: Uint8Array; pubHex: string }, parties = [`cci:${buyer.pubHex}`, `cci:${seller.pubHex}`]) =>
     signCommitment({ finalityCommitmentVersion: '1', jobId: job, agreementHash: 'ab'.repeat(32), listingRef: { listingId: 'lst-x', version: 1, contentHash: 'cd'.repeat(32) },
       parties, pattern: 'fixed-price', createdAt: 1735689600000 }, signerKey);
-  const refFor = (artifact: object, locator: string, signer?: string) => ({ anchor: { substrate: 'demos' as const, locator }, contentHash: hexOf(sha256(jcsCanonical(artifact))), type: 'finality-commitment', producedAt: '2026-06-07T00:00:00Z', ...(signer ? { signer } : {}) });
+  const refFor = (artifact: object, locator: string, signer?: string) => ({ anchor: { kind: 'storage-program' as const, locator }, contentHash: hexOf(sha256(jcsCanonical(artifact))), ...(signer ? { signer } : {}) });
   const run = async (artifact: object, signer?: string) => {
     const locator = 'stor-' + sha256Hex(JSON.stringify(artifact) + String(signer));
     const c = twoSidedMap({ jobId, settlementEvidence: [refFor(artifact, locator, signer)] });
     const m = new Map<string, unknown>(c.map); m.set(locator, artifact);
-    return verifyBundleV1Full(c.buyerCopy, { fetchAnchoredImpl: mockFetch(m) });
+    return verifyBundleV1Full(c.buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(m) });
   };
   // The seller (orchestrator in the reference topology) signs this job's commitment and the reference pins it: verified.
   const good = commitmentFor(jobId, seller);
@@ -575,7 +577,7 @@ test('owner-bound resolution discipline: a record under another owner is absent 
   // The resolver hands back a record that carries a different owner: absent for this party → nothing anchored → indeterminate.
   const wrongOwner = async (_rpc: string, _owner: string, name: string): Promise<FetchResult | null> =>
     name === pair.buyer ? ({ storageAddress: native.buyer, owner: '0x' + 'ee'.repeat(32), data: map.get(native.buyer), sizeBytes: 1, createdAt: 'x' } as unknown as FetchResult) : null;
-  const w = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(map), resolveByNameImpl: wrongOwner });
+  const w = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map), resolveByNameImpl: wrongOwner });
   assert.equal(w.twoSided.outcome, 'indeterminate'); assert.match(w.twoSided.detail, /neither party anchor present/);
   // resolveByOwnerListing itself, over a fake node transport.
   const listing = (entries: unknown, result = 200) => (async () => ({ ok: true, status: 200, json: async () => ({ result, response: entries }) })) as unknown as typeof fetch;
@@ -603,12 +605,12 @@ test('owner-bound resolution discipline: a record under another owner is absent 
 test('an anchored object that cannot be canonicalized fails the attestation instead of escaping the walk', async () => {
   const jobId = 'v1-uncanonical';
   const locator = 'stor-' + sha256Hex('uncanonical');
-  const ref = { anchor: { substrate: 'demos' as const, locator }, contentHash: 'ab'.repeat(32), type: 'dahr:settlement', producedAt: '2026-06-07T00:00:00Z' };
+  const ref = { anchor: { kind: 'storage-program' as const, locator }, contentHash: 'ab'.repeat(32) };
   const { buyerCopy, map } = twoSidedMap({ jobId, settlementEvidence: [ref] });
   const weird = new Map<string, unknown>(map);
   // A self-returning toJSON never terminates canonically; a lone surrogate is not UTF-8-encodable.
   weird.set(locator, { evidenceVersion: '1', text: '\ud800', toJSON() { return this; } });
-  const v = await verifyBundleV1Full(buyerCopy, { fetchAnchoredImpl: mockFetch(weird) });
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(weird) });
   assert.equal(v.attestationsFailed, 1, JSON.stringify(v.attestationSteps));
   assert.match(v.attestationSteps[0]!.detail, /not canonicalizable|content-hash mismatch/);
   assert.equal(v.rollup, 'fail');
@@ -622,14 +624,14 @@ test('a lone single-signing abort party cannot pin itself as the commitment auth
   const value = Buffer.from(sign(ADDITIVE_DOMAIN_SEPARATORS.FINALITY_COMMITMENT, enc.encode(hexOf(sha256(jcsCanonical(unsignedCommitment)))), buyer.priv)).toString('base64');
   const commitment = { ...unsignedCommitment, signature: { algorithm: 'ed25519', signer: `cci:${buyer.pubHex}`, value } };
   const locator = 'stor-' + sha256Hex('abort-selfpin-commitment');
-  const ref = { anchor: { substrate: 'demos' as const, locator }, contentHash: hexOf(sha256(jcsCanonical(commitment))), type: 'finality-commitment', producedAt: '2026-06-07T00:00:00Z', signer: `cci:${buyer.pubHex}` };
+  const ref = { anchor: { kind: 'storage-program' as const, locator }, contentHash: hexOf(sha256(jcsCanonical(commitment))), signer: `cci:${buyer.pubHex}` };
   // The buyer alone signs an abort bundle whose reference pins the buyer as the commitment's authority.
   const { signatures: _drop, ...unsigned } = makeV1({ jobId, outcome: 'aborted-by-other', settlementEvidence: [ref] });
   void _drop;
   const lone = emitAttestationBundleV1(unsigned, [{ party: { scheme: 'cci', identifier: buyer.pubHex }, privKey: buyer.priv }]);
   const pair = computeAnchorPairV1(jobId);
   const map = new Map<string, unknown>([[pair.buyer, JSON.stringify(lone)], [locator, commitment]]);
-  const v = await verifyBundleV1Full(lone, { fetchAnchoredImpl: mockFetch(map) });
+  const v = await verifyBundleV1Full(lone, { ...offline, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.twoSided.outcome, 'pass'); // §10.11 suppression still stands for the bundle itself…
   assert.equal(v.attestationSteps[0]!.outcome, 'indeterminate', JSON.stringify(v.attestationSteps)); // …but the self-pinned commitment is not authority.
   assert.match(v.attestationSteps[0]!.detail, /authority is not resolvable/);
@@ -637,6 +639,6 @@ test('a lone single-signing abort party cannot pin itself as the commitment auth
   // With both parties' signatures on the bundle, the same pin is authority and the commitment verifies.
   const both = makeV1({ jobId, settlementEvidence: [ref] });
   const bothMap = new Map<string, unknown>([[pair.buyer, JSON.stringify(both)], [pair.seller, JSON.stringify(makeV1({ jobId, settlementEvidence: [ref], anchoredByRole: 'seller' }))], [locator, commitment]]);
-  const ok = await verifyBundleV1Full(both, { fetchAnchoredImpl: mockFetch(bothMap) });
+  const ok = await verifyBundleV1Full(both, { ...offline, fetchAnchoredImpl: mockFetch(bothMap) });
   assert.equal(ok.attestationsVerified, 1, JSON.stringify(ok.attestationSteps));
 });

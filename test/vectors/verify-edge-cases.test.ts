@@ -90,7 +90,7 @@ test('Codex M2 #4 / Gemini LOW: AttestationRef with non-string anchored data →
     phases: [{
       phaseId: 'vet', startedAt: '', endedAt: '', outcome: 'pass',
       attestations: [{
-        anchor: { substrate: 'demos', locator: realAnchor },
+        anchor: { kind: 'storage-program', locator: realAnchor },
         contentHash: 'a'.repeat(64),
         type: 'gleif-cbp:1', // not stub — would require real chain fetch
         producedAt: '',

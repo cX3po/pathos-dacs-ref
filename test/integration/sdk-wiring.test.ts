@@ -33,7 +33,7 @@ test('DAHR fetch — dry-run mode produces a synthetic AttestationRef without an
     recipe: 'gleif-cbp:1',
     headers: { Accept: 'application/vnd.api+json' },
   });
-  assert.equal(result.attestation.anchor.substrate, 'demos');
+  assert.equal(result.attestation.anchor.kind, 'storage-program');
   assert.match(result.attestation.anchor.locator, /^stor-stub-/);
   // v0.2 honest-scope marker — see test/vectors/demos-bridge.test.ts for the full rationale
   assert.equal(result.attestation.type, 'dahr-stub:gleif-cbp:1');

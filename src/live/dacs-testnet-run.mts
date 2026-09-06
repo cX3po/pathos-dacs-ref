@@ -270,8 +270,7 @@ export async function createLiveSettlementDependency(
     const evidenceAnchor = await wiring.anchor({ logicalAddress, content: evidence, contentHash });
     return {
       evidence,
-      evidenceRef: { anchor: { substrate: 'demos', locator: evidenceAnchor.nativeAddress }, contentHash,
-        type: 'settlement-evidence', producedAt: new Date(settled.finalityObservedAt).toISOString(), signer: String(wiring.signers.orchestrator.claim) },
+      evidenceRef: { anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash, signer: String(wiring.signers.orchestrator.claim) },
       evidenceLogicalAddress: logicalAddress, evidenceAnchor,
     };
   } };
@@ -533,8 +532,7 @@ export async function createLiveDependencies(
       catch { return { outcome: 'fail', detail: 'listing verification failed' }; }
     },
     async emitAgreement(published, run) {
-      const vetRef: AttestationRef = { anchor: { substrate: 'demos', locator: published.anchor.nativeAddress }, contentHash: published.listingRef.contentHash,
-        type: 'listing-vet', producedAt: new Date().toISOString() };
+      const vetRef: AttestationRef = { anchor: { kind: 'storage-program', locator: published.anchor.nativeAddress }, contentHash: published.listingRef.contentHash };
       const parties: AgreementPartyV1[] = [
         { role: 'buyer', bundleHash: jcsHashHex({ role: 'buyer', claim: wiring.signers.buyer.claim }), primaryClaim: wiring.signers.buyer.claim, vetRecordRef: vetRef },
         { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: wiring.signers.seller.claim }), primaryClaim: wiring.signers.seller.claim, vetRecordRef: vetRef },
@@ -544,8 +542,7 @@ export async function createLiveDependencies(
       { signers: wiring.signers, anchor: wiring.anchor, fetchAnchored: wiring.fetchAnchored, receiptProvider: fetchReceipt });
       // The reference pins the orchestrator that signed the commitment: a cold verifier has no other way to know
       // which listed party orchestrated when no distinct orchestrator party is listed.
-      const commitmentRef: AttestationRef = { anchor: { substrate: 'demos', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash,
-        type: 'finality-commitment', producedAt: new Date(committed.committedAt).toISOString(), signer: wiring.signers.orchestrator.claim };
+      const commitmentRef: AttestationRef = { anchor: { kind: 'storage-program', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash, signer: wiring.signers.orchestrator.claim };
       commitments.set(committed.addresses.commitment.native, { commitment: committed.commitment, agreement: committed.agreement, receipt: committed.receipt,
         anchor: { logicalAddress: committed.addresses.commitment.logical, nativeAddress: committed.addresses.commitment.native,
           transactionRef: committed.receipt.transactionRef, writer: committed.receipt.writer, ...(committed.receipt.nonce === undefined ? {} : { nonce: committed.receipt.nonce }) } });
@@ -566,8 +563,7 @@ export async function createLiveDependencies(
       const logicalAddress = anchorNames.deliveryEvidence(run.jobId, 3);
       const contentHash = jcsHashHex(evidence);
       const evidenceAnchor = await wiring.anchor({ logicalAddress, content: evidence, contentHash });
-      return { evidence, evidenceRef: { anchor: { substrate: 'demos', locator: evidenceAnchor.nativeAddress }, contentHash,
-        type: 'settlement-evidence', producedAt: new Date().toISOString(), signer: String(wiring.signers.orchestrator.claim) },
+      return { evidence, evidenceRef: { anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash, signer: String(wiring.signers.orchestrator.claim) },
         evidenceLogicalAddress: logicalAddress, evidenceAnchor, deliverableAnchor };
     },
     async finalize(input) {
