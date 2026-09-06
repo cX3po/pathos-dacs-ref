@@ -506,6 +506,19 @@ function verifyReferencedArtifact(
       && committed.every((k, i) => k !== null && k === expectedPair[i]);
     if (!bound) return { outcome: 'fail', detail: 'commitment artifact does not bind exactly the bundle\'s buyer and seller claims' };
   }
+  if (kind === 'agreement') {
+    // The cited agreement must be this job's and must name exactly the bundle's buyer and seller; signer authority
+    // derived from the document's own parties would otherwise accept any correctly signed foreign agreement.
+    if ((artifact.agreementVersion !== undefined || artifact.jobId !== undefined) && artifact.jobId !== bundle.jobId) {
+      return { outcome: 'fail', detail: `agreement artifact is for job ${String(artifact.jobId)}, not ${bundle.jobId}` };
+    }
+    const named = Array.isArray(artifact.parties) ? artifact.parties.map((p) => asRecord(p)).filter((p): p is Record<string, unknown> => p !== null) : null;
+    const claimOf = (role: 'buyer' | 'seller') => named ? claimKey(named.find((p) => p.role === role)?.primaryClaim) : claimKey(artifact[role]);
+    for (const role of ['buyer', 'seller'] as const) {
+      const expected = claimKey(bundle.parties.find((p) => p.role === role)?.primaryClaim);
+      if (!expected || claimOf(role) !== expected) return { outcome: 'fail', detail: 'agreement artifact does not name exactly the bundle\'s buyer and seller claims' };
+    }
+  }
   const rawSignatures: ArtifactSignature[] = Array.isArray(artifact.signatures)
     ? artifact.signatures.map((s) => (asRecord(s) ?? {}) as ArtifactSignature)
     : artifact.signature !== undefined ? [(asRecord(artifact.signature) ?? {}) as ArtifactSignature] : [];

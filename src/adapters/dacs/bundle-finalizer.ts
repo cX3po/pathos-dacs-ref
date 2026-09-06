@@ -281,7 +281,7 @@ export async function verifyBundleListing(listing: JsonObject, deps: Pick<Bundle
   if (!await signatureValid(deps, DOMAIN_SEPARATORS.LISTING, contentHash, signature)) throw new BundleFinalizationError('listing-signature', 'listing signature is invalid (SEB-1)');
 }
 
-async function resolveCommitment(input: CompletedSessionEvidence, deps: Pick<BundleFinalizerDependencies, 'fetchCommitment' | 'fetchReceipt' | 'verifySignature'>): Promise<ResolvedCommitment | undefined> {
+async function resolveCommitment(input: CompletedSessionEvidence, deps: Pick<BundleFinalizerDependencies, 'fetchAnchored' | 'fetchCommitment' | 'fetchReceipt' | 'verifySignature'>): Promise<ResolvedCommitment | undefined> {
   if (input.outcome !== 'completed' && input.outcome !== 'failed-counterparty') return undefined;
   const commitmentRef = input.commitmentRef ?? input.agreementRef;
   if (!commitmentRef) throw new BundleFinalizationError('commitment-unresolved', 'completed or failed-counterparty bundle requires a commitment reference (ST-11)');
@@ -294,6 +294,20 @@ async function resolveCommitment(input: CompletedSessionEvidence, deps: Pick<Bun
   const agreementScope = { ...resolved.agreement } as JsonObject; delete agreementScope.signatures;
   const agreementHash = jcsHashHex(agreementScope);
   if (agreementHash !== resolved.commitment.agreementHash) throw new BundleFinalizationError('commitment-binding', 'commitment agreementHash mismatch (ST-11)');
+  if (input.commitmentRef) {
+    // Split references: the bundle cites the agreement document itself. Resolve it independently of the commitment
+    // and bind it both to its reference and to the agreement the commitment binds; an unresolvable document is never a pass.
+    if (!input.agreementRef) throw new BundleFinalizationError('agreement-unresolved', 'a session that carries commitmentRef must also cite the agreement document (agreementRef)');
+    let raw: unknown;
+    try { raw = await deps.fetchAnchored(input.agreementRef.anchor.locator); }
+    catch { throw new BundleFinalizationError('agreement-transport', 'cited agreement document could not be resolved; a transport error is not absence'); }
+    if (raw === null || raw === undefined) throw new BundleFinalizationError('agreement-unresolved', 'cited agreement document is absent at its locator');
+    let cited: JsonObject;
+    try { cited = parsed(raw); } catch { throw new BundleFinalizationError('agreement-binding', 'cited agreement document is not a JSON object'); }
+    const citedHash = jcsHashHex(cited);
+    if (citedHash !== input.agreementRef.contentHash.replace(/^sha256:/, '')) throw new BundleFinalizationError('agreement-binding', 'cited agreement document does not match agreementRef.contentHash');
+    if (citedHash !== jcsHashHex(resolved.agreement)) throw new BundleFinalizationError('agreement-binding', 'cited agreement document is not the agreement the commitment binds (ST-11)');
+  }
   const parties = new Map(resolved.agreement.parties.map((party) => [party.role, party]));
   for (const role of ['buyer', 'seller'] as const) {
     const party = parties.get(role);
