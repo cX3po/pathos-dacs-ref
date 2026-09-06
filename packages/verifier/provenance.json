@@ -63,11 +63,11 @@
     },
     {
       "sourcePath": "src/lib/verify-bundle-v1.ts",
-      "sha256": "0e00fb726eaadd2f39094758426c16d5bd8887394098becd936820b808e107a2"
+      "sha256": "919349272e6154d7ada7fc05857439d585874fcac38825d7a8e26e163062c0ea"
     },
     {
       "sourcePath": "src/lib/verify-bundle.ts",
-      "sha256": "c3e4bddd739bf9f8776f584b89d60bc4beb5ccc3662a7c9f3a8668dd44430cad"
+      "sha256": "1a4bae87a72bf1b6e94e78591740db987b5d7f87b8ce13c2bb89a38358eb7de7"
     },
     {
       "sourcePath": "src/lib/verify-document.ts",
@@ -102,7 +102,7 @@
       "sha256": "165d2f3a872c1300c34ff98482948fc0c2a9ea7e7c8b98902ccc97cfcd5708c0"
     }
   ],
-  "sourceManifestSha256": "d1cef2005d1eacaf6b087b51df595724f5357dd5297424d8c4bc1284c5e57c1f",
+  "sourceManifestSha256": "1a4288803ae596cd55411980d2d4244b71fd0c68b912b1380085313885fba876",
   "emitted": [
     {
       "path": "packages/verifier/src/cli.d.ts",
@@ -214,7 +214,7 @@
     },
     {
       "path": "src/lib/verify-bundle-v1.js",
-      "sha256": "ead4614ae0cbaeaa704722f6b9171619811d86389a05fa026e807e9c0afff8ab"
+      "sha256": "46cad181498e271c4741f1b0dbb201f8aedb624c1d5c2f1b5fd180cbb50614be"
     },
     {
       "path": "src/lib/verify-bundle.d.ts",
@@ -222,7 +222,7 @@
     },
     {
       "path": "src/lib/verify-bundle.js",
-      "sha256": "03007025365eace52dc0384f1d251e6a0016c813ae0c99b505ed84c1fdcc0e4a"
+      "sha256": "54f37f20652d8a6d9b119f60392e8052a591bb899b79433d9b6e77c29ce03561"
     },
     {
       "path": "src/lib/verify-document.d.ts",
@@ -289,5 +289,5 @@
       "sha256": "cc4e23422ec114b49a43bb29d442339934e2d38ca79d41ebd4d9d253a7a122cf"
     }
   ],
-  "emittedSha256": "05dfd146a958f82ef27ed58774473bd560e7fca8ac5abfb5f1d747d106717003"
+  "emittedSha256": "a7fa7a4d2adf937edb339e49ce1002ac9aec5bcf4d1b86f69bf123013fe7a139"
 }

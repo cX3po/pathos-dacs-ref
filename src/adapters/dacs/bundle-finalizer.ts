@@ -323,7 +323,9 @@ async function resolveCommitment(input: CompletedSessionEvidence, deps: Pick<Bun
   try { resolved = await deps.fetchCommitment(commitmentRef); }
   catch { throw new BundleFinalizationError('commitment-transport', 'agreement commitment could not be resolved (ST-11)'); }
   const commitmentHash = jcsHashHex(resolved.commitment);
-  if (commitmentHash !== commitmentRef.contentHash.replace(/^sha256:/, '') || resolved.commitment.jobId !== input.jobId) throw new BundleFinalizationError('commitment-binding', 'agreement commitment hash/job mismatch (ST-11)');
+  const wantCommitment = commitmentRef.contentHash.replace(/^sha256:/, '');
+  // DACS-2 §7.5.2: the reference hashes the signature-excluded record; sessions from before 2026-09-06 carried the stored-bytes hash. Receipts stay bound to the stored bytes.
+  if ((commitmentHash !== wantCommitment && signatureExcludedHash(resolved.commitment) !== wantCommitment) || resolved.commitment.jobId !== input.jobId) throw new BundleFinalizationError('commitment-binding', 'agreement commitment hash/job mismatch (ST-11)');
   const agreementScope = { ...resolved.agreement } as JsonObject; delete agreementScope.signatures;
   const agreementHash = jcsHashHex(agreementScope);
   if (agreementHash !== resolved.commitment.agreementHash) throw new BundleFinalizationError('commitment-binding', 'commitment agreementHash mismatch (ST-11)');

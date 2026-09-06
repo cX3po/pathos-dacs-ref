@@ -533,7 +533,8 @@ export async function createLiveDependencies(
       catch { return { outcome: 'fail', detail: 'listing verification failed' }; }
     },
     async emitAgreement(published, run) {
-      const vetRef: AttestationRef = { anchor: { kind: 'storage-program', locator: published.anchor.nativeAddress }, contentHash: published.listingRef.contentHash };
+      // Placeholder until a DACS-2 vet record is anchored (ledger agreement-party-vet-record-ref): cites the anchored listing by its signature-excluded hash (§7.5.2).
+      const vetRef: AttestationRef = { anchor: { kind: 'storage-program', locator: published.anchor.nativeAddress }, contentHash: signatureExcludedHash(published.listing) };
       const parties: AgreementPartyV1[] = [
         { role: 'buyer', bundleHash: jcsHashHex({ role: 'buyer', claim: wiring.signers.buyer.claim }), primaryClaim: wiring.signers.buyer.claim, vetRecordRef: vetRef },
         { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: wiring.signers.seller.claim }), primaryClaim: wiring.signers.seller.claim, vetRecordRef: vetRef },
@@ -543,7 +544,7 @@ export async function createLiveDependencies(
       { signers: wiring.signers, anchor: wiring.anchor, fetchAnchored: wiring.fetchAnchored, receiptProvider: fetchReceipt });
       // The reference pins the orchestrator that signed the commitment: a cold verifier has no other way to know
       // which listed party orchestrated when no distinct orchestrator party is listed.
-      const commitmentRef: AttestationRef = { anchor: { kind: 'storage-program', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash, signer: wiring.signers.orchestrator.claim };
+      const commitmentRef: AttestationRef = { anchor: { kind: 'storage-program', locator: committed.addresses.commitment.native }, contentHash: signatureExcludedHash(committed.commitment), signer: wiring.signers.orchestrator.claim };
       commitments.set(committed.addresses.commitment.native, { commitment: committed.commitment, agreement: committed.agreement, receipt: committed.receipt,
         anchor: { logicalAddress: committed.addresses.commitment.logical, nativeAddress: committed.addresses.commitment.native,
           transactionRef: committed.receipt.transactionRef, writer: committed.receipt.writer, ...(committed.receipt.nonce === undefined ? {} : { nonce: committed.receipt.nonce }) } });

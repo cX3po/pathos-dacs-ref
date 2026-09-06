@@ -16,6 +16,7 @@ import type { LegacyAttestationRef } from '../types/verify-result.js';
  */
 
 import { sha256 } from '@noble/hashes/sha2';
+import { signatureExcludedHash } from './content-hash.js';
 import type { AttestationBundle, VerifyStep, VerifyVerdict, AttestationRef } from '../types/index.js';
 import { jcsCanonical, jcsHash } from '../jcs.js';
 import { verify as edVerify } from './sign.js';
@@ -512,8 +513,11 @@ async function walkAttestationRefs(
     }
     const bytes = new TextEncoder().encode(fetchedData);
     const actualHash = bytesToHex(sha256(bytes));
+    // DACS-2 §7.5.2: a canonical-JSON artifact's reference hashes its signature-excluded form; raw responses keep the bytes hash.
+    let unsignedHash: string | null = null;
+    try { const parsed = JSON.parse(fetchedData); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) unsignedHash = signatureExcludedHash(parsed); } catch { /* raw bytes */ }
 
-    if (actualHash !== ref.contentHash.toLowerCase()) {
+    if (actualHash !== ref.contentHash.toLowerCase() && unsignedHash !== ref.contentHash.toLowerCase()) {
       log.add(label, 'fail',
         `content-hash mismatch at ${ref.anchor.locator}: expected ${ref.contentHash.slice(0, 16)}…, ` +
         `got ${actualHash.slice(0, 16)}… — §7.5.2 normative MUST cause rejection`);

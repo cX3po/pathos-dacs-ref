@@ -39,6 +39,7 @@
  */
 
 import { generateKeypair, sign, verify } from '../lib/sign.js';
+import { signatureExcludedHash } from '../lib/content-hash.js';
 import { bytesToHex } from '../lib/verify-bundle.js';
 import { canonicalPrice } from '../types/settle.js';
 import { DOMAIN_SEPARATORS } from '../domain-sep.js';
@@ -285,13 +286,13 @@ const unsignedBase = {
     { role: 'buyer' as const, bundleHash: agreementHash, primaryClaim: { scheme: 'cci' as const, identifier: buyerCci } },
     { role: 'seller' as const, bundleHash: agreementHash, primaryClaim: { scheme: 'cci' as const, identifier: sellerCci } },
   ],
-  agreementRef: refFor('dacs-3-agreement', agreementLocator, agreementAnchoredHash),
+  agreementRef: refFor('dacs-3-agreement', agreementLocator, signatureExcludedHash(agreementSignedObj)),
   phaseSummary,
   vetRecords: [] as AttestationRef[],
   settlementEvidence: [
-    refFor('dacs-4-evidence:pay-ap2:mock-simulation', payEvidenceLocator, payEvidenceHash),
-    refFor('dacs-4-evidence:pay-ap2-attested-receipt:mock-simulation', ap2RecordLocator, ap2RecordHash),
-    refFor('dacs-4-evidence:deliver-storage-program', deliveryEvidenceLocator, deliveryEvidenceHash),
+    refFor('dacs-4-evidence:pay-ap2:mock-simulation', payEvidenceLocator, signatureExcludedHash(payEvidence)),
+    refFor('dacs-4-evidence:pay-ap2-attested-receipt:mock-simulation', ap2RecordLocator, signatureExcludedHash(ap2Record)),
+    refFor('dacs-4-evidence:deliver-storage-program', deliveryEvidenceLocator, signatureExcludedHash(deliveryEvidence)),
   ],
   recipeRegistryVersion: 1, railRegistryVersion: 1, finalisedAt: now(),
 };

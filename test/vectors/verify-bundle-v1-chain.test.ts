@@ -705,3 +705,28 @@ test('§7.5.2 contentHash: a reference carrying the signature-excluded hash veri
   const wrong = await run('ab'.repeat(32));
   assert.equal(wrong.attestationsFailed, 1); assert.match(wrong.attestationSteps[0]!.detail, /content-hash mismatch/);
 });
+
+test('§7.5.2 contentHash: a signed document anchored as text matches its signature-excluded hash too; a raw text attestation keeps its bytes hash', async () => {
+  const jobId = 'v1-content-hash-text';
+  const buyer = mk(0x21), seller = mk(0x22);
+  const unsigned = { agreementVersion: '1', jobId, listingRef: { listingId: 'lst-x', version: 1, contentHash: 'cd'.repeat(32) },
+    parties: [{ role: 'buyer', bundleHash: 'aa'.repeat(32), primaryClaim: `cci:${buyer.pubHex}`, vetRecordRef: { anchor: { kind: 'storage-program', locator: 'vet' }, contentHash: 'ef'.repeat(32) } },
+      { role: 'seller', bundleHash: 'aa'.repeat(32), primaryClaim: `cci:${seller.pubHex}`, vetRecordRef: { anchor: { kind: 'storage-program', locator: 'vet' }, contentHash: 'ef'.repeat(32) } }],
+    terms: { price: { amount: '1', currency: 'DEM' }, deliverable: { deliverableType: 'storage-program', hash: 'de'.repeat(32) }, deadline: 1735689600000 },
+    derivedFromPattern: 'fixed-price', generatedAt: 1735689600000 };
+  const scope = hexOf(sha256(jcsCanonical(unsigned)));
+  const artifact = { ...unsigned, signatures: [buyer, seller].map((k) => ({ party: `cci:${k.pubHex}`, algorithm: 'ed25519', value: Buffer.from(sign(DOMAIN_SEPARATORS.AGREEMENT, enc.encode(scope), k.priv)).toString('base64') })) };
+  const text = Buffer.from(jcsCanonical(artifact)).toString('utf8');
+  const run = async (contentHash: string, data: unknown) => {
+    const locator = 'stor-' + sha256Hex(contentHash + String(data).length);
+    const c = twoSidedMap({ jobId, settlementEvidence: [{ anchor: { kind: 'storage-program' as const, locator }, contentHash }] });
+    const m = new Map<string, unknown>(c.map); m.set(locator, data);
+    return verifyBundleV1Full(c.buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(m) });
+  };
+  const spec = await run(scope, text);
+  assert.equal(spec.attestationsVerified, 1, JSON.stringify(spec.attestationSteps));
+  const bytes = await run(sha256Hex(text), text);
+  assert.equal(bytes.attestationsVerified, 1, JSON.stringify(bytes.attestationSteps));
+  const wrong = await run('ab'.repeat(32), text);
+  assert.equal(wrong.attestationsFailed, 1);
+});
