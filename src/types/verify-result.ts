@@ -28,20 +28,41 @@ import type { ClaimRef } from './identity.js';
  */
 export type VerifyDecision = 'pass' | 'fail' | 'indeterminate' | 'error';
 
-/** Reference to an anchored attestation (§7.5.2). */
+/**
+ * Reference to an anchored attestation: the DACS-2 §7.5.2 wire form, exactly
+ * `{ anchor: { kind, locator }, contentHash, signer? }` (spec/DACS-2-VET.md `type AttestationRef`).
+ * The pinned dacs-sdk checks these keys exactly; a reference carrying other members (a substrate
+ * name, a type, a producedAt) is not an AttestationRef to it and the bundle citing it is not a
+ * bundle. Producers that need the attestation kind or time keep them on the cited artifact.
+ */
 export interface AttestationRef {
-  /** Locator that resolves to the anchored bytes (e.g. "stor-...", or an explorer URL) */
+  /** Where the bytes are anchored: a Demos storage program (`stor-…`), IPFS, or an HTTPS locator. */
   anchor: {
-    substrate: 'demos' | 'evm' | 'ipfs'; // extensible
+    kind: 'storage-program' | 'ipfs' | 'https';
     locator: string;
   };
   /** SHA-256 of the anchored bytes; consumer MUST recompute and compare (§7.5.2) */
   contentHash: string; // hex
-  /** Type of attestation (matches recipeId or method) */
-  type: string;
-  /** When the attestation was produced (ISO 8601) */
-  producedAt: string;
   /** Expected author when the artifact body does not define its own signer policy. */
+  signer?: ClaimRef | string;
+}
+
+/**
+ * The DAHR bridge's attestation: a spec-form reference plus the bridge's honest-scope marker
+ * (`type`, `dahr-stub:` prefixed when the bytes were not fetched through consensus) and the
+ * fetch time. It travels inside a VerifyResult; a bundle cites it through a plain AttestationRef.
+ */
+export interface DahrAttestation extends AttestationRef {
+  type: string;
+  producedAt: string;
+}
+
+/** The v0.2 legacy reference shape (`dacs-5-bundle:0.1` bundles already anchored): read-only compatibility. */
+export interface LegacyAttestationRef {
+  anchor: { substrate?: 'demos' | 'evm' | 'ipfs'; kind?: 'storage-program' | 'ipfs' | 'https'; locator: string };
+  contentHash: string;
+  type?: string;
+  producedAt?: string;
   signer?: ClaimRef | string;
 }
 
@@ -63,7 +84,7 @@ export interface VerifyResult {
   /** Freshness window declared by the recipe — caller MAY treat as cache validity */
   freshnessSec?: number;
   /** The attestation produced (if the recipe anchors one) */
-  attestation?: AttestationRef;
+  attestation?: DahrAttestation;
   /** Any supplementary signals (e.g. soft-signal scorers) */
   supplementarySignals?: Record<string, unknown>;
 }

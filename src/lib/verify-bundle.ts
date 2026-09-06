@@ -1,3 +1,4 @@
+import type { LegacyAttestationRef } from '../types/verify-result.js';
 /**
  * DACS-5 envelope-receipt verifier — core logic
  *
@@ -422,7 +423,7 @@ function claimRefEqual(a: { scheme: string; identifier: string }, b: { scheme: s
  * §7.5.2 — walk every AttestationRef in the bundle.
  *
  * For each ref:
- *   1. Fetch from ref.anchor.locator via SR-2 (only `substrate: 'demos'` supported in v0.2)
+ *   1. Fetch from ref.anchor.locator via SR-2 (only `kind: 'storage-program'` supported in v0.2)
  *   2. Recompute sha256(fetched bytes)
  *   3. Compare to ref.contentHash
  *
@@ -435,7 +436,7 @@ async function walkAttestationRefs(
   log: StepLog,
   fetchImpl: typeof fetchAnchored = fetchAnchored
 ): Promise<{ verified: number; failed: number }> {
-  const refs: AttestationRef[] = bundle.phases.flatMap(p => p.attestations);
+  const refs: LegacyAttestationRef[] = bundle.phases.flatMap(p => p.attestations);
   if (refs.length === 0) {
     log.add('attestation-refs', 'pass', 'bundle has no AttestationRefs (vacuously satisfied)');
     return { verified: 0, failed: 0 };
@@ -445,19 +446,21 @@ async function walkAttestationRefs(
   let failed = 0;
 
   for (let i = 0; i < refs.length; i++) {
-    const ref = refs[i]!;
-    const label = `attestation[${i}] type=${ref.type}`;
+    const ref = refs[i]! as unknown as LegacyAttestationRef;
+    const refType = ref.type ?? 'unknown';
+    const label = `attestation[${i}] type=${refType}`;
 
-    if (ref.anchor.substrate !== 'demos') {
+    // v0.2 legacy refs named the substrate; the DACS-2 §7.5.2 form names the anchor kind. Both mean a Demos storage program.
+    if (ref.anchor.substrate !== 'demos' && ref.anchor.kind !== 'storage-program') {
       log.add(label, 'indeterminate',
-        `anchor.substrate="${ref.anchor.substrate}" — only "demos" is supported in v0.2`);
+        `anchor "${ref.anchor.substrate ?? ref.anchor.kind ?? 'none'}" — only Demos storage programs are supported in v0.2`);
       continue;
     }
 
     // dahr-stub: prefix means the attestation is NOT a real consensus-backed-proxy receipt.
     // We still verify the bytes-vs-hash, but mark as indeterminate at the type level so
     // a high-stakes consumer can refuse stub attestations on policy grounds.
-    const isStubType = ref.type.startsWith('dahr-stub:');
+    const isStubType = refType.startsWith('dahr-stub:');
     const isStubLocator = ref.anchor.locator.startsWith('stor-stub-');
 
     if (isStubLocator) {
@@ -473,7 +476,7 @@ async function walkAttestationRefs(
       // Bytes are not retrievable from a stub locator; mark as indeterminate per stub semantics
       log.add(label, 'indeterminate',
         `stub locator (no chain fetch); contentHash prefix matches but bytes not anchored. ` +
-        `Type "${ref.type}" — high-stakes verifiers SHOULD refuse stub attestations.`);
+        `Type "${refType}" — high-stakes verifiers SHOULD refuse stub attestations.`);
       continue;
     }
 
@@ -526,7 +529,7 @@ async function walkAttestationRefs(
     }
 
     log.add(label, 'pass',
-      `content-hash matches (${actualHash.slice(0, 16)}…); type=${ref.type}; anchor=${ref.anchor.locator}`);
+      `content-hash matches (${actualHash.slice(0, 16)}…); type=${refType}; anchor=${ref.anchor.locator}`);
     verified++;
   }
 

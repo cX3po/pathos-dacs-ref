@@ -34,10 +34,10 @@ import { sha256 } from '@noble/hashes/sha2';
 import type { DemosHandle } from './connection.js';
 import { anchor, type AnchorResult } from './storage.js';
 import { assertAllowedHost } from './dahr-allowlist.js';
-import type { AttestationRef } from '../types/index.js';
+import type { AttestationRef, DahrAttestation } from '../types/index.js';
 
 export interface DahrFetchResult {
-  attestation: AttestationRef;
+  attestation: DahrAttestation;
   responseBody: unknown;
   responseStatus: number;
   responseContentType: string;
@@ -191,9 +191,9 @@ export async function dahrFetch(
   // ^ v0.2 always prefixes — we never produce true consensus-backed-proxy yet.
   //   When v0.3 adds validator-quorum signing, this prefix will be dropped for
   //   that path only.
-  const attestation: AttestationRef = {
+  const attestation: DahrAttestation = {
     anchor: {
-      substrate: 'demos',
+      kind: 'storage-program',
       locator: anchorResult.storageAddress,
     },
     contentHash: contentHashHex,

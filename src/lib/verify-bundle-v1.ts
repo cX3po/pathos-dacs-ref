@@ -557,7 +557,7 @@ async function walkV1AttestationRefs(
 
   for (let i = 0; i < refs.length; i++) {
     const ref = refs[i]!;
-    const anchor = (ref as { anchor?: { substrate?: string; locator?: string } }).anchor;
+    const anchor = (ref as { anchor?: { kind?: string; substrate?: string; locator?: string } }).anchor;
     const contentHash = (ref as { contentHash?: string }).contentHash;
     const label = `attestation[${i}]${(ref as { type?: string }).type ? ` type=${(ref as { type?: string }).type}` : ''}`;
 
@@ -570,9 +570,13 @@ async function walkV1AttestationRefs(
 
     // Locator must be present + on a substrate we can fetch. No locator / non-demos substrate ⇒
     // verifier cannot reach the bytes → indeterminate (NOT a pass — §7.5.1 never coerces).
-    if (!anchor || anchor.substrate !== 'demos' || typeof anchor.locator !== 'string' || !anchor.locator) {
+    // DACS-2 §7.5.2 names the anchor kind; bundles anchored before this repository adopted that wire
+    // form named the substrate instead. Both mean a Demos storage program and are fetched the same way.
+    const anchorForm = (anchor as { kind?: string; substrate?: string } | undefined);
+    const fetchable = anchorForm?.kind === 'storage-program' || anchorForm?.substrate === 'demos';
+    if (!anchor || !fetchable || typeof anchor.locator !== 'string' || !anchor.locator) {
       steps.push({ ref: label, outcome: 'indeterminate',
-        detail: `anchor not fetchable (substrate="${anchor?.substrate ?? 'none'}", locator="${anchor?.locator ?? 'none'}") — only string-anchored demos refs are walked in v0.2` });
+        detail: `anchor not fetchable (kind="${anchorForm?.kind ?? anchorForm?.substrate ?? 'none'}", locator="${anchor?.locator ?? 'none'}") — only Demos storage-program refs are walked` });
       continue;
     }
 

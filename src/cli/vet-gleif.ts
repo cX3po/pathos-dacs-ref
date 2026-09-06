@@ -167,7 +167,7 @@ async function main(): Promise<void> {
       if (body.data.id?.toUpperCase() !== args.lei) throw new Error(`--from-fixture record id "${body.data.id ?? '(absent)'}" ≠ requested --lei "${args.lei}" — fixture/request LEI mismatch`);
       responseStatus = 200; // a recorded successful GLEIF capture (guarded above; manifest pins its bodyHash)
       attestation = {
-        anchor: { substrate: 'ipfs', locator: `fixture:${args.fromFixture}` },
+        anchor: { kind: 'ipfs', locator: `fixture:${args.fromFixture}` },
         contentHash: createHash('sha256').update(raw).digest('hex'),
         type: 'gleif-fixture-replay',
         producedAt: runAt,

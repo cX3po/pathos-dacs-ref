@@ -267,8 +267,8 @@ const deliveryEvidenceLocator = anchorString(sellerOwner, anchorNames.deliveryEv
 log('DACS-4', `deliverable anchored @ ${deliverableLocator}; delivery evidence @ ${deliveryEvidenceLocator}`);
 
 // ── DACS-5 — both parties emit + anchor AttestationBundleV1; verify ENFORCING ──────────────────
-const refFor = (id: string, locator: string, contentHash: string): AttestationRef => ({
-  anchor: { substrate: 'demos', locator }, contentHash, type: id, producedAt: new Date().toISOString(),
+const refFor = (_id: string, locator: string, contentHash: string): AttestationRef => ({
+  anchor: { kind: 'storage-program', locator }, contentHash,
 });
 const phaseSummary: BundlePhaseEntry[] = [
   { index: 0, kind: 'identify', outcome: 'ok' },

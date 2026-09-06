@@ -1,18 +1,3 @@
-/**
- * DACS-5 envelope-receipt verifier — core logic
- *
- * Spec source: DACS v0.7 + DACS-1..5 v0.1 §10.4
- *
- * Pulled out of cli/verify.ts so the verifier can be unit-tested without going
- * through process.argv + process.exit. The CLI is a thin wrapper.
- *
- * Normative invariants enforced here:
- *   §7.5.1 — decision ∈ {pass, fail, indeterminate}; NEVER coerced
- *   §7.5.2 — every AttestationRef MUST have its anchored bytes re-hashed and matched
- *   §10.4.1 — verifier MUST recompute canonical form + bundleHash + signed_bytes; verify signatures
- *   §10.4.2 — bundle is anchored at TWO addresses (buyer + seller); compute deterministically
- *   §10.4.3 — consumer queries BOTH party-specific addresses; unilateral ⇒ aborted-by-self
- */
 import type { AttestationBundle, VerifyStep, VerifyVerdict } from '../types/index.js';
 import { fetchAnchored } from '../demos/storage.js';
 /** Step recorder — accumulates the verify walk for the final verdict. */

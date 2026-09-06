@@ -59,7 +59,7 @@ function input() {
     acceptedRails: [{ railId: 'pay-x402' }], terms: { deadlineSecAfterCommit: 3600 }, validity: { notBefore: 0, notAfter: 1_790_000_000_000 },
   };
   listing.contentHash = jcsHashHex(listing);
-  const vet = { anchor: { substrate: 'demos' as const, locator: 'vet' }, contentHash: 'ef'.repeat(32), type: 'vet', producedAt: new Date(0).toISOString() };
+  const vet = { anchor: { kind: 'storage-program' as const, locator: 'vet' }, contentHash: 'ef'.repeat(32) };
   const parties: AgreementPartyV1[] = [
     { role: 'buyer', bundleHash: '01'.repeat(32), primaryClaim: buyer.claim, vetRecordRef: vet },
     { role: 'seller', bundleHash: '02'.repeat(32), primaryClaim: seller.claim, vetRecordRef: vet },
@@ -81,7 +81,11 @@ test('commitAgreement emits signed AgreementDocument and stores the signed-docum
   assert.equal(result.committedAt, 1_780_000_000_000);
   assert.equal(result.addresses.commitment.logical, 'dacs3:commit:job-1');
   assert.equal(result.agreementRef.contentHash, jcsHashHex(result.agreement));
-  assert.equal(result.agreementRef.unsignedContentHash, result.agreementHash);
+  // The reference is exactly the DACS-2 §7.5.2 wire form; the unsigned hash is its sibling, not a member.
+  assert.deepEqual(Object.keys(result.agreementRef).sort(), ['anchor', 'contentHash']);
+  assert.deepEqual(Object.keys(result.agreementRef.anchor).sort(), ['kind', 'locator']);
+  assert.match(result.agreementHash, /^[0-9a-f]{64}$/);
+  assert.notEqual(result.agreementHash, result.agreementRef.contentHash, 'the reference hashes the signed document; agreementHash is the unsigned document');
   assert.ok(result.agreement.signatures.every((s) => !s.value.includes('=')));
 });
 
@@ -179,7 +183,7 @@ test('pinned agreement vectors run through commitAgreement and replay their stat
       const receiptProvider = state.deps.receiptProvider;
       state.deps.receiptProvider = async (request) => ({ ...await receiptProvider(request), blockRef: { id: 'block-1' } });
     }
-    const vectorVet = { anchor: { substrate: 'demos' as const, locator: 'vet' }, contentHash: 'ef'.repeat(32), type: 'vet', producedAt: new Date(0).toISOString() };
+    const vectorVet = { anchor: { kind: 'storage-program' as const, locator: 'vet' }, contentHash: 'ef'.repeat(32) };
     const vectorParties: AgreementPartyV1[] = [
       { role: 'buyer', bundleHash: '01'.repeat(32), primaryClaim: buyer.claim, vetRecordRef: vectorVet },
       { role: 'seller', bundleHash: '02'.repeat(32), primaryClaim: seller.claim, vetRecordRef: vectorVet },

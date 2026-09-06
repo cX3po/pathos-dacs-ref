@@ -46,7 +46,7 @@ function setup(writerOverride?: (logicalAddress: string) => string) {
   const putEvidence = (logical: string, value: unknown) => {
     const hash = jcsHashHex(value); const transactionRef = { kind: 'fake', value: `tx-${logical}` };
     memory.set(logical, value); receipts.set(logical, receipt(logical, logical, hash, orchestrator.claim, value, transactionRef));
-    const ref: AttestationRef = { anchor: { substrate: 'demos', locator: logical }, contentHash: hash, type: 'settlement-evidence', producedAt: new Date(1_780_000_000_000).toISOString(), signer: orchestrator.claim };
+    const ref: AttestationRef = { anchor: { kind: 'storage-program', locator: logical }, contentHash: hash, signer: orchestrator.claim };
     return { ref, anchor: { logicalAddress: logical, nativeAddress: logical, transactionRef, writer: orchestrator.claim, nonce: '0' } };
   };
   let counter = 0;
@@ -79,14 +79,14 @@ async function session(state: ReturnType<typeof setup>): Promise<CompletedSessio
   };
   listing.contentHash = jcsHashHex(listing);
   listing.signature = { algorithm: 'ed25519', signer: seller.claim, value: Buffer.from(sign(DOMAIN_SEPARATORS.LISTING, new TextEncoder().encode(listing.contentHash), seller.privateKey)).toString('base64url') };
-  const vet = { anchor: { substrate: 'demos' as const, locator: 'vet' }, contentHash: 'ef'.repeat(32), type: 'vet', producedAt: new Date(0).toISOString() };
+  const vet = { anchor: { kind: 'storage-program' as const, locator: 'vet' }, contentHash: 'ef'.repeat(32) };
   const agreementParties: AgreementPartyV1[] = [
     { role: 'buyer', bundleHash: '01'.repeat(32), primaryClaim: buyer.claim, vetRecordRef: vet },
     { role: 'seller', bundleHash: '02'.repeat(32), primaryClaim: seller.claim, vetRecordRef: vet },
   ];
   const agreementDeps: AgreementCommitmentDependencies = { signers: { buyer: signer(buyer), seller: signer(seller), orchestrator: signer(orchestrator) }, anchor: state.deps.anchor, fetchAnchored: state.deps.fetchAnchored, receiptProvider: state.deps.fetchReceipt, now: () => 1_780_000_000_000 };
   const committed = await commitAgreement({ jobId: 'bundle-job', listing, parties: agreementParties, terms: { price: { amount: '10', currency: 'USDC' }, rail: { railId: 'pay-x402' }, deliverable: listing.offering.deliverable, deadline: 1_780_003_600_000 } }, agreementDeps);
-  const commitmentRef: AttestationRef = { anchor: { substrate: 'demos', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash, type: 'finality-commitment', producedAt: new Date(committed.committedAt).toISOString() };
+  const commitmentRef: AttestationRef = { anchor: { kind: 'storage-program', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash };
   state.commitments.set(commitmentRef.anchor.locator, { commitment: committed.commitment, agreement: committed.agreement, receipt: committed.receipt, anchor: { logicalAddress: committed.addresses.commitment.logical, nativeAddress: committed.addresses.commitment.native, transactionRef: committed.receipt.transactionRef, writer: committed.receipt.writer, nonce: committed.receipt.nonce } });
   const paymentLogical = 'dacs4:payment:bundle-job:pay-x402:2';
   const payment = signedEvidence(emitSettlementEvidenceV1({ kind: 'payment', jobId: 'bundle-job', phase: 'pay-x402', phaseIndex: 2, outcome: 'success', observedAt: 1_780_000_000_000,

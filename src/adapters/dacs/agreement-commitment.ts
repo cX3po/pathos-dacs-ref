@@ -65,7 +65,8 @@ export interface AgreementCommitmentDependencies {
 export interface CommittedAgreement {
   agreement: AgreementDocumentV1;
   agreementHash: string;
-  agreementRef: { anchor: { substrate: 'demos'; locator: string }; contentHash: string; unsignedContentHash: string; type: string; producedAt: string };
+  /** The exact DACS-2 §7.5.2 reference to the signed agreement; the unsigned document hash is the sibling `agreementHash`. */
+  agreementRef: { anchor: { kind: 'storage-program'; locator: string }; contentHash: string };
   commitment: FinalityCommitmentRecord;
   commitmentHash: string;
   receipt: AnchorReceipt;
@@ -357,7 +358,7 @@ export async function commitAgreement(input: AgreementCommitmentInput, deps: Agr
   validateAgreement(input.listing, unsigned, committedAt, false);
   return {
     agreement, agreementHash,
-    agreementRef: { anchor: { substrate: 'demos', locator: agreementAnchor?.nativeAddress ?? agreementLogical }, contentHash: jcsHashHex(agreement), unsignedContentHash: agreementHash, type: 'dacs-3-agreement', producedAt: new Date(now).toISOString() },
+    agreementRef: { anchor: { kind: 'storage-program', locator: agreementAnchor?.nativeAddress ?? agreementLogical }, contentHash: jcsHashHex(agreement) },
     commitment, commitmentHash, receipt, committedAt,
     addresses: { ...(agreementAnchor ? { agreement: { logical: agreementLogical, native: agreementAnchor.nativeAddress } } : {}), commitment: { logical: commitmentLogical, native: commitmentAnchor.nativeAddress } },
   };
