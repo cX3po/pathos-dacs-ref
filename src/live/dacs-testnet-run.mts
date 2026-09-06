@@ -388,6 +388,12 @@ const ORGAN_ANSWER_PROJECTIONS: ReadonlyMap<string, (answer: Record<string, unkn
 
 export function supportedOrgans(): string[] { return [...ORGAN_ANSWER_PROJECTIONS.keys()]; }
 
+/** The listing's deliverable specification: what the seller commits to deliver, hashed so the agreement terms and
+ *  the listing name the same thing (the agreement adapter requires `deliverableType` plus `hash`). */
+export function liveDeliverableSpec(run: Pick<DacsTestnetConfig, 'organ'>): { deliverableType: 'storage-program'; hash: string } {
+  return { deliverableType: 'storage-program', hash: jcsHashHex({ v: 'pathos-organ-deliverable:0.1', organ: run.organ, output: 'projected-public-answer' }) };
+}
+
 function containsNonce(value: unknown, nonce: string): boolean {
   if (typeof value === 'string') return value.includes(nonce);
   if (Array.isArray(value)) return value.some((v) => containsNonce(v, nonce));
@@ -503,7 +509,7 @@ export async function createLiveDependencies(
         listingId, listingVersion: 1, logical_address: logicalAddress,
         seller: { primaryClaim: wiring.signers.seller.claim, displayName: 'PATH-OS proof organ' },
         item: `proof-organ:${run.organ}`,
-        offering: { title: `${run.organ} result`, category: 'proof-organ', tags: [run.organ], deliverable: { deliverableType: 'storage-program' } },
+        offering: { title: `${run.organ} result`, category: 'proof-organ', tags: [run.organ], deliverable: liveDeliverableSpec(run) },
         pricing: { kind: 'fixed', price: { amount: run.priceDem, currency: 'DEM' } },
         acceptedRails: [{ railId: 'pay-dem' }], pipeline: COORDINATOR_PIPELINE,
         terms: { deadlineSecAfterCommit: 3600 }, validity: { notAfter: Date.now() + 7_200_000 },
@@ -527,7 +533,7 @@ export async function createLiveDependencies(
         { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: wiring.signers.seller.claim }), primaryClaim: wiring.signers.seller.claim, vetRecordRef: vetRef },
       ];
       const committed = await commitAgreement({ jobId: run.jobId, listing: published.listing, listingRef: published.listingRef, parties,
-        terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: { deliverableType: 'storage-program' }, deadline: Date.now() + 3_600_000 } },
+        terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: liveDeliverableSpec(run), deadline: Date.now() + 3_600_000 } },
       { signers: wiring.signers, anchor: wiring.anchor, fetchAnchored: wiring.fetchAnchored, receiptProvider: fetchReceipt });
       const commitmentRef: AttestationRef = { anchor: { substrate: 'demos', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash,
         type: 'finality-commitment', producedAt: new Date(committed.committedAt).toISOString() };
