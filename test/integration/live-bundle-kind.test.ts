@@ -178,7 +178,9 @@ test('the dry-run listing is a DACS-1 Listing: Standard members only, a per-clai
   const entries = [...state!.byNative.values()].filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null);
   const listing = entries.find((v) => v.dacsVersion === '1' && typeof v.listingId === 'string')!;
   assert.ok(listing, 'a DACS-1 listing is anchored');
-  assert.deepEqual(Object.keys(listing).sort(), ['acceptedRails', 'buyerRequirement', 'dacsVersion', 'listingId', 'listingVersion', 'offering', 'pipeline', 'pricing', 'seller', 'signature', 'terms', 'validity']);
+  assert.deepEqual(Object.keys(listing).sort(), ['acceptedRails', 'buyerRequirement', 'dacsVersion', 'listingId', 'listingVersion', 'logical_address', 'offering', 'pipeline', 'pricing', 'seller', 'signature', 'terms', 'validity']);
+  // DACS-1-IDENTIFY §6.3.4(b): the anchored record carries its CF-4 logical address, inside the signed scope, equal to the address derived from the tuple.
+  assert.equal(listing.logical_address, listingLogicalAddress((listing.seller as { identity: { presentedBy: string } }).identity.presentedBy, listing.listingId as string, listing.listingVersion as number));
   const seller = listing.seller as { identity: Record<string, unknown>; displayName: string };
   const identity = seller.identity as { bundleVersion: string; presentedBy: string; presentedAt: number; claims: Array<{ ref: string }>; presentation: { kind: string; signatures: Array<{ ref: string; signature: string }> } };
   const signature = listing.signature as { signer: string; algorithm: string; value: string };

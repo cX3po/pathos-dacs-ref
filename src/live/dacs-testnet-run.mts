@@ -608,12 +608,12 @@ export async function createLiveDependencies(
       const sellerClaim = String(wiring.signers.seller.claim);
       const logicalAddress = listingLogicalAddress(sellerClaim, listingId, 1);
       const identity = await presentSellerIdentity(wiring.signers.seller, Date.now());
-      const unsigned = dacs1Listing({
+      const unsigned = { ...dacs1Listing({
         listingId, listingVersion: 1, seller: { identity, displayName: 'PATH-OS proof organ' },
         offering: { title: `${run.organ} result`, description: `Proof organ ${run.organ}: a public answer for a committed query, delivered as a storage program.`, category: 'proof-organ', tags: [run.organ], deliverable: { kind: 'storage-program' } },
         pricing: { kind: 'fixed', price: { amount: run.priceDem, currency: 'DEM' } }, acceptedRails: [{ railId: 'pay-dem' }], pipeline: COORDINATOR_PIPELINE,
         terms: { deadlineSecAfterCommit: 3600 }, validity: { notBefore: Date.now() - 60_000, notAfter: Date.now() + 7_200_000 },
-      });
+      }), logical_address: logicalAddress }; // DACS-1-IDENTIFY §6.3.4(b): the anchored record carries its CF-4 logical address inside the signed scope
       const { listing, contentHash } = await signDacs1Listing(unsigned, wiring.signers.seller);
       const anchor = await wiring.anchor({ logicalAddress: anchorNames.listing(logicalAddress), content: listing, contentHash: jcsHashHex(listing) });
       return { listing, listingRef: { listingId, version: 1, contentHash }, anchor };

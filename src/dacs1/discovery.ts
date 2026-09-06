@@ -168,8 +168,8 @@ export function buildDiscoveryArtifacts(input: BuildDiscoveryInput): DiscoveryAr
     throw new Error('listing seller identity does not present the address seller');
   }
   const expectedLogical = listingLogicalAddress(input.sellerPrimaryClaim, listingId, version);
-  // A DACS-1 §6.3.4 Listing carries no logical_address member (the address derives from seller/listingId/version);
-  // a listing that does declare one must agree with the tuple.
+  // The address derives from seller/listingId/version; DACS-1-IDENTIFY §6.3.4(b) has the anchored record carry it as
+  // metadata (our producers put it inside the signed scope), and a declared member must agree with the tuple.
   const declared = input.listing['logical_address'];
   if (declared !== undefined && declared !== expectedLogical) {
     throw new Error('listing.logical_address does not match its seller/listingId/version tuple');
@@ -197,7 +197,7 @@ export function buildDiscoveryArtifacts(input: BuildDiscoveryInput): DiscoveryAr
     },
     status,
     logical_address: expectedLogical,
-    // The index keeps its existing vocabulary: a listing without a logical_address member (the Standard's shape, or a legacy record) is 'legacy-absent'; a declared member that matches the tuple is 'anchored'.
+    // The index keeps its existing vocabulary: a listing without a logical_address member (a record anchored before our producers carried it) is 'legacy-absent'; a declared member that matches the tuple is 'anchored'.
     logicalAddressMetadata: declared === undefined ? 'legacy-absent' : 'anchored',
   };
   const index: ListingIndex = {
