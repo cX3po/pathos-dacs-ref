@@ -10,6 +10,7 @@
  */
 
 import { pathToFileURL } from 'node:url';
+import { dacs1Listing, presentSellerIdentity, signDacs1Listing, listingDeliverableRef } from './listing-wire.js';
 import { settlementTxRefs } from '../adapters/dacs/bundle-finalizer.js';
 import { signatureExcludedHash } from '../lib/content-hash.js';
 import { readFileSync } from 'node:fs';
@@ -33,7 +34,7 @@ import type { DemosHandle } from '../demos/connection.js';
 export const COORDINATOR_PIPELINE = [
   { kind: 'negotiate-fixed-price' },
   { kind: 'commit-agreement' },
-  { kind: 'pay-dem' },
+  { kind: 'pay-dem', parameters: { rail: 'pay-dem' } },
   { kind: 'deliver-storage-program' },
 ] as const;
 
@@ -511,22 +512,19 @@ export async function createLiveDependencies(
     },
     async publishListing(run) {
       const listingId = `${run.jobId}-listing`;
-      // The listing address needs a DACS-1-registered scheme; `key:` is, `cci:` is not (the fixtures do the same).
-      const logicalAddress = listingLogicalAddress(String(keyClaimForPubkeyClaim(String(wiring.signers.seller.claim))), listingId, 1);
-      const unsigned = {
-        listingId, listingVersion: 1, logical_address: logicalAddress,
-        seller: { primaryClaim: wiring.signers.seller.claim, displayName: 'PATH-OS proof organ' },
-        item: `proof-organ:${run.organ}`,
-        offering: { title: `${run.organ} result`, category: 'proof-organ', tags: [run.organ], deliverable: liveDeliverableSpec(run) },
-        pricing: { kind: 'fixed', price: { amount: run.priceDem, currency: 'DEM' } },
-        acceptedRails: [{ railId: 'pay-dem' }], pipeline: COORDINATOR_PIPELINE,
-        terms: { deadlineSecAfterCommit: 3600 }, validity: { notAfter: Date.now() + 7_200_000 },
-      };
-      const contentHash = jcsHashHex(unsigned);
-      const signature = await wiring.signers.seller.sign(DOMAIN_SEPARATORS.LISTING, contentHash);
-      const listing = { ...unsigned, contentHash, signature: { algorithm: 'ed25519', signer: wiring.signers.seller.claim,
-        value: typeof signature === 'string' ? signature : Buffer.from(signature).toString('base64url') } };
-      const anchor = await wiring.anchor({ logicalAddress, content: listing, contentHash: jcsHashHex(listing) });
+      // DACS-1 §6.3.4: the logical address derives from the seller's primary claim as the bundle presents it (the agent DID,
+      // a registered scheme); the program is named in the pinned SDK's form so its Agent resolves the listing by (owner, name).
+      const sellerClaim = String(wiring.signers.seller.claim);
+      const logicalAddress = listingLogicalAddress(sellerClaim, listingId, 1);
+      const identity = await presentSellerIdentity(wiring.signers.seller, Date.now());
+      const unsigned = dacs1Listing({
+        listingId, listingVersion: 1, seller: { identity, displayName: 'PATH-OS proof organ' },
+        offering: { title: `${run.organ} result`, description: `Proof organ ${run.organ}: a public answer for a committed query, delivered as a storage program.`, category: 'proof-organ', tags: [run.organ], deliverable: { kind: 'storage-program' } },
+        pricing: { kind: 'fixed', price: { amount: run.priceDem, currency: 'DEM' } }, acceptedRails: [{ railId: 'pay-dem' }], pipeline: COORDINATOR_PIPELINE,
+        terms: { deadlineSecAfterCommit: 3600 }, validity: { notBefore: Date.now() - 60_000, notAfter: Date.now() + 7_200_000 },
+      });
+      const { listing, contentHash } = await signDacs1Listing(unsigned, wiring.signers.seller);
+      const anchor = await wiring.anchor({ logicalAddress: anchorNames.listing(logicalAddress), content: listing, contentHash: jcsHashHex(listing) });
       return { listing, listingRef: { listingId, version: 1, contentHash }, anchor };
     },
     async vetListing(published) {
@@ -541,7 +539,7 @@ export async function createLiveDependencies(
         { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: wiring.signers.seller.claim }), primaryClaim: wiring.signers.seller.claim, vetRecordRef: vetRef },
       ];
       const committed = await commitAgreement({ jobId: run.jobId, listing: published.listing, listingRef: published.listingRef, parties,
-        terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: liveDeliverableSpec(run), deadline: Date.now() + 3_600_000 } },
+        terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: listingDeliverableRef(published.listing), deadline: Date.now() + 3_600_000 } },
       { signers: wiring.signers, anchor: wiring.anchor, fetchAnchored: wiring.fetchAnchored, receiptProvider: fetchReceipt });
       // The reference pins the orchestrator that signed the commitment: a cold verifier has no other way to know
       // which listed party orchestrated when no distinct orchestrator party is listed.

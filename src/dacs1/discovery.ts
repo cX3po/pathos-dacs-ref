@@ -149,13 +149,29 @@ function normalizedOrigin(origin: string): string {
   return url.origin;
 }
 
+/** DACS-1 §6.3.4: a Standard-shaped listing names its seller as the identity bundle's presented claim; absent for pre-DACS-1 records. */
+function presentedSeller(listing: Record<string, unknown>): string | undefined {
+  const seller = listing['seller'];
+  if (!seller || typeof seller !== 'object' || Array.isArray(seller)) return undefined;
+  const identity = (seller as Record<string, unknown>)['identity'];
+  if (!identity || typeof identity !== 'object' || Array.isArray(identity)) return undefined;
+  const presentedBy = (identity as Record<string, unknown>)['presentedBy'];
+  return typeof presentedBy === 'string' ? presentedBy : undefined;
+}
+
 export function buildDiscoveryArtifacts(input: BuildDiscoveryInput): DiscoveryArtifacts {
   const origin = normalizedOrigin(input.publisherOrigin);
   const { listingId, version } = listingCoordinates(input.listing);
+  // The address seller is the seller the listing presents: another seller's address cannot carry this listing.
+  const presented = presentedSeller(input.listing);
+  if (presented !== undefined && presented !== input.sellerPrimaryClaim) {
+    throw new Error('listing seller identity does not present the address seller');
+  }
   const expectedLogical = listingLogicalAddress(input.sellerPrimaryClaim, listingId, version);
-  const legacyAbsent = input.legacyRecordWithoutLogicalMetadata === true
-    && input.listing['logical_address'] === undefined;
-  if (!legacyAbsent && input.listing['logical_address'] !== expectedLogical) {
+  // A DACS-1 §6.3.4 Listing carries no logical_address member (the address derives from seller/listingId/version);
+  // a listing that does declare one must agree with the tuple.
+  const declared = input.listing['logical_address'];
+  if (declared !== undefined && declared !== expectedLogical) {
     throw new Error('listing.logical_address does not match its seller/listingId/version tuple');
   }
   if (!/^stor-[0-9a-f]{40}$/.test(input.nativeAddress)) {
@@ -181,7 +197,8 @@ export function buildDiscoveryArtifacts(input: BuildDiscoveryInput): DiscoveryAr
     },
     status,
     logical_address: expectedLogical,
-    logicalAddressMetadata: legacyAbsent ? 'legacy-absent' : 'anchored',
+    // The index keeps its existing vocabulary: a listing without a logical_address member (the Standard's shape, or a legacy record) is 'legacy-absent'; a declared member that matches the tuple is 'anchored'.
+    logicalAddressMetadata: declared === undefined ? 'legacy-absent' : 'anchored',
   };
   const index: ListingIndex = {
     indexVersion: '1',
@@ -306,6 +323,10 @@ export async function resolveListingFromPublishedBinding(
   }
   if (metadataStatus === 'legacy-absent' && listing['logical_address'] !== undefined) {
     throw new Error('legacy-absent binding contradicts anchored logical_address metadata');
+  }
+  const presented = presentedSeller(listing);
+  if (presented !== undefined && presented !== requested.sellerPrimaryClaim) {
+    throw new Error('anchored listing presents a different seller than the requested logical address');
   }
   const coordinates = listingCoordinates(listing);
   const rederived = listingLogicalAddress(requested.sellerPrimaryClaim, coordinates.listingId, coordinates.version);

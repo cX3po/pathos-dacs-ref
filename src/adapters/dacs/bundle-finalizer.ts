@@ -308,10 +308,34 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
 
 export async function verifyBundleListing(listing: JsonObject, deps: Pick<BundleFinalizerDependencies, 'verifySignature'>): Promise<void> {
   const signature = object(listing.signature);
+  // DACS-1 §6.3.4: the signed scope is the listing minus its signature. Listings published before 2026-09-06 carried a
+  // self contentHash outside that scope; when present it must still equal the recomputed hash.
   const scope = { ...listing }; delete scope.signature; delete scope.contentHash;
   const contentHash = jcsHashHex(scope);
-  if (listing.contentHash !== contentHash) throw new BundleFinalizationError('listing-hash', 'listing contentHash does not match its signed scope (SEB-1)');
+  if (listing.contentHash !== undefined && listing.contentHash !== contentHash) throw new BundleFinalizationError('listing-hash', 'listing contentHash does not match its signed scope (SEB-1)');
   if (!await signatureValid(deps, DOMAIN_SEPARATORS.LISTING, contentHash, signature)) throw new BundleFinalizationError('listing-signature', 'listing signature is invalid (SEB-1)');
+  const seller = listing.seller && typeof listing.seller === 'object' && !Array.isArray(listing.seller) ? object(listing.seller) : undefined;
+  // A DACS-1 §6.3.4 listing (dacsVersion "1") always presents the seller's identity bundle; only listings published before
+  // 2026-09-06 (no dacsVersion, a seller.primaryClaim) are read without one.
+  if (listing.dacsVersion === '1' && seller?.identity === undefined) throw new BundleFinalizationError('listing-identity', 'a DACS-1 listing must present the seller identity bundle (§6.3.4)');
+  if (seller?.identity !== undefined) {
+    // §6.3.2 / §6.3.4: the listing signer is the claim the seller's identity bundle presents, and the per-claim presentation
+    // (the wallet's signature over `dacs-bundle-presentation:v1:` || bundle_hash) verifies under that claim.
+    const identity = object(seller.identity);
+    const signerKey = claimKey(signature.signer);
+    const claims = Array.isArray(identity.claims) ? identity.claims.map((c) => claimKey(object(c).ref)) : [];
+    if (identity.bundleVersion !== '1' || signerKey === null || !claims.includes(signerKey) || claimKey(identity.presentedBy) !== signerKey) {
+      throw new BundleFinalizationError('listing-signer', 'listing signer is not the primary claim the seller identity bundle presents (§6.3.4)');
+    }
+    const presentation = object(identity.presentation);
+    if (presentation.kind !== 'per-claim' || !Array.isArray(presentation.signatures)) throw new BundleFinalizationError('listing-identity', 'seller identity presentation kind is not supported here (per-claim expected)');
+    const bundleScope = { ...identity }; delete bundleScope.presentation;
+    const bundleHash = jcsHashHex(bundleScope);
+    const entry = presentation.signatures.map((s) => object(s)).find((s) => claimKey(s.ref) === signerKey);
+    if (!entry || !await signatureValid(deps, DOMAIN_SEPARATORS.BUNDLE_PRESENTATION, bundleHash, { signer: entry.ref, algorithm: 'ed25519', value: entry.signature })) {
+      throw new BundleFinalizationError('listing-identity', 'seller identity presentation does not verify (§6.3.2)');
+    }
+  }
 }
 
 /**
@@ -413,7 +437,9 @@ export async function finalizeBundle(input: CompletedSessionEvidence, deps: Bund
   if (input.kind !== undefined && input.kind !== 'ebfab' && input.kind !== 'fab') throw new BundleFinalizationError('bundle-kind', 'legacy bundleVersion:"1" emission is not supported');
   checkFault(input);
   await verifyBundleListing(input.listing, deps);
-  if (jcsHashHex(input.listingRef) !== jcsHashHex({ listingId: input.listing.listingId, version: input.listing.listingVersion, contentHash: input.listing.contentHash })) throw new BundleFinalizationError('listing-ref', 'listingRef does not match listing');
+  // ListingPin.contentHash is the listing's signature-excluded hash (DACS-1 §6.3.4); a listing published before 2026-09-06 carried that hash as a self member.
+  const listingPinHash = input.listing.contentHash !== undefined ? input.listing.contentHash : signatureExcludedHash(input.listing);
+  if (jcsHashHex(input.listingRef) !== jcsHashHex({ listingId: input.listing.listingId, version: input.listing.listingVersion, contentHash: listingPinHash })) throw new BundleFinalizationError('listing-ref', 'listingRef does not match listing');
   const resolvedCommitment = await resolveCommitment(input, deps);
   if (resolvedCommitment) input = { ...input, agreement: resolvedCommitment.agreement as unknown as JsonObject };
   const pipeline = effectivePipeline(input, deps, resolvedCommitment?.agreement);

@@ -26,8 +26,8 @@
       "sha256": "f4950184b17ce6df8b92162e69f91d6aa9692cda943df8bf0636526bde61c6ef"
     },
     {
-      "sourcePath": "src/dacs1/addressing.ts",
-      "sha256": "d010fc7b1f3cadcc11ff8fe1b9bd080275f9984c2b4fabfe8b190cc7ef52b798"
+      "sourcePath": "src/adapters/dacs/agreement-commitment.ts",
+      "sha256": "ea490d3eb401223fcabd3551a948227a50b6aa70a398be6e38f2b0860dd5232a"
     },
     {
       "sourcePath": "src/demos/connection.ts",
@@ -79,7 +79,11 @@
     },
     {
       "sourcePath": "src/live/anchor-naming.ts",
-      "sha256": "e4b863129a978ea7e8f578187559a831bfa1df9214c566cafb38343ebaf9d45f"
+      "sha256": "d801332dbd665586ffa1da63a21a9f95ccd3db79c9ddef8a8a21798ce17e8bb5"
+    },
+    {
+      "sourcePath": "src/live/listing-wire.ts",
+      "sha256": "e9c1db7fc98c474ccdf5adfaffc35086226dc2c44543f2b4bb854d504c26e16b"
     },
     {
       "sourcePath": "src/types/bundle.ts",
@@ -102,7 +106,7 @@
       "sha256": "165d2f3a872c1300c34ff98482948fc0c2a9ea7e7c8b98902ccc97cfcd5708c0"
     }
   ],
-  "sourceManifestSha256": "1a4288803ae596cd55411980d2d4244b71fd0c68b912b1380085313885fba876",
+  "sourceManifestSha256": "8e34366d96c754a7358605827494e8401674709eec036419a9371e66565967b2",
   "emitted": [
     {
       "path": "packages/verifier/src/cli.d.ts",
@@ -137,12 +141,12 @@
       "sha256": "9170f61f03bbcd959d8618a986c292253675bab5f40a7e61f98b6d72b3a0754a"
     },
     {
-      "path": "src/dacs1/addressing.d.ts",
-      "sha256": "91fa4b40cb926fda09da7b55238a920cf882bd47771c7a85a679c9130ebaf67c"
+      "path": "src/adapters/dacs/agreement-commitment.d.ts",
+      "sha256": "a2523b65e92096a6bb7468bcb7b4aa6cfe0bd5f075f8c0201effb2cf0f0975f9"
     },
     {
-      "path": "src/dacs1/addressing.js",
-      "sha256": "41e0e8cb8b4eecdc68887adebc51e0a947f9b44d20ebec5084a73c0a576ba872"
+      "path": "src/adapters/dacs/agreement-commitment.js",
+      "sha256": "4d0804cd6b41227c333d2ea91f2af8bf97ad62cb498847f6ca1e7584c00fb317"
     },
     {
       "path": "src/demos/connection.d.ts",
@@ -242,11 +246,19 @@
     },
     {
       "path": "src/live/anchor-naming.d.ts",
-      "sha256": "88214b057625ca912179a283276c16bdbad5e03802eb07aef995dfff86133ac5"
+      "sha256": "b052022c0797f56ba63604e3357153d2e7efea2cbabf86e929f9567a0aa06a4c"
     },
     {
       "path": "src/live/anchor-naming.js",
-      "sha256": "5f0f191b0eef8b18e7c2c1d0be2b191857ed1ef8bc3e6a2103a9e30c9807150e"
+      "sha256": "21c6f89648ff907e5e1137f24764030bc9cdfd86a559dd1bda867621340b8492"
+    },
+    {
+      "path": "src/live/listing-wire.d.ts",
+      "sha256": "47053d6c63815c7f024d8e9062e671c2cb40ec3f6bfeb1a0b565c5c4965550c9"
+    },
+    {
+      "path": "src/live/listing-wire.js",
+      "sha256": "c51c89c7eddac2f09bcd303deb4ff0953204305f9d257a8917899c4f4e9c6a6a"
     },
     {
       "path": "src/types/bundle.d.ts",
@@ -289,5 +301,5 @@
       "sha256": "cc4e23422ec114b49a43bb29d442339934e2d38ca79d41ebd4d9d253a7a122cf"
     }
   ],
-  "emittedSha256": "a7fa7a4d2adf937edb339e49ce1002ac9aec5bcf4d1b86f69bf123013fe7a139"
+  "emittedSha256": "b1f49eda2ccb616e14e5615da645a8201c5dbf35cbc007e5a6652eaa6507c430"
 }

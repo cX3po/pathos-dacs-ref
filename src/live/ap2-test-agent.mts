@@ -39,6 +39,7 @@
  */
 
 import { generateKeypair, sign, verify } from '../lib/sign.js';
+import { opaqueListingProgramName } from '../dacs1/addressing.js';
 import { signatureExcludedHash } from '../lib/content-hash.js';
 import { bytesToHex } from '../lib/verify-bundle.js';
 import { canonicalPrice } from '../types/settle.js';
@@ -125,7 +126,8 @@ const listingCanonical = jcsCanonical(listingBody);
 const listingHash = jcsHashHex(listingBody);
 const listingSig = sign(DOMAIN_SEPARATORS.LISTING, listingCanonical, sellerKeys.privKey);
 const listingSigned = { ...listingBody, signature: Buffer.from(listingSig).toString('base64') };
-const listingLocator = anchorString(sellerOwner, anchorNames.listing(listingLogical), jcsString(listingSigned));
+// Pre-DACS-1 listing body (ledger demo-producers-dacs1-listing): keeps the opaque program name that body was designed with.
+const listingLocator = anchorString(sellerOwner, opaqueListingProgramName(listingLogical), jcsString(listingSigned));
 log('DACS-1', `listing ${listingHash.slice(0, 16)}… (acceptedRails=[pay-ap2]) anchored @ ${listingLocator}`);
 
 // ── DACS-2 — buyer verifies the seller's primary claim over the listing signature ──────────────
