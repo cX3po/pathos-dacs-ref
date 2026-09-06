@@ -23,6 +23,7 @@ import {
   verifyFinalizedBundleCold,
   type CompletedSessionEvidence,
   type ResolvedCommitment,
+  settlementTxRefs,
 } from '../adapters/dacs/bundle-finalizer.js';
 import type { AnchorReceipt, AgreementPartyV1 } from '../types/bundle.js';
 import type { SettlementEvidenceV1 } from '../types/settle.js';
@@ -220,7 +221,7 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
       const phaseResults = [
         { index: 0, kind: 'negotiate-fixed-price', outcome: 'ok' as const, orchestrator: orchestrator.claim },
         { index: 1, kind: 'commit-agreement', outcome: 'ok' as const, orchestrator: orchestrator.claim },
-        { index: 2, kind: 'pay-dem', outcome: 'ok' as const, orchestrator: orchestrator.claim, evidenceRef: input.payment.evidenceRef, evidenceLogicalAddress: input.payment.evidenceLogicalAddress, evidenceAnchor: input.payment.evidenceAnchor },
+        { index: 2, kind: 'pay-dem', outcome: 'ok' as const, orchestrator: orchestrator.claim, evidenceRef: input.payment.evidenceRef, txRefs: settlementTxRefs(input.payment.evidence), evidenceLogicalAddress: input.payment.evidenceLogicalAddress, evidenceAnchor: input.payment.evidenceAnchor },
         { index: 3, kind: 'deliver-storage-program', outcome: 'ok' as const, orchestrator: orchestrator.claim, evidenceRef: input.delivery.evidenceRef, evidenceLogicalAddress: input.delivery.evidenceLogicalAddress, evidenceAnchor: input.delivery.evidenceAnchor },
       ];
       const session: CompletedSessionEvidence = { jobId: input.config.jobId, listing: input.listing.listing, listingRef: input.listing.listingRef,

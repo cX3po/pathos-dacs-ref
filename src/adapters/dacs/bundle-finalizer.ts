@@ -172,6 +172,19 @@ export function paymentRailId(phase: { kind?: unknown; parameters?: unknown }): 
   const rail = typeof params.rail === 'string' && params.rail.length > 0 ? params.rail : String(phase.kind);
   return rail;
 }
+/**
+ * DACS-5: a payment phase's summary entry carries the settlement's ChainTxRefs (`txRefs`), the same §9.7 arms the evidence
+ * record's `paymentTxRefs` carry. The pinned dacs-sdk's Agent verifies a successful payment phase's evidence against the
+ * exact phaseSummary entry's txRefs and reports indeterminate when they are absent. Legacy {rail, txHash, kind} entries are
+ * not ChainTxRefs and are not projected.
+ */
+export function settlementTxRefs(evidence: unknown): BundlePhaseEntry['txRefs'] {
+  const refs = (evidence as { paymentTxRefs?: unknown[] } | null)?.paymentTxRefs;
+  if (!Array.isArray(refs)) return undefined;
+  const arms = refs.filter((r): r is NonNullable<BundlePhaseEntry['txRefs']>[number] => !!r && typeof r === 'object' && !('rail' in (r as object)));
+  return arms.length > 0 ? arms : undefined;
+}
+
 /** DACS-4 §9.5.8 SB-1 / PC-2: delivery evidence is addressed `dacs4:delivery:{jobId}:{phaseIndex}`; the phase index lives in that address, not in the record. */
 export function deliveryLogicalAddress(jobId: string, phaseIndex: number): string {
   return `dacs4:delivery:${jobId}:${phaseIndex}`;
@@ -261,6 +274,11 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     const indexBound = phase.evidenceLogicalAddress === logicalAddress && (bodyIndex === undefined || bodyIndex === phase.index);
     if (evidence.jobId !== input.jobId || evidence.phase !== phase.kind || !indexBound) throw new BundleFinalizationError('seb-binding', `evidence does not bind phase (${phase.index},${phase.kind})`);
     if ((evidence.outcome === 'success') !== (phase.outcome === 'ok')) throw new BundleFinalizationError('seb-outcome', `evidence outcome contradicts phase ${phase.index}`);
+    // A payment phase's txRefs, when present, are exactly the evidence's ChainTxRef arms: the SDK verifies the evidence against them.
+    if (phase.txRefs !== undefined) {
+      const fromEvidence = settlementTxRefs(evidence);
+      if (!fromEvidence || jcsHashHex(fromEvidence) !== jcsHashHex(phase.txRefs)) throw new BundleFinalizationError('seb-binding', `phase ${phase.index} txRefs do not match the evidence's payment references`);
+    }
     const signature = object(evidence.signature);
     const signerKey = claimKey(signature.signer), orchestratorSignerKey = claimKey(phase.orchestrator);
     const sameSigner = signerKey !== null && orchestratorSignerKey !== null

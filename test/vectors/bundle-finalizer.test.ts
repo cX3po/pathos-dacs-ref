@@ -402,3 +402,14 @@ test('SB-1: delivery evidence binds only at the complete derived dacs4:delivery 
     await assert.rejects(finalizeBundle({ ...input, phaseResults: phases }, state.deps), codeIs('seb-binding'), wrong);
   }
 });
+
+test('a payment phase entry\'s txRefs must equal the evidence record\'s ChainTxRef arms; a disagreeing list refuses', async () => {
+  const state = setup(); const input = await session(state);
+  const codeIs = (code: string) => (error: unknown) => error instanceof BundleFinalizationError && error.code === code;
+  const withTx = (txRefs: unknown) => ({ ...input, phaseResults: input.phaseResults.map((p) => p.index === 2 ? { ...p, txRefs: txRefs as never } : p) });
+  await assert.rejects(finalizeBundle(withTx([{ kind: 'demos', txHash: 'not-the-evidence' }]), state.deps), codeIs('seb-binding'));
+  // The session's payment evidence carries a legacy entry, which is not a ChainTxRef: no txRefs can be projected from it.
+  await assert.rejects(finalizeBundle(withTx([{ kind: 'x402', httpResource: 'https://x', paymentReceiptHash: 'ab'.repeat(32), protocolVersion: '1' }]), state.deps), codeIs('seb-binding'));
+  const ok = await finalizeBundle(input, state.deps);
+  assert.equal((ok.bundles.buyer!.bundle.phaseSummary[2] as { txRefs?: unknown }).txRefs, undefined);
+});
