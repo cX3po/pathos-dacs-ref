@@ -117,10 +117,31 @@ export interface DacsTestnetRunResult {
 }
 
 export class DacsTestnetRefusal extends Error {
-  constructor(public readonly code: 'usage' | 'config' | 'policy' | 'spend' | 'capability', message: string) {
+  /** `detail` carries only allowlisted identity fields (settlementKey, txHash) for the operator; never free text. */
+  constructor(public readonly code: 'usage' | 'config' | 'policy' | 'spend' | 'capability', message: string, public readonly detail?: Readonly<Partial<Record<'settlementKey' | 'txHash', string>>>) {
     super(message);
     this.name = 'DacsTestnetRefusal';
   }
+}
+
+/**
+ * The state of a pay-dem settlement key in the durable journal: a prepared transfer is unresolved until an outcome row
+ * says it aborted before broadcast (nothing moved) or a resolution row says it was refunded; a settled resolution means
+ * the job was paid and must not be paid again either.
+ */
+export function settlementKeyState(rows: readonly unknown[], settlementKey: string): { state: 'none' | 'unresolved' | 'settled' | 'aborted' | 'refunded'; txHash?: string } {
+  let prepared: string | undefined; let state: 'none' | 'unresolved' | 'settled' | 'aborted' | 'refunded' = 'none';
+  for (const raw of rows) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const row = raw as Record<string, unknown>;
+    const recovery = row.recovery as { settlementKey?: unknown } | undefined;
+    if (recovery?.settlementKey === settlementKey && typeof row.txHash === 'string') { prepared = row.txHash; if (state === 'none') state = 'unresolved'; }
+    if (row.settlementKey !== settlementKey) continue;
+    if (row.resolution === 'settled') state = 'settled';
+    else if (row.resolution === 'refunded') state = 'refunded';
+    else if (row.outcome === 'aborted-before-broadcast' && state !== 'settled') state = 'aborted';
+  }
+  return prepared === undefined && state === 'none' ? { state: 'none' } : { state: state === 'none' ? 'unresolved' : state, ...(prepared === undefined ? {} : { txHash: prepared }) };
 }
 
 /**
@@ -269,14 +290,16 @@ export async function createLiveSettlementDependency(
   }
 
   return { wiring, settlePayment: async (_agreement, run) => {
-    // A transfer already prepared for this job and phase (a prior run broadcast, or tried to, and its witness is
-    // unresolved) is never paid again on a rerun: the journal row names the transaction to resolve first.
+    // A transfer already prepared for this job and phase is never paid again on a rerun unless the journal proves it
+    // never moved DEM (aborted before broadcast) or was refunded; a settled key is done. The journal is re-read here,
+    // at settle time, not from the startup snapshot.
     const settlementKey = `pay-dem:${run.jobId}:2`;
-    const prepared = journalRows.find((row) => row && typeof row === 'object' && !Array.isArray(row)
-      && ((row as { recovery?: { settlementKey?: unknown } }).recovery?.settlementKey === settlementKey));
-    if (prepared) {
-      const txHash = String((prepared as { txHash?: unknown }).txHash ?? 'unknown');
-      throw new DacsTestnetRefusal('policy', `a pay-dem transfer for ${settlementKey} was already prepared (tx ${txHash}); resolve its witness before paying again`);
+    const keyState = settlementKeyState(await seams.readJournal(journalPath), settlementKey);
+    if (keyState.state === 'unresolved' || keyState.state === 'settled') {
+      const detail = { settlementKey, ...(keyState.txHash === undefined ? {} : { txHash: keyState.txHash }) };
+      throw new DacsTestnetRefusal('policy', keyState.state === 'settled'
+        ? `pay-dem settlement ${settlementKey} is already settled; it is not paid again`
+        : `a pay-dem transfer for ${settlementKey} is prepared and unresolved; resolve its witness before paying again`, detail);
     }
     // (7) The real adapter retains authorize, durable outcome, and last-moment beforeBroadcast gates.
     const settled = await seams.settle({
@@ -289,18 +312,28 @@ export async function createLiveSettlementDependency(
       if (settled.witness) throw new SettlementWitnessFailure(settled.reason, settled.witness);
       throw new DacsTestnetRefusal('spend', 'pay-dem settlement was refused');
     }
-    const logicalAddress = (await import('../adapters/dacs/bundle-finalizer.js')).paymentLogicalAddress(run.jobId, 'pay-dem', 2);
-    const signatureValue = await wiring.signers.orchestrator.sign((await import('../domain-sep.js')).DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE,
-      (await import('../lib/emit-settlement-evidence-v1.js')).evidenceHashV1(settled.evidence));
-    const evidence = { ...settled.evidence, signature: { algorithm: 'ed25519' as const, signer: String(wiring.signers.orchestrator.claim),
-      value: typeof signatureValue === 'string' ? signatureValue : Buffer.from(signatureValue).toString('base64url') } };
-    const contentHash = jcsHashHex(evidence);
-    const evidenceAnchor = await wiring.anchor({ logicalAddress, content: evidence, contentHash });
-    return {
-      evidence,
-      evidenceRef: { anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: signatureExcludedHash(evidence), signer: String(wiring.signers.orchestrator.claim) },
-      evidenceLogicalAddress: logicalAddress, evidenceAnchor,
-    };
+    // From here the DEM has moved: any failure while signing or anchoring the evidence keeps the included witness.
+    const includedWitness = Object.freeze({ stage: 'post-broadcast' as const, txHash: settled.txHash, state: 'included', blockNumber: settled.blockNumber,
+      rawWitness: Object.freeze({ ok: true, hash: settled.txHash, state: 'included', blockNumber: settled.blockNumber }) });
+    try {
+      const logicalAddress = (await import('../adapters/dacs/bundle-finalizer.js')).paymentLogicalAddress(run.jobId, 'pay-dem', 2);
+      const signatureValue = await wiring.signers.orchestrator.sign((await import('../domain-sep.js')).DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE,
+        (await import('../lib/emit-settlement-evidence-v1.js')).evidenceHashV1(settled.evidence));
+      const evidence = { ...settled.evidence, signature: { algorithm: 'ed25519' as const, signer: String(wiring.signers.orchestrator.claim),
+        value: typeof signatureValue === 'string' ? signatureValue : Buffer.from(signatureValue).toString('base64url') } };
+      const contentHash = jcsHashHex(evidence);
+      const evidenceAnchor = await wiring.anchor({ logicalAddress, content: evidence, contentHash });
+      // The settlement is resolved: the durable journal records it so this key is never paid again.
+      await durableOutcomeJournal({ timestamp: new Date().toISOString(), resolution: 'settled', settlementKey, txHash: settled.txHash });
+      return {
+        evidence,
+        evidenceRef: { anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: signatureExcludedHash(evidence), signer: String(wiring.signers.orchestrator.claim) },
+        evidenceLogicalAddress: logicalAddress, evidenceAnchor,
+      };
+    } catch (error) {
+      if (error instanceof SettlementWitnessFailure) throw error;
+      throw new SettlementWitnessFailure('payment evidence could not be signed or anchored after the transfer was included', includedWitness);
+    }
   } };
 }
 
@@ -757,7 +790,7 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
     if (error instanceof SettlementWitnessFailure) {
       // The payment reached the chain: a settlement FAIL with its witness, never a generic refusal.
       const result = failed('payment');
-      result.error = { stage: 'payment', code: 'settlement-failed', detail: `payment: ${error.message}`, settlement: error.witness };
+      result.error = { stage: 'payment', code: 'settlement-failed', detail: 'payment: settlement-unwitnessed', settlement: error.witness };
       return result;
     }
     return failed('payment');
@@ -863,7 +896,7 @@ export async function main(
   } catch (error) {
     const refusal = error instanceof DacsTestnetRefusal;
     process.stderr.write(JSON.stringify(refusal
-      ? { outcome: 'REFUSED', reason: error.code, detail: `${error.code}: request refused` }
+      ? { outcome: 'REFUSED', reason: error.code, detail: `${error.code}: request refused`, ...(error.detail ? { settlement: error.detail } : {}) }
       : { outcome: 'REFUSED', reason: 'internal', detail: 'coordinator failed' }) + '\n');
     return refusal ? 2 : 1;
   }

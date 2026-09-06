@@ -142,7 +142,7 @@ test('createLiveSettlementDependency preserves the gateway pay-dem call order', 
   await live.settlePayment({} as never, run);
   assert.deepEqual(calls, ['policy', 'journal-path', 'journal-read', 'kill-switch', 'authorizeTransfer', 'payment-journal', 'outcome-journal',
     'authorization-gate', 'env:GATEWAY_DRYRUN_HASH', 'capability', 'credentials', 'balance', 'env:GATEWAY_LIVE_APPROVED', 'preflight-margin:2',
-    'settle-beforeBroadcast', 'anchor']);
+    'journal-read', 'settle-beforeBroadcast', 'anchor']);
   assert.ok(calls.indexOf('env:GATEWAY_DRYRUN_HASH') < calls.indexOf('balance'));
   assert.ok(calls.indexOf('journal-path') < calls.indexOf('credentials'));
 });
@@ -252,7 +252,7 @@ test('a payment that reached the chain but was not witnessed ends as a settlemen
   // A journal that already holds a prepared transfer for this job and phase: the rerun refuses before settling.
   let settleCalled = false;
   const rerun = await createLiveSettlementDependency(run, envTarget, provider, { ...seamsFor([{ txHash: '0xprior', nonce: 1, payer: 'wallet', payee: 'seller', amountOs: '1', network: 'demos', recovery: { settlementKey: `pay-dem:${run.jobId}:2` } }], { ok: false, reason: 'unused' }), settle: (async () => { settleCalled = true; return { ok: false, reason: 'unused' }; }) as LiveSettlementSeams['settle'] });
-  await assert.rejects(rerun.settlePayment({} as never, run), (e: unknown) => e instanceof DacsTestnetRefusal && e.code === 'policy' && /0xprior/.test(e.message));
+  await assert.rejects(rerun.settlePayment({} as never, run), (e: unknown) => e instanceof DacsTestnetRefusal && e.code === 'policy' && e.detail?.txHash === '0xprior' && e.detail?.settlementKey === `pay-dem:${run.jobId}:2`);
   assert.equal(settleCalled, false);
   // The session result keeps the witness: rollup FAIL, code settlement-failed, the transaction hash in error.settlement.
   const out = process.stdout.write.bind(process.stdout); const chunks: string[] = [];
@@ -265,4 +265,60 @@ test('a payment that reached the chain but was not witnessed ends as a settlemen
   assert.equal(rc, 1); assert.equal(result.rollup, 'FAIL');
   assert.equal(result.error.code, 'settlement-failed'); assert.equal(result.error.settlement.txHash, witness.txHash); assert.equal(result.error.settlement.state, 'pending');
   assert.deepEqual(result.phases.find((p: { kind: string }) => p.kind === 'pay-dem'), { index: 2, kind: 'pay-dem', outcome: 'FAIL' });
+});
+
+test('settlement key state: prepared and unresolved blocks, aborted-before-broadcast frees, settled and refunded are terminal; post-payment anchoring failures keep the included witness; no SDK text reaches the result', async () => {
+  const { settlementKeyState, SettlementWitnessFailure, main } = await import('../../src/live/dacs-testnet-run.mjs');
+  const { createDryRunDependencies } = await import('../../src/live/testnet-run-fixtures.js');
+  const key = 'pay-dem:job-x:2';
+  const prepared = { txHash: '0xprep', nonce: 1, payer: 'p', payee: 's', amountOs: '1', network: 'demos', recovery: { settlementKey: key } };
+  assert.deepEqual(settlementKeyState([], key), { state: 'none' });
+  assert.deepEqual(settlementKeyState([prepared], key), { state: 'unresolved', txHash: '0xprep' });
+  assert.deepEqual(settlementKeyState([prepared, { timestamp: 't', amountOs: '1', outcome: 'aborted-before-broadcast', settlementKey: key, txHash: '0xprep' }], key), { state: 'aborted', txHash: '0xprep' });
+  assert.deepEqual(settlementKeyState([prepared, { timestamp: 't', resolution: 'settled', settlementKey: key, txHash: '0xprep' }], key), { state: 'settled', txHash: '0xprep' });
+  assert.deepEqual(settlementKeyState([prepared, { timestamp: 't', resolution: 'refunded', settlementKey: key, txHash: '0xprep' }], key), { state: 'refunded', txHash: '0xprep' });
+  assert.equal(settlementKeyState([{ recovery: { settlementKey: 'pay-dem:other:2' }, txHash: '0x1' }], key).state, 'none', 'another job is not this key');
+  // A rerun after a settled or unresolved key refuses with the identity fields on the refusal; an aborted one may proceed.
+  const run = { ...config, mode: 'live' as const };
+  const envTarget: NodeJS.ProcessEnv = { GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(run) };
+  const handle = { address: 'wallet', rpc: run.rpc, demos: {} } as never;
+  const anchor = { logicalAddress: 'payment', nativeAddress: 'native-payment', transactionRef: { kind: 'demos', value: 'tx' }, writer: `did:demos:agent:${'11'.repeat(32)}`, nonce: '1' };
+  const provider: CoreReceiptProvider = { describe: () => ({ kind: 'core-5.1-receipts', provesFinality: true, source: 'test' }), async fetch() { return { outcome: 'indeterminate', detail: 'unused' }; } };
+  const gate = { authorize: async () => ({ verdict: 'PROCEED' as const, nowIso: new Date().toISOString() }), journalOutcome: async () => {}, beforeBroadcast: async () => {} };
+  const jobKey = `pay-dem:${run.jobId}:2`;
+  const resolutions: unknown[] = [];
+  const seamsFor = (rows: unknown[], settle: LiveSettlementSeams['settle'], anchorImpl = async () => anchor): Partial<LiveSettlementSeams> => ({
+    loadPolicy: async () => ({ network: 'testnet', rpcHosts: ['example.invalid'], perTransactionCapDem: '10', dailyCapDem: '20', killSwitchFile: '/tmp/no-kill' }),
+    resolveJournalPath: async () => '/tmp/pay-witness.jsonl',
+    connect: async () => ({ handles: { buyer: handle, seller: handle }, signers: { buyer: { claim: anchor.writer, sign: async () => new Uint8Array([1]) }, seller: { claim: anchor.writer, sign: async () => new Uint8Array([1]) }, orchestrator: { claim: anchor.writer, sign: async () => new Uint8Array([1]) } }, anchor: anchorImpl, fetchAnchored: async () => ({}) }),
+    readJournal: async () => rows, killSwitchPresent: async () => false,
+    authorizeTransfer: async () => ({ verdict: 'PROCEED', nowIso: new Date().toISOString() }),
+    createOutcomeJournal: async () => async (row: unknown) => { resolutions.push(row); }, createJournal: async () => async () => {}, createAuthorizationGate: async () => gate,
+    balance: async () => 100, preflight: async () => ({ verdict: 'PROCEED', estCostDem: 9, reasons: [] }), settle,
+  });
+  const SECRET = 'SECRET_SENTINEL_9f3a';
+  const okSettle = (async () => ({ ok: true, amountOs: 1n, txHash: '0xok', chainId: 'demos', payer: 'p', payee: 's', blockNumber: 12, finality: { model: 'bft-final' }, finalityObservedAt: 1,
+    evidence: { evidenceVersion: '1', jobId: run.jobId, phase: 'pay-dem', outcome: 'success', paymentTxRefs: [{ kind: 'demos', txHash: '0xok', blockNumber: 12 }], paymentAmount: { amount: '1', currency: 'DEM' }, settlementFinality: { model: 'bft-final', finalityObservedAt: 1 }, observedAt: 1 } })) as LiveSettlementSeams['settle'];
+  const settledRows = [{ ...prepared, recovery: { settlementKey: jobKey } }, { timestamp: 't', resolution: 'settled', settlementKey: jobKey, txHash: '0xprep' }];
+  const settledDep = await createLiveSettlementDependency(run, envTarget, provider, seamsFor(settledRows, okSettle));
+  await assert.rejects(settledDep.settlePayment({} as never, run), (e: unknown) => e instanceof DacsTestnetRefusal && e.code === 'policy' && e.detail?.settlementKey === jobKey && e.detail?.txHash === '0xprep' && /already settled/.test(e.message));
+  const abortedRows = [{ ...prepared, recovery: { settlementKey: jobKey } }, { timestamp: 't', amountOs: '1', outcome: 'aborted-before-broadcast', settlementKey: jobKey, txHash: '0xprep' }];
+  const abortedDep = await createLiveSettlementDependency(run, envTarget, provider, seamsFor(abortedRows, okSettle));
+  const paid = await abortedDep.settlePayment({} as never, run);
+  assert.equal(paid.evidenceAnchor.nativeAddress, 'native-payment');
+  assert.ok(resolutions.some((r) => (r as { resolution?: string; settlementKey?: string; txHash?: string }).resolution === 'settled' && (r as { settlementKey?: string }).settlementKey === jobKey && (r as { txHash?: string }).txHash === '0xok'), 'a settled resolution row is journaled after the evidence is anchored');
+  // Anchoring the evidence fails after the transfer was included: the included witness survives, even through a refusal.
+  const failingAnchor = async () => { throw new DacsTestnetRefusal('capability', `SR-2 anchor result did not bind a nonce ${SECRET}`); };
+  const anchorFail = await createLiveSettlementDependency(run, envTarget, provider, seamsFor([], okSettle, failingAnchor as never));
+  await assert.rejects(anchorFail.settlePayment({} as never, run), (e: unknown) => e instanceof SettlementWitnessFailure && e.witness.txHash === '0xok' && e.witness.state === 'included' && e.witness.blockNumber === 12 && !e.message.includes(SECRET));
+  // No SDK or node exception text reaches the run result: the witness is identity fields only and the detail is a fixed code.
+  const witness = { stage: 'post-broadcast' as const, txHash: '0xw', state: 'pending', rawWitness: { ok: false, hash: '0xw', state: 'pending' } };
+  const out = process.stdout.write.bind(process.stdout); const chunks: string[] = [];
+  process.stdout.write = ((c: string | Uint8Array) => { chunks.push(String(c)); return true; }) as typeof process.stdout.write;
+  try { await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (cfg) => ({ ...createDryRunDependencies(cfg), settlePayment: async () => { throw new SettlementWitnessFailure(`node said ${SECRET}`, witness); } })); }
+  finally { process.stdout.write = out; }
+  const text = chunks.join('');
+  assert.ok(!text.includes(SECRET), 'exception text never reaches the result');
+  const result = JSON.parse(text.trim().split('\n').pop()!);
+  assert.equal(result.error.detail, 'payment: settlement-unwitnessed'); assert.deepEqual(Object.keys(result.error.settlement.rawWitness).sort(), ['hash', 'ok', 'state']);
 });

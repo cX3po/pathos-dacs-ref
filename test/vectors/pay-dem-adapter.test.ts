@@ -302,7 +302,8 @@ test('a failure before any transaction hash exists carries no witness; a failure
   assert.equal(post.ok, false);
   const witness = post.ok === false ? post.witness : undefined;
   assert.equal(witness?.stage, 'post-broadcast'); assert.equal(witness?.txHash, 'h2'); assert.equal(witness?.state, 'pending');
-  assert.equal(post.ok === false && post.reason, 'broadcast wait timed out');
+  assert.equal(post.ok === false && post.reason, 'pay-dem transfer failed after broadcast', 'the reason is a fixed string; the wrapper message never enters the outcome');
+  assert.ok(!JSON.stringify(post).includes('broadcast wait timed out'));
   const noBlock = await settlePayDemCore(params(), clientWith({ ok: true, hash: 'h3', state: 'included' }), authorizedHooks);
   assert.equal(noBlock.ok === false && noBlock.witness?.txHash, 'h3');
 });

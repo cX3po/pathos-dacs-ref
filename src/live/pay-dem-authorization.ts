@@ -6,11 +6,22 @@ export interface PayDemOutcome {
   timestamp: string;
   amountOs: string;
   outcome: string;
+  /** Identity of the transfer this outcome belongs to, so a rerun can tell an aborted transfer from an unresolved one. */
+  settlementKey?: string;
+  txHash?: string;
+}
+
+/** A settlement resolution row (settled or refunded); carries no amount because it is not spend. */
+export interface PayDemResolution {
+  timestamp: string;
+  resolution: 'settled' | 'refunded';
+  settlementKey: string;
+  txHash: string;
 }
 
 export interface PayDemAuthorizationGate {
   authorize(ctx: { amountOs: bigint; rpcUrl: string }): Promise<TransferAuthorization>;
-  journalOutcome(outcome: Readonly<PayDemOutcome>): Promise<void>;
+  journalOutcome(outcome: Readonly<PayDemOutcome | PayDemResolution>): Promise<void>;
   beforeBroadcast(ctx: Readonly<{ authorizationNowIso: string }>): Promise<void>;
 }
 
@@ -21,7 +32,7 @@ export function createPayDemAuthorizationGate(opts: {
   readJournal: (path: string) => unknown[];
   killSwitchPresent: (path: string) => boolean;
   resolveKillSwitchPath: (path: string) => string;
-  durableOutcomeJournal: (outcome: Readonly<PayDemOutcome>) => Promise<void>;
+  durableOutcomeJournal: (outcome: Readonly<PayDemOutcome | PayDemResolution>) => Promise<void>;
   nowIso?: () => string;
 }): PayDemAuthorizationGate {
   let activeLease: { lease: PayDemJournalLease; nowIso: string } | undefined;
@@ -101,6 +112,11 @@ export function createPayDemAuthorizationGate(opts: {
     },
 
     async journalOutcome(outcome) {
+      // A settlement resolution (settled/refunded) is a durable identity row, not spend accounting: it is appended as is.
+      if ('resolution' in outcome) {
+        await opts.durableOutcomeJournal(outcome);
+        return;
+      }
       const active = activeLease;
       if (active === undefined) {
         if (outcome.outcome === 'aborted-before-broadcast') {

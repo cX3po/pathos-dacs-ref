@@ -105,6 +105,9 @@ export interface DemosNativeClientOptions {
     timestamp: string;
     amountOs: string;
     outcome: string;
+    /** The pay-dem settlement key (`pay-dem:{jobId}:{phaseIndex}`) and the signed transaction hash, so a rerun can tell a durably aborted transfer from an unresolved one. */
+    settlementKey?: string;
+    txHash?: string;
   }>) => Promise<void>;
   beforeBroadcast?: (ctx: Readonly<{ authorizationNowIso: string }>) => Promise<void>;
   sdk?: DemosSdkFunctions;
@@ -169,6 +172,8 @@ export function createDemosNativeClient(
           timestamp: authorizationNowIso,
           amountOs: amountOs.toString(),
           outcome: 'broadcast-attempted',
+          ...(recovery?.settlementKey === undefined ? {} : { settlementKey: recovery.settlementKey }),
+          txHash,
         });
         if (utcDateOrThrow(new Date().toISOString()) !== authorizedUtcDate) {
           throw new Error('payment policy authorization expired at UTC day boundary');
@@ -199,6 +204,8 @@ export function createDemosNativeClient(
             timestamp: abortTimestamp,
             amountOs: amountOs.toString(),
             outcome: 'aborted-before-broadcast',
+            ...(recovery?.settlementKey === undefined ? {} : { settlementKey: recovery.settlementKey }),
+            ...(txHash ? { txHash } : {}),
           });
         }
       }

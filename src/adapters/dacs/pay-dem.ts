@@ -114,7 +114,8 @@ export interface PayDemSettlementWitness {
   txHash: string;
   state?: string;
   blockNumber?: unknown;
-  rawWitness: unknown;
+  /** The node's transfer result reduced to its identity fields (ok, hash, state, blockNumber); never free text. */
+  rawWitness: { ok: boolean; hash: string; state?: string; blockNumber?: unknown };
 }
 
 function requireCapturedInputs(params: PayDemCoreParams, client: DemosNativeClient) {
@@ -224,12 +225,14 @@ export async function settlePayDemCore(
 
   const blockNumber = result.blockNumber;
   // Once a transaction hash exists the transfer may be on the chain: every failure from here carries the witness.
+  // Reasons are fixed strings authored here; node or SDK exception text never enters the witness or the run result.
   const witness = (reason: string): PayDemSettleOutcome => ({
     ok: false, reason,
     witness: Object.freeze({ stage: 'post-broadcast' as const, txHash: result.hash as string,
-      ...(result.state === undefined ? {} : { state: String(result.state) }), ...(blockNumber === undefined ? {} : { blockNumber }), rawWitness: result }),
+      ...(result.state === undefined ? {} : { state: String(result.state) }), ...(blockNumber === undefined ? {} : { blockNumber }),
+      rawWitness: Object.freeze({ ok: result.ok === true, hash: result.hash as string, ...(result.state === undefined ? {} : { state: String(result.state) }), ...(blockNumber === undefined ? {} : { blockNumber }) }) }),
   });
-  if (!result.ok) return result.hash ? witness(result.message ?? 'pay-dem transfer failed after broadcast') : { ok: false, reason: result.message ?? 'pay-dem transfer failed' };
+  if (!result.ok) return result.hash ? witness('pay-dem transfer failed after broadcast') : { ok: false, reason: result.message ?? 'pay-dem transfer failed' };
   if (!result.hash) return { ok: false, reason: 'pay-dem transfer returned no transaction hash' };
   if (result.state !== INCLUDED_STATE) return witness(`pay-dem did not observe included state (state=${String(result.state)})`);
   if (!Number.isSafeInteger(blockNumber) || (blockNumber as number) < 0) return witness('pay-dem included result lacks a finality-witness block number');
