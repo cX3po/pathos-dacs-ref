@@ -434,7 +434,11 @@ const defaultOrganExec: OrganExec = promisify(execFile) as unknown as OrganExec;
 
 /** Run the configured organ bridge for the session's organ and query. Runtime failure is a delivery failure. */
 export async function runOrganBridge(env: NodeJS.ProcessEnv, run: Pick<DacsTestnetConfig, 'jobId' | 'organ' | 'query'>, execImpl: OrganExec = defaultOrganExec): Promise<OrganDeliverable> {
-  const { cli, py } = requireOrganBridgeConfig(env, run);
+  // Configuration was checked at construction; a change between then and delivery (a path that vanished)
+  // is a delivery-phase failure with the session's evidence preserved, never a refusal that hides the run.
+  let cli: string, py: string;
+  try { ({ cli, py } = requireOrganBridgeConfig(env, run)); }
+  catch (error) { throw new OrganDeliverableError(error instanceof Error ? `bridge configuration changed after construction: ${error.message}` : 'bridge configuration changed after construction'); }
   let stdout: string;
   try {
     ({ stdout } = await execImpl(py, [cli, run.organ, run.query], { timeout: 60_000, maxBuffer: 1_048_576, env: { PATH: env.PATH ?? '', HOME: env.HOME ?? '' } }));

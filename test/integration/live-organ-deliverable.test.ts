@@ -136,7 +136,8 @@ test('a real bridge script runs through the default executor and yields the deli
     assert.equal(d.organ, 'nws_alerts');
     assert.equal(d.answer.basis, `query ${run.query.length}`);
     const missing = join(dir, 'missing.js');
-    await assert.rejects(runOrganBridge({ ORGAN_CLI: missing, AXIOM_PY: process.execPath, PATH: process.env.PATH, HOME: process.env.HOME }, run), isConfig);
+    // At delivery time a vanished bridge is a delivery failure (the pre-payment check is requireOrganBridgeConfig at construction).
+    await assert.rejects(runOrganBridge({ ORGAN_CLI: missing, AXIOM_PY: process.execPath, PATH: process.env.PATH, HOME: process.env.HOME }, run), isDelivery);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
