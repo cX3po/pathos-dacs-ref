@@ -25,6 +25,7 @@
 
 import { fetchAnchored, type FetchResult } from '../demos/storage.js';
 import { opaqueListingProgramName } from '../dacs1/addressing.js';
+import { deriveBundleLogicalAddress } from '../lib/bundle-binding-v1.js';
 
 export interface ResolveByNameOptions {
   /** Additional searches after the first absent result. Default: 0. */
@@ -42,6 +43,18 @@ export interface ResolveByNameOptions {
 /** PC-2: railId is a CF-4 variable segment — percent-encode internal colons. */
 export function encodeRailSegment(railId: string): string {
   return railId.replaceAll(':', '%3A');
+}
+
+/**
+ * Which party's wallet writes an anchor. The two-sided bundle copies are named in the spec's
+ * hashed form (`stor-{sha256(jobId-bundle-role)}`, see deriveBundleLogicalAddress), so a suffix
+ * test on the logical address cannot see the role; resolve it from the job id instead. Every
+ * other anchor (listing, agreement, commitment, evidence, deliverable) is the orchestrator's.
+ */
+export function anchorWriterRole(jobId: string, logicalAddress: string): 'buyer' | 'seller' | 'orchestrator' {
+  if (logicalAddress === deriveBundleLogicalAddress(jobId, 'buyer') || logicalAddress.endsWith(':buyer')) return 'buyer';
+  if (logicalAddress === deriveBundleLogicalAddress(jobId, 'seller') || logicalAddress.endsWith(':seller')) return 'seller';
+  return 'orchestrator';
 }
 
 export const anchorNames = {

@@ -8,7 +8,7 @@ import { sign, verify } from '../lib/sign.js';
 import { evidenceHashV1, emitSettlementEvidenceV1 } from '../lib/emit-settlement-evidence-v1.js';
 import { listingLogicalAddress } from '../dacs1/addressing.js';
 import { buildDiscoveryArtifacts, resolveListingFromPublishedBinding } from '../dacs1/discovery.js';
-import { anchorNames } from './anchor-naming.js';
+import { anchorNames, anchorWriterRole } from './anchor-naming.js';
 import {
   commitAgreement,
   verifyAgreementCommitmentCold,
@@ -99,7 +99,10 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
   const bundleBindings: unknown[] = [];
   let anchorCounter = 0;
 
-  const writerFor = (logical: string): string => logical.endsWith(':buyer') ? buyer.claim : logical.endsWith(':seller') ? seller.claim : orchestrator.claim;
+  const writerFor = (logical: string): string => {
+    const role = anchorWriterRole(config.jobId, logical);
+    return role === 'buyer' ? buyer.claim : role === 'seller' ? seller.claim : orchestrator.claim;
+  };
   const anchor = async (request: { logicalAddress: string; content: unknown; contentHash: string }): Promise<AgreementAnchorResult> => {
     const ordinal = anchorCounter++;
     const writer = request.logicalAddress.startsWith('dacs1:') ? seller.claim : writerFor(request.logicalAddress);

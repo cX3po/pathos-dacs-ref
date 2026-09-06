@@ -315,6 +315,17 @@ async function resolveCommitment(input: CompletedSessionEvidence, deps: Pick<Bun
   return resolved;
 }
 
+/** Two claims name the same key: by parsed key bytes when both parse, otherwise only by identical text (an alias in another scheme is not equated). */
+function sameClaim(a: unknown, b: unknown): boolean {
+  const aKey = claimKey(a as Claim), bKey = claimKey(b as Claim);
+  return aKey !== null && bKey !== null ? aKey === bKey : a === b;
+}
+
+/** A role's bundle copy is anchored by that role's own key: a copy the counterparty wrote is not that party's attestation. */
+function assertBundleWriter(role: Role, anchor: AgreementAnchorResult, signer: AdapterSigner): void {
+  if (!sameClaim(anchor.writer, signer.claim)) throw new BundleFinalizationError('bundle-writer', `bundle copy for ${role} was anchored by ${String(anchor.writer)}, not by the ${role} key`);
+}
+
 function checkFault(input: CompletedSessionEvidence): void {
   const roles = new Set(input.parties.map((p) => p.role));
   if (!roles.has('buyer') || !roles.has('seller')) throw new BundleFinalizationError('parties', 'bundle must list buyer and seller');
@@ -365,6 +376,7 @@ export async function finalizeBundle(input: CompletedSessionEvidence, deps: Bund
     const logical = deriveBundleLogicalAddress(input.jobId, role);
     const storedContentHash = jcsHashHex(bundle);
     const anchor = await deps.anchor({ logicalAddress: logical, content: bundle, contentHash: storedContentHash });
+    assertBundleWriter(role, anchor, role === 'orchestrator' ? deps.signers.orchestrator! : deps.signers[role]);
     const fetched = parsed(await deps.fetchAnchored(anchor.nativeAddress));
     if (bundleSignedScopeHashV1(fetched) !== scopeHash || fetched.anchoredByRole !== role) throw new BundleFinalizationError('cold-read', `bundle copy for ${role} did not independently resolve`);
     const receipt = await deps.fetchReceipt({ logicalAddress: logical, contentHash: storedContentHash, anchor });
@@ -418,6 +430,10 @@ export async function verifyFinalizedBundleCold(expected: FinalizedBundleExpecta
         if (error instanceof BundleFinalizationError && error.code === 'finality') return { outcome: 'indeterminate', detail: error.message };
         return { outcome: 'fail', detail: error instanceof Error ? error.message : 'invalid receipt' };
       }
+      // The copy's on-chain writer is the party whose copy it is; a relayed or counterparty-written copy is not that party's attestation.
+      const roleParty = (parties as JsonObject[]).find((candidate) => candidate.role === role);
+      if (roleParty && !sameClaim(receipt.writer, roleParty.primaryClaim)) return { outcome: 'fail', detail: `${role} bundle copy was not anchored by the ${role} party` };
+      if (!roleParty && role !== 'orchestrator') return { outcome: 'fail', detail: `${role} party is not listed in the bundle` };
       if (role === 'buyer') authorityBundle = fetched;
     }
     if (!expected.session || !authorityBundle) return { outcome: 'indeterminate', detail: 'evidence verification input unavailable' };

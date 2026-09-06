@@ -306,7 +306,9 @@ export async function createLiveAdapterWiring(
     handles: { buyer: buyerHandle, seller: sellerHandle },
     signers: { buyer: asSigner(buyer), seller: asSigner(seller), orchestrator: asSigner(seller) },
     async anchor(request) {
-      const handle = request.logicalAddress.endsWith(':buyer') ? buyerHandle : sellerHandle;
+      // The buyer's wallet writes the buyer's bundle copy; the seller (also the orchestrator) writes everything else.
+      const role = (await import('./anchor-naming.js')).anchorWriterRole(config.jobId, request.logicalAddress);
+      const handle = role === 'buyer' ? buyerHandle : sellerHandle;
       const result = await storage.anchor(handle, request.logicalAddress, request.content as Record<string, unknown> | string);
       if (result.nonce === undefined) throw new DacsTestnetRefusal('capability', 'SR-2 anchor result did not bind a nonce');
       const anchored: AgreementAnchorResult = { logicalAddress: request.logicalAddress, nativeAddress: result.storageAddress,

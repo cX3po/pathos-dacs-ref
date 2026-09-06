@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import * as ed25519 from '@noble/ed25519';
-import { finalizeBundle, verifyBundleListing, verifyFinalizedBundleCold, type BundleFinalizerDependencies, type CompletedSessionEvidence, type ResolvedCommitment, paymentRailId, paymentLogicalAddress } from '../../src/adapters/dacs/bundle-finalizer.js';
+import { BundleFinalizationError, finalizeBundle, verifyBundleListing, verifyFinalizedBundleCold, type BundleFinalizerDependencies, type CompletedSessionEvidence, type ResolvedCommitment, paymentRailId, paymentLogicalAddress } from '../../src/adapters/dacs/bundle-finalizer.js';
 import { commitAgreement, type AgreementCommitmentDependencies } from '../../src/adapters/dacs/agreement-commitment.js';
 import { emitSettlementEvidenceV1, evidenceHashV1 } from '../../src/lib/emit-settlement-evidence-v1.js';
 import { verifySettlementEvidenceV1 } from '../../src/lib/verify-settlement-evidence-v1.js';
-import { resolveBundleBinding } from '../../src/lib/bundle-binding-v1.js';
+import { deriveBundleLogicalAddress, resolveBundleBinding } from '../../src/lib/bundle-binding-v1.js';
 import { verifyBundleV1 } from '../../src/lib/verify-bundle-v1.js';
 import { sign, verify } from '../../src/lib/sign.js';
 import { DOMAIN_SEPARATORS } from '../../src/domain-sep.js';
@@ -33,7 +33,7 @@ function signedEvidence(unsigned: ReturnType<typeof emitSettlementEvidenceV1>, a
     value: Buffer.from(sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, new TextEncoder().encode(evidenceHashV1(unsigned)), author.privateKey)).toString('base64url') } };
 }
 
-function setup() {
+function setup(writerOverride?: (logicalAddress: string) => string) {
   const memory = new Map<string, unknown>();
   const receipts = new Map<string, AnchorReceipt>();
   const commitments = new Map<string, ResolvedCommitment>();
@@ -55,7 +55,9 @@ function setup() {
     projectPaymentRail: (rail) => String(rail.railId), verifySignature,
     async anchor(request) {
       const nativeAddress = `bundle-native-${counter}`; const nonce = String(counter++);
-      const writer = request.logicalAddress.includes('buyer') ? buyer.claim : request.logicalAddress.includes('seller') ? seller.claim : orchestrator.claim;
+      // Bundle copies are named in the hashed form, so the role is resolved from the job id, as the live wiring does.
+      const roleFor = (logical: string) => logical === deriveBundleLogicalAddress('bundle-job', 'buyer') ? buyer : logical === deriveBundleLogicalAddress('bundle-job', 'seller') ? seller : orchestrator;
+      const writer = writerOverride ? writerOverride(request.logicalAddress) : roleFor(request.logicalAddress).claim;
       const anchor = { logicalAddress: request.logicalAddress, nativeAddress, transactionRef: { kind: 'fake', value: `tx-${nativeAddress}` }, writer, nonce };
       memory.set(nativeAddress, request.content); receipts.set(request.logicalAddress, receipt(request.logicalAddress, nativeAddress, request.contentHash, writer, request.content, anchor.transactionRef, nonce)); return anchor;
     },
@@ -109,6 +111,32 @@ test('finalizeBundle emits signed role copies after resolving a real finalized c
   assert.deepEqual(Object.keys(result.bundles).sort(), ['buyer', 'orchestrator', 'seller']);
   assert.equal(result.bundles.buyer!.bundle.phaseSummary.length, 4);
   assert.equal(state.bindings.length, 3);
+});
+
+test('a bundle copy anchored by the counterparty key is refused (LIVE attempt 5: the seller wallet wrote the buyer bundle)', async () => {
+  // Every anchor written by the seller, as a wiring that picks the wallet by a ':buyer' suffix does for hashed bundle addresses.
+  const state = setup(() => seller.claim); const input = await session(state);
+  await assert.rejects(finalizeBundle(input, state.deps), (error: unknown) => error instanceof BundleFinalizationError && error.code === 'bundle-writer' && /buyer/.test(error.message));
+  // The seller copy written by the buyer key, and the orchestrator copy written by the seller key, are refused by name.
+  const sellerCopy = deriveBundleLogicalAddress('bundle-job', 'seller'), buyerCopy = deriveBundleLogicalAddress('bundle-job', 'buyer'), orchestratorCopy = deriveBundleLogicalAddress('bundle-job', 'orchestrator');
+  const byRole = (l: string) => l === buyerCopy ? buyer.claim : l === sellerCopy ? seller.claim : orchestrator.claim;
+  const sellerWrong = setup((l) => l === sellerCopy ? buyer.claim : byRole(l));
+  await assert.rejects(finalizeBundle(await session(sellerWrong), sellerWrong.deps), (error: unknown) => error instanceof BundleFinalizationError && error.code === 'bundle-writer' && /for seller/.test(error.message));
+  const orchestratorWrong = setup((l) => l === orchestratorCopy ? seller.claim : byRole(l));
+  await assert.rejects(finalizeBundle(await session(orchestratorWrong), orchestratorWrong.deps), (error: unknown) => error instanceof BundleFinalizationError && error.code === 'bundle-writer' && /for orchestrator/.test(error.message));
+  // The correct routing still finalizes, and each copy names its own writer.
+  const good = setup(); const goodInput = await session(good); const result = await finalizeBundle(goodInput, good.deps);
+  assert.equal(result.bundles.buyer!.receipt.writer, buyer.claim);
+  assert.equal(result.bundles.seller!.receipt.writer, seller.claim);
+  assert.equal(result.bundles.orchestrator!.receipt.writer, orchestrator.claim);
+  // Cold verification: a buyer copy whose stored receipt and declared receipt both say the seller wrote it is refused even though they agree with each other.
+  assert.equal((await verifyFinalizedBundleCold({ jobId: goodInput.jobId, ...result, session: goodInput }, good.deps)).outcome, 'pass');
+  const buyerLogical = result.bundles.buyer!.address.logical;
+  good.receipts.set(buyerLogical, { ...good.receipts.get(buyerLogical)!, writer: seller.claim });
+  const relayed = { ...result, bundles: { ...result.bundles, buyer: { ...result.bundles.buyer!, receipt: { ...result.bundles.buyer!.receipt, writer: seller.claim } } } };
+  const cold = await verifyFinalizedBundleCold({ jobId: goodInput.jobId, ...relayed, session: goodInput }, good.deps);
+  assert.equal(cold.outcome, 'fail');
+  assert.match(cold.detail, /buyer bundle copy was not anchored by the buyer party/);
 });
 
 test('SEB refuses duplicate references, phase divergence, and wrong native receipt address', async () => {
