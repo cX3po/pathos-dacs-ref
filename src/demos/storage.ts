@@ -187,7 +187,10 @@ export async function anchor(
   const signedFrom = typeof signed.content?.from === 'string' ? signed.content.from : undefined;
   const signedNonce = typeof signed.content?.nonce === 'number' && Number.isSafeInteger(signed.content.nonce) ? String(signed.content.nonce)
     : typeof signed.content?.nonce === 'string' && /^\d+$/.test(signed.content.nonce) ? signed.content.nonce : undefined;
-  if (signedFrom !== undefined && signedFrom !== address) throw new Error(`SR-2 anchor of "${programName}": signed transaction is from ${String(signedFrom).slice(0, 12)}, not this wallet`);
+  if (signedHash === undefined || signedFrom === undefined || signedNonce === undefined) {
+    throw new Error(`SR-2 anchor of "${programName}": the signed transaction lacks a hash, signer or nonce; nothing is broadcast`);
+  }
+  if (signedFrom !== address) throw new Error(`SR-2 anchor of "${programName}": signed transaction is from ${signedFrom.slice(0, 12)}, not this wallet`);
   const validity = await demosAny.confirm(tx);
   // Broadcast wait window. A slow devnet node can take >90s to CONFIRM a tx it already accepted for
   // propagation (the 2026-07-11 + 2026-07-23 BroadcastTimeoutError). Raise the default and make it tunable.
@@ -257,8 +260,8 @@ export async function anchor(
     throw new Error(`SR-2 anchor of "${programName}" was included but its creating transaction and nonce could not be read back from the node after ${attempts} attempt(s)`);
   }
   if (facts.owner !== address) throw new Error(`SR-2 anchor of "${programName}": node records owner ${facts.owner.slice(0, 12)}, not this wallet`);
-  if (signedHash !== undefined && facts.txHash !== signedHash) throw new Error(`SR-2 anchor of "${programName}": node's creating transaction ${facts.txHash.slice(0, 12)} is not the transaction this wallet signed ${signedHash.slice(0, 12)}`);
-  if (signedNonce !== undefined && facts.nonce !== signedNonce) throw new Error(`SR-2 anchor of "${programName}": node records nonce ${facts.nonce}, the signed transaction carried ${signedNonce}`);
+  if (facts.txHash !== signedHash) throw new Error(`SR-2 anchor of "${programName}": node's creating transaction ${facts.txHash.slice(0, 12)} is not the transaction this wallet signed ${signedHash.slice(0, 12)}`);
+  if (facts.nonce !== signedNonce) throw new Error(`SR-2 anchor of "${programName}": node records nonce ${facts.nonce}, the signed transaction carried ${signedNonce}`);
   if (broadcastHash && broadcastHash !== facts.txHash) {
     throw new Error(`SR-2 anchor of "${programName}": broadcast hash ${broadcastHash.slice(0, 12)} differs from the node's creating transaction ${facts.txHash.slice(0, 12)}`);
   }
@@ -292,10 +295,16 @@ async function nodeCallJson(rpc: string, message: string, data: Record<string, u
   return envelope.response ?? null;
 }
 
+/** A node record that exists but contradicts itself or the request; never retried. */
+export class AnchorFactsContradiction extends Error {
+  constructor(message: string) { super(message); this.name = 'AnchorFactsContradiction'; }
+}
+
 /**
  * The facts a receipt is checked against, read from the node after inclusion: the storage program's
- * creating transaction and the nonce that transaction carries. Returns null when either cannot be
- * established (missing record, missing or malformed transaction, signer not the program owner).
+ * creating transaction and the nonce that transaction carries. Returns null only when the record or its
+ * transaction is not (yet) available; a record that is present but contradictory (foreign address, malformed
+ * or foreign creating transaction, signer not the owner, unusable nonce) throws AnchorFactsContradiction.
  */
 export async function anchorFactsFromNode(
   rpc: string,
@@ -303,15 +312,20 @@ export async function anchorFactsFromNode(
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<{ txHash: string; nonce: string; owner: string } | null> {
   const program = await nodeCallJson(rpc, 'getStorageProgram', { storageAddress }, options.fetchImpl) as { storageAddress?: unknown; owner?: unknown; createdByTx?: unknown } | null;
-  if (!program || program.storageAddress !== storageAddress) return null;
+  if (!program) return null;
+  if (program.storageAddress !== storageAddress) throw new AnchorFactsContradiction('node returned a storage record under another address');
   const txHash = program.createdByTx;
-  if (typeof txHash !== 'string' || !/^[0-9a-f]{64}$/.test(txHash) || typeof program.owner !== 'string' || !program.owner) return null;
+  if (typeof txHash !== 'string' || !/^[0-9a-f]{64}$/.test(txHash)) throw new AnchorFactsContradiction('storage record names no valid creating transaction');
+  if (typeof program.owner !== 'string' || !program.owner) throw new AnchorFactsContradiction('storage record has no owner');
   const tx = await nodeCallJson(rpc, 'getTxByHash', { hash: txHash }, options.fetchImpl) as { hash?: unknown; content?: { type?: unknown; from?: unknown; nonce?: unknown } } | null;
-  if (!tx || tx.hash !== txHash || !tx.content || tx.content.type !== 'storageProgram' || tx.content.from !== program.owner) return null;
+  if (!tx) return null;
+  if (tx.hash !== txHash) throw new AnchorFactsContradiction('node returned another transaction than the creating one');
+  if (!tx.content || tx.content.type !== 'storageProgram') throw new AnchorFactsContradiction('creating transaction is not a storage program');
+  if (tx.content.from !== program.owner) throw new AnchorFactsContradiction('creating transaction signer differs from the storage owner');
   const nonce = tx.content.nonce;
   if (typeof nonce === 'number' && Number.isSafeInteger(nonce) && nonce >= 0) return { txHash, nonce: String(nonce), owner: program.owner };
   if (typeof nonce === 'string' && /^\d+$/.test(nonce)) return { txHash, nonce, owner: program.owner };
-  return null;
+  throw new AnchorFactsContradiction('creating transaction carries no usable nonce');
 }
 
 /**

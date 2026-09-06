@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { anchorFactsFromNode } from '../../src/demos/storage.js';
+import { anchorFactsFromNode, AnchorFactsContradiction } from '../../src/demos/storage.js';
 
 const NATIVE = 'stor-457c1ddf4d55e0d3206e1f5376f3876f301f3e3f';
 const OWNER = '0x01e836295780008f15d46587e9c0b94d6ea1b2e8b4a3fd0c8d10ce6f7ec9e8a1';
@@ -28,12 +28,19 @@ test('the node establishes the creating transaction and the nonce it carries', a
   assert.deepEqual(calls, ['getStorageProgram', 'getTxByHash']);
 });
 
-const nulls: Array<[string, Record<string, unknown>]> = [
+const unavailable: Array<[string, Record<string, unknown>]> = [
   ['program missing', { getTxByHash: tx }],
+  ['tx missing', { getStorageProgram: program }],
+];
+for (const [name, responses] of unavailable) {
+  test(`facts are null when the record is not (yet) available: ${name}`, async () => {
+    assert.equal(await anchorFactsFromNode('https://node.invalid/', NATIVE, { fetchImpl: fetchFor(responses) }), null);
+  });
+}
+const contradictions: Array<[string, Record<string, unknown>]> = [
   ['program is another record', { getStorageProgram: { ...program, storageAddress: 'stor-other' }, getTxByHash: tx }],
   ['program without creating tx', { getStorageProgram: { ...program, createdByTx: undefined }, getTxByHash: tx }],
   ['creating tx not hex', { getStorageProgram: { ...program, createdByTx: '0xabc' }, getTxByHash: tx }],
-  ['tx missing', { getStorageProgram: program }],
   ['tx is another transaction', { getStorageProgram: program, getTxByHash: { ...tx, hash: 'ff'.repeat(32) } }],
   ['tx is not a storage program', { getStorageProgram: program, getTxByHash: { ...tx, content: { ...tx.content, type: 'native' } } }],
   ['tx signer is not the owner', { getStorageProgram: program, getTxByHash: { ...tx, content: { ...tx.content, from: '0xdead' } } }],
@@ -41,9 +48,9 @@ const nulls: Array<[string, Record<string, unknown>]> = [
   ['nonce fractional', { getStorageProgram: program, getTxByHash: { ...tx, content: { ...tx.content, nonce: 1.5 } } }],
   ['nonce missing', { getStorageProgram: program, getTxByHash: { ...tx, content: { type: 'storageProgram', from: OWNER } } }],
 ];
-for (const [name, responses] of nulls) {
-  test(`facts are null, never guessed: ${name}`, async () => {
-    assert.equal(await anchorFactsFromNode('https://node.invalid/', NATIVE, { fetchImpl: fetchFor(responses) }), null);
+for (const [name, responses] of contradictions) {
+  test(`a present but contradictory record throws, never null: ${name}`, async () => {
+    await assert.rejects(anchorFactsFromNode('https://node.invalid/', NATIVE, { fetchImpl: fetchFor(responses) }), (e: unknown) => e instanceof AnchorFactsContradiction);
   });
 }
 
@@ -56,16 +63,17 @@ test('a string nonce is accepted; a transport or RPC error propagates', async ()
 
 // anchor() itself, through a fake wallet: the signed transaction is the authority and the node read-back must agree.
 import { anchor } from '../../src/demos/storage.js';
-type FakeOpts = { signedHash?: string; signedNonce?: number; signedFrom?: string; broadcastHash?: string; state?: string };
+type FakeOpts = { signedHash?: string; signedNonce?: number; signedFrom?: string; broadcastHash?: string; state?: string; signed?: unknown };
 function fakeHandle(o: FakeOpts = {}) {
   const calls: string[] = [];
+  const counters = { broadcasts: 0 };
   const demos = {
     getAddressNonce: async () => 33,
-    storagePrograms: { sign: async () => ({ hash: o.signedHash ?? TX, content: { type: 'storageProgram', from: o.signedFrom ?? OWNER, nonce: o.signedNonce ?? 34 } }) },
+    storagePrograms: { sign: async () => o.signed ?? ({ hash: o.signedHash ?? TX, content: { type: 'storageProgram', from: o.signedFrom ?? OWNER, nonce: o.signedNonce ?? 34 } }) },
     confirm: async (t: unknown) => t,
-    broadcastAndWait: async () => ({ broadcast: { response: { hash: o.broadcastHash ?? '' } }, status: { state: o.state ?? 'included' } }),
+    broadcastAndWait: async () => { counters.broadcasts++; return { broadcast: { response: { hash: o.broadcastHash ?? '' } }, status: { state: o.state ?? 'included' } }; },
   };
-  return { handle: { demos, address: OWNER, rpc: 'https://node.invalid/' } as never, calls };
+  return { handle: { demos, address: OWNER, rpc: 'https://node.invalid/' } as never, calls, counters };
 }
 const okNode = { getStorageProgram: program, getTxByHash: tx };
 
@@ -95,9 +103,31 @@ test('anchor: a record owned by another wallet is refused even if internally con
   await assert.rejects(anchor(handle, 'p', { v: 1 }, { fetchImpl: fetchFor(node), readBackAttempts: 1 }), /not this wallet/);
 });
 
-test('anchor: a signed transaction from another wallet is refused before broadcast', async () => {
-  const { handle } = fakeHandle({ signedFrom: '0x' + 'cd'.repeat(32) });
-  await assert.rejects(anchor(handle, 'p', { v: 1 }, { fetchImpl: fetchFor(okNode), readBackAttempts: 1 }), /not this wallet/);
+test('anchor: a signed transaction from another wallet is refused before broadcast (zero broadcasts)', async () => {
+  const f = fakeHandle({ signedFrom: '0x' + 'cd'.repeat(32) });
+  await assert.rejects(anchor(f.handle, 'p', { v: 1 }, { fetchImpl: fetchFor(okNode), readBackAttempts: 1 }), /not this wallet/);
+  assert.equal(f.counters.broadcasts, 0);
+});
+
+test('anchor: a signed transaction lacking hash, signer or nonce is refused before broadcast', async () => {
+  for (const signed of [{ content: {} }, { hash: TX, content: { from: OWNER } }, { hash: TX, content: { nonce: 34 } }, { content: { from: OWNER, nonce: 34 } }, { hash: 'zz', content: { from: OWNER, nonce: 34 } }]) {
+    const f = fakeHandle({ signed });
+    await assert.rejects(anchor(f.handle, 'p', { v: 1 }, { fetchImpl: fetchFor(okNode), readBackAttempts: 1 }), /lacks a hash, signer or nonce/);
+    assert.equal(f.counters.broadcasts, 0);
+  }
+});
+
+test('anchor: a contradictory node record fails at once and is never retried', async () => {
+  let programCalls = 0;
+  const contradictory: typeof fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { params: Array<{ message: string }> };
+    if (body.params[0]!.message === 'getStorageProgram') { programCalls++; return new Response(JSON.stringify({ result: 200, response: { ...program, storageAddress: 'stor-other' } }), { status: 200 }); }
+    return fetchFor(okNode)(url, init);
+  }) as typeof fetch;
+  const f = fakeHandle();
+  await assert.rejects(anchor(f.handle, 'p', { v: 1 }, { fetchImpl: contradictory, readBackAttempts: 5, readBackDelayMs: 0 }), (e: unknown) => e instanceof AnchorFactsContradiction);
+  assert.equal(programCalls, 1);
+  assert.equal(f.counters.broadcasts, 1);
 });
 
 test('anchor: a broadcast hash that disagrees with the node is refused; an agreeing one passes', async () => {
@@ -114,8 +144,10 @@ test('anchor: a record that is not yet visible is retried, then fails closed whe
     if (body.params[0]!.message === 'getStorageProgram' && n <= 2) return new Response(JSON.stringify({ result: 404, response: null }), { status: 200 });
     return fetchFor(okNode)(url, init);
   }) as typeof fetch;
-  const result = await anchor(fakeHandle().handle, 'p', { v: 1 }, { fetchImpl: lateFetch, readBackAttempts: 4, readBackDelayMs: 0 });
+  const f = fakeHandle();
+  const result = await anchor(f.handle, 'p', { v: 1 }, { fetchImpl: lateFetch, readBackAttempts: 4, readBackDelayMs: 0 });
   assert.equal(result.txHash, TX);
+  assert.equal(f.counters.broadcasts, 1, 'retries read back; they never rebroadcast');
   await assert.rejects(anchor(fakeHandle().handle, 'p', { v: 1 }, { fetchImpl: fetchFor({}), readBackAttempts: 2, readBackDelayMs: 0 }), /could not be read back from the node after 2 attempt/);
 });
 
