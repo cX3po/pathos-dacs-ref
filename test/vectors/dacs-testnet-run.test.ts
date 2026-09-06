@@ -232,7 +232,7 @@ test('a payment that reached the chain but was not witnessed ends as a settlemen
   const anchor = { logicalAddress: 'payment', nativeAddress: 'native-payment', transactionRef: { kind: 'demos', value: 'tx' }, writer: `did:demos:agent:${'11'.repeat(32)}`, nonce: '1' };
   const provider: CoreReceiptProvider = { describe: () => ({ kind: 'core-5.1-receipts', provesFinality: true, source: 'test' }), async fetch() { return { outcome: 'indeterminate', detail: 'unused' }; } };
   const gate = { authorize: async () => ({ verdict: 'PROCEED' as const, nowIso: new Date().toISOString() }), journalOutcome: async () => {}, beforeBroadcast: async () => {} };
-  const witness = { stage: 'post-broadcast' as const, txHash: '0x' + 'ab'.repeat(32), state: 'pending', rawWitness: { ok: false, hash: '0x' + 'ab'.repeat(32), state: 'pending', message: 'timeout' } };
+  const witness = { stage: 'post-broadcast' as const, txHash: '0x' + 'ab'.repeat(32), state: 'pending' as const, rawWitness: { ok: false, hash: '0x' + 'ab'.repeat(32), state: 'pending' as const } };
   const seamsFor = (rows: unknown[], settled: unknown): Partial<LiveSettlementSeams> => ({
     loadPolicy: async () => ({ network: 'testnet', rpcHosts: ['example.invalid'], perTransactionCapDem: '10', dailyCapDem: '20', killSwitchFile: '/tmp/no-kill' }),
     resolveJournalPath: async () => '/tmp/pay-witness.jsonl',
@@ -312,7 +312,7 @@ test('settlement key state: prepared and unresolved blocks, aborted-before-broad
   const anchorFail = await createLiveSettlementDependency(run, envTarget, provider, seamsFor([], okSettle, failingAnchor as never));
   await assert.rejects(anchorFail.settlePayment({} as never, run), (e: unknown) => e instanceof SettlementWitnessFailure && e.witness.txHash === '0xok' && e.witness.state === 'included' && e.witness.blockNumber === 12 && !e.message.includes(SECRET));
   // No SDK or node exception text reaches the run result: the witness is identity fields only and the detail is a fixed code.
-  const witness = { stage: 'post-broadcast' as const, txHash: '0xw', state: 'pending', rawWitness: { ok: false, hash: '0xw', state: 'pending' } };
+  const witness = { stage: 'post-broadcast' as const, txHash: '0xw', state: 'pending' as const, rawWitness: { ok: false, hash: '0xw', state: 'pending' as const } };
   const out = process.stdout.write.bind(process.stdout); const chunks: string[] = [];
   process.stdout.write = ((c: string | Uint8Array) => { chunks.push(String(c)); return true; }) as typeof process.stdout.write;
   try { await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (cfg) => ({ ...createDryRunDependencies(cfg), settlePayment: async () => { throw new SettlementWitnessFailure(`node said ${SECRET}`, witness); } })); }
@@ -321,4 +321,41 @@ test('settlement key state: prepared and unresolved blocks, aborted-before-broad
   assert.ok(!text.includes(SECRET), 'exception text never reaches the result');
   const result = JSON.parse(text.trim().split('\n').pop()!);
   assert.equal(result.error.detail, 'payment: settlement-unwitnessed'); assert.deepEqual(Object.keys(result.error.settlement.rawWitness).sort(), ['hash', 'ok', 'state']);
+});
+
+test('round 2: attempts are tracked by transaction hash; failures after an included payment carry its witness, refusals included; node states are allowlisted; a rejecting abort journal keeps the hash', async () => {
+  const { settlementKeyState, includedWitnessOf, main } = await import('../../src/live/dacs-testnet-run.mjs');
+  const { createDryRunDependencies } = await import('../../src/live/testnet-run-fixtures.js');
+  const { normaliseWitnessState } = await import('../../src/adapters/dacs/pay-dem.js');
+  const { createDemosNativeClient } = await import('../../src/adapters/dacs/pay-dem-demosdk.js');
+  const key = 'pay-dem:job-y:2';
+  const prep = (h: string) => ({ txHash: h, nonce: 1, payer: 'p', payee: 's', amountOs: '1', network: 'demos', recovery: { settlementKey: key } });
+  // prepared(A) aborted, prepared(B) broadcast-attempted: B may have moved DEM, so the key is unresolved (on B).
+  assert.deepEqual(settlementKeyState([prep('A'), { timestamp: 't', amountOs: '1', outcome: 'aborted-before-broadcast', settlementKey: key, txHash: 'A' }, prep('B'), { timestamp: 't', amountOs: '1', outcome: 'broadcast-attempted', settlementKey: key, txHash: 'B' }], key), { state: 'unresolved', txHash: 'B' });
+  // An abort naming A does not free B; a settled B is terminal.
+  assert.deepEqual(settlementKeyState([prep('A'), prep('B'), { timestamp: 't', amountOs: '1', outcome: 'aborted-before-broadcast', settlementKey: key, txHash: 'A' }], key), { state: 'unresolved', txHash: 'B' });
+  assert.deepEqual(settlementKeyState([prep('A'), { timestamp: 't', amountOs: '1', outcome: 'aborted-before-broadcast', settlementKey: key, txHash: 'A' }, prep('B'), { timestamp: 't', resolution: 'settled', settlementKey: key, txHash: 'B' }], key), { state: 'settled', txHash: 'B' });
+  assert.deepEqual(settlementKeyState([prep('A'), { timestamp: 't', amountOs: '1', outcome: 'aborted-before-broadcast', settlementKey: key, txHash: 'A' }], key), { state: 'aborted', txHash: 'A' });
+  // Node states outside the closed set become 'unknown'.
+  assert.equal(normaliseWitnessState('weird-state <script>'), 'unknown'); assert.equal(normaliseWitnessState('included'), 'included');
+  // A failure after the payment was included carries the witness, and a refusal raised later is a witnessed FAIL, not REFUSED.
+  const out = process.stdout.write.bind(process.stdout); const chunks: string[] = [];
+  process.stdout.write = ((c: string | Uint8Array) => { chunks.push(String(c)); return true; }) as typeof process.stdout.write;
+  let rc: number;
+  try {
+    rc = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (cfg) => { const deps = createDryRunDependencies(cfg); return { ...deps, deliver: async () => { throw new DacsTestnetRefusal('capability', 'anchor refused after payment'); } }; });
+  } finally { process.stdout.write = out; }
+  const result = JSON.parse(chunks.join('').trim().split('\n').pop()!);
+  assert.equal(rc, 1); assert.equal(result.rollup, 'FAIL'); assert.equal(result.error.code, 'settlement-failed'); assert.equal(result.error.stage, 'delivery');
+  assert.equal(typeof result.error.settlement.txHash, 'string'); assert.equal(result.error.settlement.state, 'included');
+  assert.equal(includedWitnessOf({ paymentTxRefs: [{ kind: 'demos', txHash: 'h', blockNumber: 5 }] })?.blockNumber, 5);
+  assert.equal(includedWitnessOf({ paymentTxRefs: [{ rail: 'pay-ap2', txHash: 'x', kind: 'payment' }] }), undefined, 'a legacy entry carries no demos witness');
+  // The wrapper: an abort journal that rejects must not replace the hash-bearing result of a transfer that failed before broadcast.
+  const client = createDemosNativeClient({ address: 'payer', rpc: 'https://example.invalid', demos: {} } as never, {
+    journalPreparedTransfer: async () => {},
+    journalTransferOutcome: async () => { throw new Error('journal disk full'); },
+    sdk: { pay: async () => ({}), sign: async () => ({ hash: 'cd'.repeat(32), content: { nonce: 1 } }), confirm: async () => { throw new Error('node rejected the signed transfer'); }, broadcastAndWait: async () => ({}) } as never,
+  });
+  const r = await client.transfer({ to: 's', amountOs: 1n, authorizationNowIso: new Date().toISOString(), recovery: { settlementKey: key } as never });
+  assert.equal(r.ok, false); assert.equal(r.hash, 'cd'.repeat(32));
 });

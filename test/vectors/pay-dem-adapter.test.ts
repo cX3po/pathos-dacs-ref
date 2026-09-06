@@ -287,12 +287,13 @@ test('alternate pre-inclusion state fails without evidence', async () => {
     authorizedHooks,
   );
   assert.equal(outcome.ok, false);
-  assert.equal(outcome.ok === false && outcome.reason, 'pay-dem did not observe included state (state=confirmed)');
+  assert.equal(outcome.ok === false && outcome.reason, 'pay-dem did not observe included state');
   assert.equal('evidence' in outcome, false);
   // The transfer reached the chain (a hash exists): the failure carries the witness, never a bare refusal.
   const witness = outcome.ok === false ? outcome.witness : undefined;
-  assert.deepEqual(witness && { stage: witness.stage, txHash: witness.txHash, state: witness.state, blockNumber: witness.blockNumber }, { stage: 'post-broadcast', txHash: 'h', state: 'confirmed', blockNumber: 7 });
-  assert.deepEqual(witness?.rawWitness, { ok: true, hash: 'h', state: 'confirmed', blockNumber: 7 });
+  // The node's alias state is not one the core interprets: the witness reports it as 'unknown' and keeps the hash and block.
+  assert.deepEqual(witness && { stage: witness.stage, txHash: witness.txHash, state: witness.state, blockNumber: witness.blockNumber }, { stage: 'post-broadcast', txHash: 'h', state: 'unknown', blockNumber: 7 });
+  assert.deepEqual(witness?.rawWitness, { ok: true, hash: 'h', state: 'unknown', blockNumber: 7 });
 });
 
 test('a failure before any transaction hash exists carries no witness; a failure after the hash carries it', async () => {
@@ -336,7 +337,7 @@ test('client failure returns failure without evidence', async () => {
     clientWith({ ok: false, hash: '', message: 'rejected' }),
     authorizedHooks,
   );
-  assert.deepEqual(outcome, { ok: false, reason: 'rejected' });
+  assert.deepEqual(outcome, { ok: false, reason: 'pay-dem transfer failed' });
   assert.equal('evidence' in outcome, false);
 });
 
@@ -491,4 +492,14 @@ test('pure core has no demosdk import and gateway uses demosdk wiring with a jou
       .map((line, index) => ({ file, line: index + 1, text: line }))
       .filter(({ text }) => !/^\s*(?:\/\/|\/\*|\*)/.test(text) && aliasStateCheck.test(text)));
   assert.deepEqual(offenders, []);
+});
+
+test('a node state outside the closed set is reported as unknown and never interpolated into the reason', async () => {
+  const weird = await settlePayDemCore(params(), clientWith({ ok: true, hash: 'ab'.repeat(16), state: 'weird-state <x>', blockNumber: 3 }), authorizedHooks);
+  assert.equal(weird.ok, false);
+  assert.equal(weird.ok === false && weird.witness?.state, 'unknown');
+  assert.equal(weird.ok === false && weird.reason, 'pay-dem did not observe included state');
+  assert.ok(!JSON.stringify(weird).includes('weird-state'));
+  const spaced = await settlePayDemCore(params(), clientWith({ ok: true, hash: 'not a hash\n', state: 'included', blockNumber: 3 }), authorizedHooks);
+  assert.equal(spaced.ok, false); assert.equal(spaced.ok === false && spaced.witness, undefined, 'an unbounded hash token is not a witness');
 });

@@ -200,13 +200,17 @@ export function createDemosNativeClient(
           } catch {
             abortTimestamp = new Date().toISOString();
           }
-          await journalOutcome({
-            timestamp: abortTimestamp,
-            amountOs: amountOs.toString(),
-            outcome: 'aborted-before-broadcast',
-            ...(recovery?.settlementKey === undefined ? {} : { settlementKey: recovery.settlementKey }),
-            ...(txHash ? { txHash } : {}),
-          });
+          try {
+            await journalOutcome({
+              timestamp: abortTimestamp,
+              amountOs: amountOs.toString(),
+              outcome: 'aborted-before-broadcast',
+              ...(recovery?.settlementKey === undefined ? {} : { settlementKey: recovery.settlementKey }),
+              ...(txHash ? { txHash } : {}),
+            });
+          } catch {
+            // A failing abort journal must not replace the hash-bearing result: the row's absence keeps the key unresolved, which is the safe state.
+          }
         }
       }
     },
