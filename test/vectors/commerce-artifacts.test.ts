@@ -61,7 +61,8 @@ test('rehearsal on testnet, mainnet disabled, nothing signed', () => {
   assert.equal(listing.dacsVersion, '1');
   assert.equal(listing.signature, undefined);
   assert.equal(listing.seller.identity.presentedBy, 'did:demos:agent:unset-until-deploy');
-  assert.match(listing['x-pathos'].publish, /signDacs1Listing/);
+  assert.match(listing['x-pathos'].publish, /remove this x-pathos block; \(4\) sign/);
+  assert.deepEqual(listing.offering.deliverable.verificationMethod, { kind: 'self-signed' });
   assert.equal(offers.provider.identity.identifier, 'unset-until-deploy');
   assert.equal(manifest.provider.signingKey.identifier, 'unset-until-deploy');
   for (const service of manifest.services) {
@@ -97,7 +98,7 @@ test('artifact hashes are pinned (a price or term change is a deliberate diff)',
     'offers.json': 'ad582c63a59e8809d6bdfb7aba982ccc2358de1530afe72198c67f541f1ab74b',
     'service-manifest.json': 'abafad61614e2815673b5951232d7b25ba0f28dd87500ba9f5aff860a371e522',
     'openapi.json': 'a76868e4b4d33c820c6e259514f630fb96e2f0e49b97da719d4025c8debdb856',
-    'discovery-registration.json': '5fbeccf550116f1a61d557b9f1e5d90f9f0a8599ab72f28a3be23362ed5bbd13',
+    'discovery-registration.json': '8fc2f283ad01b1fd1710b101e58ae4f05ac4dbe751c54648b105f904593c94fe',
   };
   for (const [name, hash] of Object.entries(pinned)) {
     assert.equal(jcsHashHex(load(name)), hash, name);

@@ -55,73 +55,139 @@ export const agentDidSignatureVerifier: PresentationSignatureVerifier = ({ domai
 
 /** The §6.3.4 members a producer's listing may carry: the Standard's, plus the CF-4 logical address the anchored record carries as metadata (DACS-1-IDENTIFY §6.3.4(b)). */
 const LISTING_MEMBERS = new Set(['dacsVersion', 'listingVersion', 'listingId', 'requiredCapabilities', 'seller', 'offering', 'buyerRequirement', 'pipeline', 'pricing', 'acceptedRails', 'terms', 'validity', 'signature', 'logical_address']);
-/** The pinned dacs-sdk's PhaseStep kinds (validators.ts PHASE_TYPES, 3aa1d7df); mirrored here with the date so a drift is a dated fact. 2026-09-06. */
+/**
+ * Mirrored from the pinned dacs-sdk's validators.ts (3aa1d7df) on 2026-09-06: PHASE_TYPES, NO_PARAMETER_PHASES, the
+ * deliverable and verification-method kinds. A drift from that file is a dated fact; the differential test
+ * (test/vectors/producer-listing-sdk-differential.test.ts, run with DACS_SDK_DIR) measures this check against the SDK's
+ * own isListing on the shapes the producers emit and the refusals reviews found.
+ */
 const PHASE_TYPES = new Set(['vet-credentials', 'negotiate-fixed-price', 'negotiate-rfq', 'negotiate-sealed-envelope', 'negotiate-sealed-envelope-procurement', 'commit-agreement', 'commit-payee-bound-agreement', 'pay-evm-erc20', 'pay-solana-spl', 'pay-cross-chain-htlc', 'pay-cross-chain-liquidity-tank', 'pay-ap2', 'pay-x402', 'pay-dem', 'pay-alternative', 'deliver-storage-program', 'deliver-entitlement', 'deliver-attested-payload', 'rate']);
 const NO_PARAMETER_PHASES = new Set(['vet-credentials', 'negotiate-fixed-price', 'commit-agreement', 'commit-payee-bound-agreement', 'deliver-storage-program', 'deliver-entitlement', 'deliver-attested-payload']);
-const DELIVERABLE_KINDS = new Set(['storage-program', 'entitlement', 'attested-payload', 'external']);
+const VERIFICATION_METHOD_KINDS = new Set(['verifiable-credential', 'tlsnotary', 'zktls', 'consensus-backed-proxy', 'oauth-attested', 'evm-rpc', 'domain-tls-control', 'self-signed', 'demos-gcr-domain']);
 /** LR-2: the complete canonical signed record, as the pinned dacs-sdk measures it (validators.ts isListingEnvelope). */
 export const DACS1_LISTING_SIZE_CAP_BYTES = 16_384;
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStr = (v: unknown, max = Number.POSITIVE_INFINITY): v is string => typeof v === 'string' && v.length <= max;
+const isOptStr = (v: unknown): boolean => v === undefined || typeof v === 'string';
 const isUint = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
+const isPosInt = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 1;
+const isClaimRef = (v: unknown): v is string => typeof v === 'string' && /^[a-z][a-z0-9-]*:.+$/.test(v) && v.trim() === v;
+/** CD-1 canonical positive decimal: no leading zeros, no trailing zeros, not zero. */
+const isPositiveCanonicalAmount = (v: unknown): boolean => typeof v === 'string' && /^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$/.test(v) && v !== '0';
+const isCanonicalBase64Url = (v: unknown): boolean => typeof v === 'string' && v.length > 0 && /^[A-Za-z0-9_-]+$/.test(v) && Buffer.from(v, 'base64url').toString('base64url') === v;
+function fail(reason: string): never { throw new Error(reason); }
+
+function assertDeliverable(d: unknown): void {
+  if (!isObj(d)) fail('listing.offering.deliverable must be a DeliverableSpec');
+  switch (d.kind) {
+    case 'storage-program':
+      if (!isOptStr(d.schemaUrl) || (d.expectedSizeBytes !== undefined && !isUint(d.expectedSizeBytes)) || (d.accessModel !== undefined && !['public', 'buyer-only', 'encrypt-to-buyer'].includes(d.accessModel as string))) fail('listing.offering.deliverable (storage-program): schemaUrl string, expectedSizeBytes uint, accessModel public|buyer-only|encrypt-to-buyer');
+      return;
+    case 'entitlement':
+      if (!isPosInt(d.durationSec) || typeof d.renewable !== 'boolean') fail('listing.offering.deliverable (entitlement): durationSec positive integer, renewable boolean');
+      return;
+    case 'attested-payload':
+      if (!isStr(d.payloadFormat) || d.payloadFormat.length === 0 || (d.verificationMethod !== undefined && !(isObj(d.verificationMethod) && VERIFICATION_METHOD_KINDS.has(d.verificationMethod.kind as string))) || (d.expectedSizeBytes !== undefined && !isUint(d.expectedSizeBytes))) fail('listing.offering.deliverable (attested-payload): payloadFormat non-empty, verificationMethod { kind } of a known kind, expectedSizeBytes uint');
+      return;
+    default:
+      fail('listing.offering.deliverable.kind must be storage-program, entitlement or attested-payload here');
+  }
+}
+
+function assertPipeline(listing: Record<string, unknown>): void {
+  const pipeline = listing.pipeline;
+  if (!Array.isArray(pipeline) || pipeline.length === 0) fail('listing.pipeline must be a non-empty PhaseStep array');
+  const steps = pipeline as Array<Record<string, unknown>>;
+  for (const step of steps) {
+    if (!isObj(step) || !PHASE_TYPES.has(step.kind as string)) fail(`listing.pipeline step kind is not a PhaseStep kind: ${String(isObj(step) ? step.kind : step)}`);
+    const kind = step.kind as string;
+    if (NO_PARAMETER_PHASES.has(kind)) { if (step.parameters !== undefined) fail(`listing.pipeline ${kind} takes no parameters`); continue; }
+    if (kind === 'rate') { if (step.parameters !== undefined && !(isObj(step.parameters) && (step.parameters.required === undefined || typeof step.parameters.required === 'boolean'))) fail('listing.pipeline rate parameters must be absent or { required?: boolean }'); continue; }
+    if (!isObj(step.parameters)) fail(`listing.pipeline ${kind} needs parameters`);
+    if (kind === 'pay-alternative') fail('listing.pipeline pay-alternative is not emitted by these producers');
+    if (kind.startsWith('pay-') && !(isStr(step.parameters.rail) && step.parameters.rail.length > 0)) fail(`listing.pipeline ${kind} needs parameters.rail`);
+    if (kind === 'negotiate-rfq' || kind.startsWith('negotiate-sealed')) fail(`listing.pipeline ${kind} is not emitted by these producers (fixed pricing only)`);
+  }
+  // DACS-3 §8.8 PS-1..PS-3: exactly one negotiation, exactly one commit right after it, fixed pricing under negotiate-fixed-price.
+  const negotiate = steps.map((phase, index) => ({ phase, index })).filter(({ phase }) => (phase.kind as string).startsWith('negotiate-'));
+  const commits = steps.map((phase, index) => ({ phase, index })).filter(({ phase }) => (phase.kind as string).startsWith('commit-'));
+  if (negotiate.length !== 1 || commits.length !== 1 || commits[0]!.index !== negotiate[0]!.index + 1) fail('listing.pipeline must carry exactly one negotiate- step followed directly by exactly one commit- step (DACS-3 §8.8 PS-1/PS-2)');
+  if (!steps.some((phase) => (phase.kind as string).startsWith('deliver-'))) fail('listing.pipeline must carry a deliver- step (DACS-4 §9.9 PIPE-1)');
+  if (steps.some((phase) => phase.kind === 'deliver-attested-payload')) {
+    const deliverable = isObj(listing.offering) ? (listing.offering as Record<string, unknown>).deliverable : undefined;
+    if (!isObj(deliverable) || deliverable.kind !== 'attested-payload' || !isObj(deliverable.verificationMethod)) fail('listing.pipeline deliver-attested-payload needs an attested-payload deliverable with a verificationMethod (DACS-4 §9.6.3 DPA-1)');
+  }
+  // DACS-1 §6.3.4 step 8 / LRR-1: every payment phase names a rail the listing accepts, one phase kind per rail.
+  const payPhases = steps.filter((phase) => (phase.kind as string).startsWith('pay-'));
+  const rails = listing.acceptedRails as Array<{ railId?: unknown }> | undefined;
+  if (payPhases.length > 0) {
+    if (!rails || rails.length === 0) fail('listing.acceptedRails must name the rail(s) the payment phases use (DACS-1 §6.3.4 step 8)');
+    const kindByRail = new Map<string, string>();
+    for (const phase of payPhases) {
+      const railId = (phase.parameters as Record<string, unknown>).rail as string;
+      if (!rails.some((rail) => rail.railId === railId)) fail(`listing.pipeline ${String(phase.kind)} names rail ${railId}, which acceptedRails does not carry (LRR-1)`);
+      const prior = kindByRail.get(railId);
+      if (prior !== undefined && prior !== phase.kind) fail(`listing.pipeline binds rail ${railId} to two phase kinds (LRR-4)`);
+      kindByRail.set(railId, phase.kind as string);
+    }
+  }
+  if (rails) {
+    const canonical = rails.map((rail) => JSON.stringify(rail, Object.keys(rail as object).sort()));
+    if (new Set(canonical).size !== canonical.length) fail('listing.acceptedRails must not repeat a rail (LRR-1)');
+  }
+}
 
 /**
  * Structural check of a signed DACS-1 §6.3.4 Listing before it is anchored or accepted for anchoring, mirroring the
- * pinned dacs-sdk's isListing for the members a producer emits: any member outside the set is refused (a stray
+ * pinned dacs-sdk's isListing for the shapes a producer emits: any member outside the set is refused (a stray
  * `contentHash` would otherwise sit inside the signed scope and split the record from its ListingPin), every member
- * has the Standard's shape, the pipeline uses the SDK's PhaseStep kinds with their parameter rules, and the record
- * carries the CF-4 logical address derived from (seller claim, listingId, listingVersion). Throws with the reason.
+ * has the Standard's shape, the pipeline uses the SDK's PhaseStep kinds with their parameter rules and coheres with the
+ * pricing, the deliverable and the accepted rails, the signature value is canonical base64url, the record carries the
+ * CF-4 logical address derived from (seller claim, listingId, listingVersion), and the complete canonical signed record
+ * fits the LR-2 cap. Throws with the reason. It is a pre-flight, not the SDK's validator: the differential test keeps
+ * the two in agreement on the shapes and refusals it enumerates.
  */
 export function assertDacs1Listing(listing: unknown): asserts listing is Record<string, unknown> {
-  if (!isObj(listing)) throw new Error('listing must be an object');
-  for (const key of Object.keys(listing)) if (!LISTING_MEMBERS.has(key)) throw new Error(`listing.${key} is not a DACS-1 §6.3.4 member`);
-  if (listing.dacsVersion !== '1') throw new Error(`listing.dacsVersion must be "1" (a DACS-1 §6.3.4 Listing; got: ${String(listing.dacsVersion)})`);
-  if (!Number.isSafeInteger(listing.listingVersion) || (listing.listingVersion as number) < 1) throw new Error('listing.listingVersion must be an integer >= 1');
-  if (!isStr(listing.listingId) || !/^[A-Za-z0-9._~-]{1,128}$/.test(listing.listingId)) throw new Error('listing.listingId must match ^[A-Za-z0-9._~-]{1,128}$');
-  if (listing.requiredCapabilities !== undefined && !(Array.isArray(listing.requiredCapabilities) && listing.requiredCapabilities.every((c) => ['SR-1', 'SR-2', 'SR-3', 'SR-4', 'SR-5'].includes(c as string)))) throw new Error('listing.requiredCapabilities must list SR-1..SR-5 only');
+  if (!isObj(listing)) fail('listing must be an object');
+  for (const key of Object.keys(listing)) if (!LISTING_MEMBERS.has(key)) fail(`listing.${key} is not a DACS-1 §6.3.4 member`);
+  if (listing.dacsVersion !== '1') fail(`listing.dacsVersion must be "1" (a DACS-1 §6.3.4 Listing; got: ${String(listing.dacsVersion)})`);
+  if (!isPosInt(listing.listingVersion)) fail('listing.listingVersion must be an integer >= 1');
+  if (!isStr(listing.listingId) || !/^[A-Za-z0-9._~-]{1,128}$/.test(listing.listingId)) fail('listing.listingId must match ^[A-Za-z0-9._~-]{1,128}$');
+  if (listing.requiredCapabilities !== undefined && !(Array.isArray(listing.requiredCapabilities) && listing.requiredCapabilities.every((c) => ['SR-1', 'SR-2', 'SR-3', 'SR-4', 'SR-5'].includes(c as string)))) fail('listing.requiredCapabilities must list SR-1..SR-5 only');
   const seller = listing.seller;
-  if (!isObj(seller) || !isStr(seller.displayName, 200)) throw new Error('listing.seller.displayName must be a string of at most 200 characters');
+  if (!isObj(seller) || !isStr(seller.displayName, 200) || !isOptStr(seller.publicEndpoint)) fail('listing.seller.displayName must be a string of at most 200 characters (publicEndpoint, when present, a string)');
   const identity = seller.identity;
-  if (!isObj(identity) || identity.bundleVersion !== '1' || !isStr(identity.presentedBy) || !isUint(identity.presentedAt)) throw new Error('listing.seller.identity must be an IdentityBundle (bundleVersion "1", presentedBy, presentedAt) (§6.3.2)');
+  if (!isObj(identity) || identity.bundleVersion !== '1' || !isClaimRef(identity.presentedBy) || !isUint(identity.presentedAt) || !isOptStr(identity.sessionNonce)) fail('listing.seller.identity must be an IdentityBundle (bundleVersion "1", presentedBy claim, presentedAt) (§6.3.2)');
   const claims = identity.claims;
-  if (!Array.isArray(claims) || claims.length === 0 || !claims.every((c) => isObj(c) && isStr(c.ref))) throw new Error('listing.seller.identity.claims must be a non-empty array of { ref }');
-  if (!claims.some((c) => (c as { ref: string }).ref === identity.presentedBy)) throw new Error('listing.seller.identity.presentedBy must be one of its claims (§6.3.2 BP-3)');
+  if (!Array.isArray(claims) || claims.length === 0 || !claims.every((c) => isObj(c) && isClaimRef(c.ref) && (c.issuedAt === undefined || isUint(c.issuedAt)) && (c.expiresAt === undefined || isUint(c.expiresAt)) && (c.metadata === undefined || isObj(c.metadata)) && c.verifiedBy === undefined)) fail('listing.seller.identity.claims must be a non-empty array of { ref } (issuedAt/expiresAt uint, metadata object; no verifiedBy here)');
+  if (!claims.some((c) => (c as { ref: string }).ref === identity.presentedBy)) fail('listing.seller.identity.presentedBy must be one of its claims (§6.3.2 BP-3)');
   const presentation = identity.presentation;
-  if (!isObj(presentation) || presentation.kind !== 'per-claim' || !Array.isArray(presentation.signatures) || !presentation.signatures.every((e) => isObj(e) && isStr(e.ref) && isStr(e.signature))) throw new Error('listing.seller.identity.presentation must be { kind: "per-claim", signatures: [{ ref, signature }] }');
+  if (!isObj(presentation) || presentation.kind !== 'per-claim' || !Array.isArray(presentation.signatures) || presentation.signatures.length === 0 || !presentation.signatures.every((e) => isObj(e) && isClaimRef(e.ref) && isStr(e.signature))) fail('listing.seller.identity.presentation must be { kind: "per-claim", signatures: [{ ref, signature }] } with at least one signature');
   const offering = listing.offering;
-  if (!isObj(offering) || !isStr(offering.title, 200) || !isStr(offering.description, 2_000)) throw new Error('listing.offering.title (<= 200) and description (<= 2000) must be strings');
-  if (!isStr(offering.category) || !offering.category.split('.').every((part) => part.length > 0)) throw new Error('listing.offering.category must be a dotted non-empty path');
-  if (!Array.isArray(offering.tags) || offering.tags.length > 16 || !offering.tags.every((t) => isStr(t, 32))) throw new Error('listing.offering.tags must be at most 16 strings of at most 32 characters');
-  const deliverable = offering.deliverable;
-  if (!isObj(deliverable) || !DELIVERABLE_KINDS.has(deliverable.kind as string)) throw new Error('listing.offering.deliverable.kind must be storage-program, entitlement, attested-payload or external');
-  if (deliverable.kind === 'storage-program' && deliverable.accessModel !== undefined && !['public', 'buyer-only', 'encrypt-to-buyer'].includes(deliverable.accessModel as string)) throw new Error('listing.offering.deliverable.accessModel must be public, buyer-only or encrypt-to-buyer');
+  if (!isObj(offering) || !isStr(offering.title, 200) || !isStr(offering.description, 2_000)) fail('listing.offering.title (<= 200) and description (<= 2000) must be strings');
+  if (!isStr(offering.category) || !offering.category.split('.').every((part) => part.length > 0)) fail('listing.offering.category must be a dotted non-empty path');
+  if (!Array.isArray(offering.tags) || offering.tags.length > 16 || !offering.tags.every((t) => isStr(t, 32))) fail('listing.offering.tags must be at most 16 strings of at most 32 characters');
+  if (!isOptStr(offering.extendedDescriptionUrl) || !isOptStr(offering.extendedDescriptionHash)) fail('listing.offering.extendedDescriptionUrl/Hash, when present, must be strings');
+  assertDeliverable(offering.deliverable);
   const requirement = listing.buyerRequirement;
-  if (!isObj(requirement) || requirement.requirementVersion !== '1' || !Array.isArray(requirement.required) || !requirement.required.every((r) => isObj(r) && isStr(r.scheme) && /^[a-z][a-z0-9-]*$/.test(r.scheme) && typeof r.verificationRequired === 'boolean')) throw new Error('listing.buyerRequirement must be { requirementVersion: "1", required: [{ scheme, verificationRequired }] }');
-  const pipeline = listing.pipeline;
-  if (!Array.isArray(pipeline) || pipeline.length === 0) throw new Error('listing.pipeline must be a non-empty PhaseStep array');
-  for (const step of pipeline) {
-    if (!isObj(step) || !PHASE_TYPES.has(step.kind as string)) throw new Error(`listing.pipeline step kind is not a PhaseStep kind: ${String(isObj(step) ? step.kind : step)}`);
-    const kind = step.kind as string;
-    if (NO_PARAMETER_PHASES.has(kind)) { if (step.parameters !== undefined) throw new Error(`listing.pipeline ${kind} takes no parameters`); continue; }
-    if (kind === 'rate') continue;
-    if (!isObj(step.parameters)) throw new Error(`listing.pipeline ${kind} needs parameters`);
-    if (kind.startsWith('pay-') && kind !== 'pay-alternative' && !(isStr(step.parameters.rail) && step.parameters.rail.length > 0)) throw new Error(`listing.pipeline ${kind} needs parameters.rail`);
-  }
+  const isClaimRequirement = (r: unknown): boolean => isObj(r) && isStr(r.scheme) && /^[a-z][a-z0-9-]*$/.test(r.scheme) && typeof r.verificationRequired === 'boolean' && (r.maxAge === undefined || isUint(r.maxAge)) && (r.recipeVersion === undefined || isPosInt(r.recipeVersion)) && (r.parameters === undefined || isObj(r.parameters));
+  if (!isObj(requirement) || requirement.requirementVersion !== '1' || !Array.isArray(requirement.required) || !requirement.required.every(isClaimRequirement) || (requirement.oneOf !== undefined && !(Array.isArray(requirement.oneOf) && requirement.oneOf.every((g) => Array.isArray(g) && g.length > 0 && g.every(isClaimRequirement)))) || (requirement.preferredPresentation !== undefined && !['siwd', 'sr1-root', 'per-claim', 'session-key', 'any'].includes(requirement.preferredPresentation as string)) || (requirement.primaryClaimSelector !== undefined && !(isStr(requirement.primaryClaimSelector) && /^[a-z][a-z0-9-]*$/.test(requirement.primaryClaimSelector)))) fail('listing.buyerRequirement must be { requirementVersion: "1", required: [{ scheme, verificationRequired, maxAge?, recipeVersion?, parameters? }] } (§6.3.3)');
   const pricing = listing.pricing;
-  if (!isObj(pricing) || pricing.kind !== 'fixed' || !isObj(pricing.price) || !isStr(pricing.price.amount) || !/^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$/.test(pricing.price.amount) || !isStr(pricing.price.currency)) throw new Error('listing.pricing must be { kind: "fixed", price: { amount (canonical decimal string), currency } } here');
-  if (listing.acceptedRails !== undefined && !(Array.isArray(listing.acceptedRails) && listing.acceptedRails.every((r) => isObj(r) && isStr(r.railId) && r.railId.length > 0))) throw new Error('listing.acceptedRails must be [{ railId }]');
+  if (!isObj(pricing) || pricing.kind !== 'fixed' || !isObj(pricing.price) || !isPositiveCanonicalAmount(pricing.price.amount) || !isStr(pricing.price.currency) || pricing.price.currency.length === 0 || !isOptStr(pricing.price.unit)) fail('listing.pricing must be { kind: "fixed", price: { amount (canonical decimal > 0), currency (non-empty) } } here');
+  if (listing.acceptedRails !== undefined && !(Array.isArray(listing.acceptedRails) && listing.acceptedRails.every((r) => isObj(r) && isStr(r.railId) && r.railId.length > 0))) fail('listing.acceptedRails must be [{ railId }]');
+  assertPipeline(listing);
   const terms = listing.terms;
-  if (!isObj(terms) || (terms.deadlineSecAfterCommit !== undefined && !(Number.isSafeInteger(terms.deadlineSecAfterCommit) && (terms.deadlineSecAfterCommit as number) >= 1))) throw new Error('listing.terms must be an object; deadlineSecAfterCommit, when present, a positive integer');
+  if (!isObj(terms) || !isOptStr(terms.termsOfServiceUrl) || !isOptStr(terms.termsOfServiceHash) || (terms.jurisdictions !== undefined && !(Array.isArray(terms.jurisdictions) && terms.jurisdictions.every((code) => isStr(code) && /^[A-Z]{2}$/.test(code)))) || (terms.deadlineSecAfterCommit !== undefined && !isPosInt(terms.deadlineSecAfterCommit)) || (terms.acceptanceModel !== undefined && terms.acceptanceModel !== 'auto-accept') || (terms.cancellationPolicy !== undefined && !['none', 'pre-commit', 'with-fee'].includes(terms.cancellationPolicy as string)) || (terms.retentionYears !== undefined && !isPosInt(terms.retentionYears))) fail('listing.terms members, when present, must take the Standard\'s shapes (termsOfServiceUrl/Hash strings, jurisdictions ISO codes, deadlineSecAfterCommit positive integer, acceptanceModel auto-accept, cancellationPolicy none|pre-commit|with-fee, retentionYears positive integer)');
   const validity = listing.validity;
-  if (!isObj(validity) || !isUint(validity.notBefore) || (validity.notAfter !== undefined && !(isUint(validity.notAfter) && validity.notAfter >= validity.notBefore))) throw new Error('listing.validity must carry notBefore (unix ms) and, when present, notAfter >= notBefore');
+  if (!isObj(validity) || !isUint(validity.notBefore) || (validity.notAfter !== undefined && !(isUint(validity.notAfter) && validity.notAfter >= validity.notBefore))) fail('listing.validity must carry notBefore (unix ms) and, when present, notAfter >= notBefore');
   const signature = listing.signature;
-  if (!isObj(signature) || signature.algorithm !== 'ed25519' || !isStr(signature.signer) || !isStr(signature.value)) throw new Error('listing.signature must be { algorithm: "ed25519", signer, value } (§6.3.4)');
-  if (signature.signer !== identity.presentedBy) throw new Error('listing signer must be the claim the seller identity bundle presents (§6.3.4)');
-  const expectedLogical = listingLogicalAddress(identity.presentedBy, listing.listingId, listing.listingVersion as number);
-  if (listing.logical_address !== expectedLogical) throw new Error(`listing.logical_address must be the CF-4 address derived from (seller claim, listingId, listingVersion): ${expectedLogical}`);
+  if (!isObj(signature) || signature.algorithm !== 'ed25519' || !isClaimRef(signature.signer) || !isCanonicalBase64Url(signature.value)) fail('listing.signature must be { algorithm: "ed25519", signer, value } with a canonical base64url value (§6.3.4)');
+  if (signature.signer !== identity.presentedBy) fail('listing signer must be the claim the seller identity bundle presents (§6.3.4)');
+  const expectedLogical = listingLogicalAddress(identity.presentedBy, listing.listingId, listing.listingVersion);
+  if (listing.logical_address !== expectedLogical) fail(`listing.logical_address must be the CF-4 address derived from (seller claim, listingId, listingVersion): ${expectedLogical}`);
   const size = jcsCanonical(listing).length;
-  if (size > DACS1_LISTING_SIZE_CAP_BYTES) throw new Error(`listing canonical signed record is ${size} bytes, over the LR-2 cap of ${DACS1_LISTING_SIZE_CAP_BYTES}`);
+  if (size > DACS1_LISTING_SIZE_CAP_BYTES) fail(`listing canonical signed record is ${size} bytes, over the LR-2 cap of ${DACS1_LISTING_SIZE_CAP_BYTES}`);
 }
 
 export interface ProducerListingInput {
