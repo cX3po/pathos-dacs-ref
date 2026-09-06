@@ -67,6 +67,9 @@ const DID_GRAMMAR = /^did:[a-z0-9]+:[A-Za-z0-9._:-]+$/; // did:<lowercase-method
 // and the equivalent object claim are ONE logical signer. DID/other-scheme claims keep their handling
 // (a generic scheme split would mis-route did:method:id, since `did` is itself a known scheme).
 const CCI_STRING = /^cci:(?:0x)?([0-9a-fA-F]{64})$/;
+// DACS-1 §6.3.1 Demos agent DID profile: the key component IS the ed25519 public key (lowercase, no 0x; an
+// uppercase key component is non-canonical and rejected). One logical signer with the cci/object forms of that key.
+const AGENT_DID_STRING = /^did:demos:agent:([0-9a-f]{64})$/;
 /** A sha256 content/bundle hash: 64 hex chars, optionally a "sha256:" prefix. */
 function isHash(h: unknown): boolean {
   return typeof h === 'string' && /^(sha256:)?[0-9a-fA-F]{64}$/.test(h);
@@ -102,6 +105,12 @@ export function claimKey(c: unknown): string | null {
     // object form — it IS the same logical claim, not an impersonation of a different one.
     const m = CCI_STRING.exec(c);
     if (m) return `obj:cci:${m[1]!.toLowerCase()}`;
+    // The DACS-1 §6.3.1 agent DID is read strictly: lowercase scheme and method (DID Core) and a lowercase
+    // hex key component (the profile). Nothing is repaired here, so a signed artifact carrying a
+    // non-canonical form fails to match its party, as it does under the dacs-sdk's canonical reader.
+    const did = AGENT_DID_STRING.exec(c);
+    if (did) return `obj:cci:${did[1]}`;
+    if (/^did:demos:agent:/.test(c)) return null;
     return DID_GRAMMAR.test(c) ? `str:${c}` : null; // other bare claims must be DIDs
   }
   if (c && typeof c === 'object') {
@@ -136,7 +145,7 @@ export function claimKey(c: unknown): string | null {
 function keyBytes(c: unknown): Uint8Array | null {
   // Spec string-form cci ("cci:<hex>") resolves to the same ed25519 key as the object form.
   if (typeof c === 'string') {
-    const sm = CCI_STRING.exec(c);
+    const sm = CCI_STRING.exec(c) ?? AGENT_DID_STRING.exec(c); // the DID is read strictly (see claimKey)
     return sm ? Uint8Array.from(sm[1]!.toLowerCase().match(/../g)!.map((b) => parseInt(b, 16))) : null;
   }
   if (!c || typeof c !== 'object') return null; // other bare-DID string claims are not raw keys

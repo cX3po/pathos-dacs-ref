@@ -197,6 +197,27 @@ export function cciClaimForAddress(address: string): ClaimReference {
   return `cci:${pubkeyHexOfAddress(address)}` as ClaimReference;
 }
 
+/**
+ * The DACS-1 §6.3.1 self-certifying Demos agent DID for a wallet: `did:demos:agent:<64 lowercase hex>`, a
+ * canonical ClaimReference under the registered `did` scheme whose key component IS the ed25519 public key.
+ * A reader resolves the signing key from the claim itself, so parties, writers and signers presented in this
+ * form need no key directory (the pinned dacs-sdk resolves it intrinsically; a bare `cci:` claim is not a
+ * registered scheme and the SDK cannot resolve it).
+ */
+export function agentDidForAddress(address: string): ClaimReference {
+  return `did:demos:agent:${pubkeyHexOfAddress(address)}` as ClaimReference;
+}
+
+const AGENT_DID = /^did:demos:agent:([0-9a-f]{64})$/;
+/** The 64-hex public key of a `cci:`, `key:`, `demos:0x` or `did:demos:agent:` claim, or null. */
+export function pubkeyHexOfClaim(claim: ClaimReference | string): string | null {
+  const text = String(claim);
+  const did = AGENT_DID.exec(text); // strict: lowercase scheme, method and key component, as the dacs-sdk reads it
+  if (did) return did[1]!;
+  const m = /^(cci|key|demos):(?:0x)?([0-9a-f]{64})$/.exec(text);
+  return m ? m[2]! : null;
+}
+
 export function keyClaimForAddress(address: string): ClaimReference {
   return `key:${pubkeyHexOfAddress(address)}` as ClaimReference;
 }
@@ -205,17 +226,16 @@ export function keyClaimForAddress(address: string): ClaimReference {
 export function demosClaimForPubkeyClaim(claim: ClaimReference | string): ClaimReference {
   const text = String(claim);
   if (text.startsWith('demos:')) return text as ClaimReference;
-  const m = /^(cci|key):(?:0x)?([0-9a-f]{64})$/.exec(text);
-  if (!m) throw new Error('only cci:<64-hex public key> or key:<64-hex public key> claims map to a Demos claim');
-  return `demos:0x${m[2]}` as ClaimReference;
+  const hex = pubkeyHexOfClaim(text);
+  if (!hex) throw new Error('only cci:/key:/did:demos:agent: claims over a 64-hex public key map to a Demos claim');
+  return `demos:0x${hex}` as ClaimReference;
 }
 
 /** The DACS-1 listing address takes the registered `key:` form of the same public key that the party claims carry as `cci:`. */
 export function keyClaimForPubkeyClaim(claim: ClaimReference | string): ClaimReference {
-  const text = String(claim);
-  const m = /^(cci|key|demos):(?:0x)?([0-9a-f]{64})$/.exec(text);
-  if (!m) throw new Error('only cci:/key:/demos: claims over a 64-hex public key map to a key: claim');
-  return `key:${m[2]}` as ClaimReference;
+  const hex = pubkeyHexOfClaim(claim);
+  if (!hex) throw new Error('only cci:/key:/demos:/did:demos:agent: claims over a 64-hex public key map to a key: claim');
+  return `key:${hex}` as ClaimReference;
 }
 
 export function parseClaim(ref: ClaimReference | string): ParsedClaim {
@@ -304,7 +324,7 @@ export function verifyDomainHashAgentSignature(
   // `cci:`/`key:` claims carry the same public key as the wallet's `demos:` claim; the CCI verifier only speaks `demos:`.
   const text = String(claim);
   return cci.verifyPrimaryClaimSignature(
-    text.startsWith('cci:') || text.startsWith('key:') ? demosClaimForPubkeyClaim(claim) : claim,
+    text.startsWith('cci:') || text.startsWith('key:') || text.startsWith('did:demos:agent:') ? demosClaimForPubkeyClaim(claim) : claim,
     buildSignedBytes(domain, new TextEncoder().encode(hash)),
     signature,
   );
