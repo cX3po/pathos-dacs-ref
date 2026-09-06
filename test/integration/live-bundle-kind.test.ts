@@ -206,3 +206,37 @@ test('the dry-run listing is a DACS-1 Listing: Standard members only, a per-clai
   assert.ok(state!.byLogical.has(sdkListingProgramName(logical)), `anchored under ${sdkListingProgramName(logical)}`);
   assert.ok(!sdkListingProgramName(logical).includes(':'), 'colon-free program name');
 });
+
+// DACS-2 §7.5: the vet phase records one VerifyResult per party (self-signed: the seller signed what it presented, the buyer presented nothing
+// yet), anchors each under its CM-2 address, and the agreement parties cite them; the run result carries the single-fetch outcome honestly.
+test('the vet phase anchors a DACS-2 VerifyResult per party, the agreement parties cite them, and the run result records the single-fetch outcome', async () => {
+  const { verifyDomainHashAgentSignature } = await import('../../src/adapters/demos/identity.js');
+  const { DOMAIN_SEPARATORS } = await import('../../src/domain-sep.js');
+  const { jcsHashHex } = await import('../../src/jcs.js');
+  let store: Map<string, unknown> | undefined; const chunks: string[] = [];
+  const out = process.stdout.write.bind(process.stdout);
+  process.stdout.write = ((c: string | Uint8Array) => { chunks.push(String(c)); return true; }) as typeof process.stdout.write;
+  try {
+    const exit = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (run) => { const deps = createDryRunDependencies(run); store = deps.fixtureState.byNative; return deps; });
+    assert.equal(exit, 0);
+  } finally { process.stdout.write = out; }
+  const result = JSON.parse(chunks.join('').trim().split('\n').pop()!);
+  assert.equal(result.verification.vet.outcome, 'pass');
+  assert.deepEqual(result.verification.vet.records, { buyer: { method: 'self-signed', decision: 'indeterminate' }, seller: { method: 'self-signed', decision: 'pass' } });
+  assert.equal(result.verification.vet.singleFetch.trustLevel, 'not-applicable'); assert.equal(result.verification.vet.singleFetch.executed, false);
+  const entries = [...store!.values()].filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null);
+  const agreement = entries.find((v) => v.agreementVersion === '1')!;
+  for (const party of agreement.parties as Array<{ role: string; primaryClaim: string; vetRecordRef: { anchor: { locator: string }; contentHash: string; signer?: string } }>) {
+    const record = store!.get(party.vetRecordRef.anchor.locator) as Record<string, unknown>;
+    assert.ok(record, `${party.role} vet record resolves`);
+    assert.equal(record.resultVersion, '1'); assert.equal(record.method, 'self-signed'); assert.equal(record.scheme, 'did'); assert.ok(String(record.identifier).startsWith('demos:agent:'));
+    assert.equal(`${record.scheme}:${record.identifier}`, party.primaryClaim, 'the record names the party claim');
+    assert.equal(record.decision, party.role === 'seller' ? 'pass' : 'indeterminate');
+    const { signature, ...scope } = record as { signature: { signer: string; value: string; algorithm: string } };
+    assert.equal(party.vetRecordRef.contentHash, jcsHashHex(scope), 'the reference hashes the signature-excluded record');
+    assert.equal(party.vetRecordRef.signer, signature.signer, 'the reference pins the verifier');
+    assert.equal(verifyDomainHashAgentSignature(signature.signer as `${string}:${string}`, DOMAIN_SEPARATORS.VERIFY_RESULT, jcsHashHex(scope), Buffer.from(signature.value, 'base64url')), true, 'signed over dacs-verifyresult:v1:');
+    assert.equal((record.attestation as { anchor: { locator: string } }).anchor.locator, result.anchors.listing, 'the self-signed attestation cites the anchored listing');
+    assert.deepEqual(Object.keys(record.attestation as object).sort(), ['anchor', 'contentHash'], 'exact AttestationRef wire keys');
+  }
+});

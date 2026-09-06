@@ -475,7 +475,7 @@ function classifyArtifact(artifact: Record<string, unknown>): ArtifactKind | nul
   if (artifact.listingVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('listing'))) return 'listing';
   if (artifact.agreementVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('agreement'))) return 'agreement';
   if (artifact.evidenceVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('settlement-evidence'))) return 'evidence';
-  if (artifact.recordVersion !== undefined || (typeof artifact.v === 'string' && (artifact.v.includes('verify') || artifact.v.includes('attestation')))) return 'vet';
+  if (artifact.resultVersion !== undefined || artifact.recordVersion !== undefined || (typeof artifact.v === 'string' && (artifact.v.includes('verify') || artifact.v.includes('attestation')))) return 'vet';
   return null;
 }
 

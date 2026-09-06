@@ -80,7 +80,8 @@ test('§B.7 — verify() returns false for unknown separator (does NOT throw)', 
   assert.equal(result, false);
 });
 
-test('§B.7 — registry separator count (13 registry + 13 dacs-x extension)', () => {
+test('§B.7 — registry separator count (14 registry + 13 dacs-x extension)', () => {
+  // 2026-09-06 honest vet in the lifecycle: +1 registry kind (VERIFY_RESULT = CORE §B.7 row "DACS-2 VerifyResult", dacs-verifyresult:v1:) → 13 → 14.
   // v0.1 §B.7 alignment 2026-06-07 (dacs-repin cutover): the 6 drifted strings were renamed
   // to their canonical §B.7 form, the legacy `dacs5-bundle:v1:` was folded into `dacs-bundle:v1:`,
   // and the 7 residual non-registry kinds moved to the SIG-4 `dacs-x-` extension map.
@@ -100,7 +101,7 @@ test('§B.7 — registry separator count (13 registry + 13 dacs-x extension)', (
   // 2026-09-01 CCI agent identity adapter: +1 dacs-x kind (AGENT_IDENTITY) binding agent payloads
   // signed through the CCI adapter (src/adapters/demos/identity.ts) → 12 → 13.
   // 2026-09-02 maintenance rule: the next dacs-x extension addition bumps this count to 14.
-  assert.equal(Object.keys(DOMAIN_SEPARATORS).length, 13,
+  assert.equal(Object.keys(DOMAIN_SEPARATORS).length, 14,
     `expected 13 §B.7-registry separators, got ${Object.keys(DOMAIN_SEPARATORS).length}`);
   assert.equal(Object.keys(DACS_X_EXTENSION_SEPARATORS).length, 13,
     `expected 13 dacs-x extension separators, got ${Object.keys(DACS_X_EXTENSION_SEPARATORS).length}`);

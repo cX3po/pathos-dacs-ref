@@ -10,6 +10,8 @@
  */
 
 import { pathToFileURL } from 'node:url';
+import { dahrFetch } from '../demos/dahr.js';
+import { emitVerifyResult, leiClaimOf, gleifRecordUrl, vetRecordAddress, vetRecordProgramName, type VetRecordRefs, type SingleFetchVet } from './vet-record.js';
 import { dacs1Listing, presentSellerIdentity, signDacs1Listing, listingDeliverableRef } from './listing-wire.js';
 import { settlementTxRefs } from '../adapters/dacs/bundle-finalizer.js';
 import { signatureExcludedHash } from '../lib/content-hash.js';
@@ -61,6 +63,15 @@ export interface PublishedListing {
   listing: Record<string, unknown>;
   listingRef: { listingId: string; version: number; contentHash: string };
   anchor: AgreementAnchorResult;
+  /** Set by the runner after the vet phase: the anchored DACS-2 VerifyResult for each party, cited by the agreement. */
+  vetRecordRefs?: VetRecordRefs;
+}
+
+/** The vet phase's verdict plus what it recorded: one VerifyResult per party and the single-fetch (GLEIF) outcome. */
+export interface VetVerdict extends ColdVerdict {
+  vetRecordRefs?: VetRecordRefs;
+  records?: { buyer: { method: string; decision: string }; seller: { method: string; decision: string } };
+  singleFetch?: SingleFetchVet;
 }
 
 export interface AnchoredEvidence {
@@ -89,7 +100,7 @@ export interface DacsTestnetDependencies {
   mode?: DacsTestnetConfig['mode'];
   capabilityPreflight(config: DacsTestnetConfig): Promise<void>;
   publishListing(config: DacsTestnetConfig): Promise<PublishedListing>;
-  vetListing(listing: PublishedListing, config: DacsTestnetConfig): Promise<ColdVerdict>;
+  vetListing(listing: PublishedListing, config: DacsTestnetConfig): Promise<VetVerdict>;
   emitAgreement(listing: PublishedListing, config: DacsTestnetConfig): Promise<AgreementResult>;
   verifyAgreement(agreement: AgreementResult, listing: PublishedListing, config: DacsTestnetConfig): Promise<ColdVerdict>;
   settlePayment(agreement: AgreementResult, config: DacsTestnetConfig): Promise<AnchoredEvidence>;
@@ -109,7 +120,7 @@ export interface DacsTestnetRunResult {
   mode: 'dry-run' | 'live';
   rollup: 'PASS' | 'FAIL' | 'INDETERMINATE';
   phases: Array<{ index: number; kind: string; outcome: 'PASS' | 'FAIL' }>;
-  verification: { agreement: ColdVerdict; bundle: ColdVerdict };
+  verification: { agreement: ColdVerdict; bundle: ColdVerdict; vet?: { outcome: ColdVerdict['outcome']; detail: string; records?: VetVerdict['records']; singleFetch?: SingleFetchVet } };
   anchors: Partial<Record<'listing' | 'agreement' | 'commitment' | 'paymentEvidence' | 'deliverable' | 'deliveryEvidence' | 'buyerBundle' | 'sellerBundle', string>>;
   paramHash: string;
   authorizeLiveWith?: string;
@@ -604,16 +615,41 @@ export async function createLiveDependencies(
       const anchor = await wiring.anchor({ logicalAddress: anchorNames.listing(logicalAddress), content: listing, contentHash: jcsHashHex(listing) });
       return { listing, listingRef: { listingId, version: 1, contentHash }, anchor };
     },
-    async vetListing(published) {
-      try { await verifyBundleListing(published.listing, { verifySignature }); return { outcome: 'pass', detail: 'listing signature verified' }; }
+    async vetListing(published, run) {
+      try { await verifyBundleListing(published.listing, { verifySignature }); }
       catch { return { outcome: 'fail', detail: 'listing verification failed' }; }
+      // The honest vet: a DACS-2 VerifyResult per party, anchored and cited by the agreement. The seller's wallet signed
+      // its listing and identity bundle (self-signed: pass); the buyer presented nothing yet (self-signed: indeterminate).
+      // A consensus-backed single fetch (GLEIF) runs only for an lei: claim and is never more than indeterminate.
+      const now = Date.now();
+      const listingRef = { anchor: { kind: 'storage-program' as const, locator: published.anchor.nativeAddress }, contentHash: published.listingRef.contentHash };
+      const lei = leiClaimOf(published.listing);
+      let singleFetch: SingleFetchVet = { executed: false, trustLevel: 'not-applicable', reason: 'no lei: claim presented; the GLEIF single-fetch recipe does not apply' };
+      if (lei) {
+        try { await dahrFetch(undefined, gleifRecordUrl(lei), { skipAnchor: true, recipe: 'gleif-cbp:1' }); singleFetch = { executed: true, trustLevel: 'indeterminate', reason: 'single fetch, no validator quorum' }; }
+        catch { singleFetch = { executed: true, trustLevel: 'indeterminate', reason: 'single fetch did not complete; no validator quorum' }; }
+      }
+      const refs: Partial<VetRecordRefs> = {};
+      const records = {} as NonNullable<VetVerdict['records']>;
+      for (const role of ['buyer', 'seller'] as const) {
+        const claim = String(wiring.signers[role].claim);
+        const decision = role === 'seller' ? 'pass' as const : 'indeterminate' as const;
+        const reason = role === 'seller' ? 'the seller wallet signed the listing and its identity bundle (self-signed presentation verified)' : 'the buyer presented no identity bundle before the agreement (self-signed presentation not observed)';
+        const { record, contentHash } = await emitVerifyResult({ claim, method: 'self-signed', decision, reason, attestation: listingRef, fetchedAt: now, verifiedAt: now }, wiring.signers.orchestrator);
+        const address = vetRecordAddress(run.jobId, record.scheme, record.identifier, record.recipeVersion);
+        const anchored = await wiring.anchor({ logicalAddress: vetRecordProgramName(address), content: record, contentHash: jcsHashHex(record) });
+        refs[role] = { anchor: { kind: 'storage-program', locator: anchored.nativeAddress }, contentHash, signer: String(wiring.signers.orchestrator.claim) };
+        records[role] = { method: record.method, decision: record.decision };
+      }
+      return { outcome: 'pass', detail: 'listing signature verified; party vet records anchored', vetRecordRefs: refs as VetRecordRefs, records, singleFetch };
     },
     async emitAgreement(published, run) {
-      // Placeholder until a DACS-2 vet record is anchored (ledger agreement-party-vet-record-ref): cites the anchored listing by its signature-excluded hash (§7.5.2).
-      const vetRef: AttestationRef = { anchor: { kind: 'storage-program', locator: published.anchor.nativeAddress }, contentHash: signatureExcludedHash(published.listing) };
+      // Each party cites its anchored DACS-2 VerifyResult from the vet phase; a session vetted without records (older
+      // callers) falls back to citing the anchored listing by its signature-excluded hash (§7.5.2).
+      const fallback: AttestationRef = { anchor: { kind: 'storage-program', locator: published.anchor.nativeAddress }, contentHash: signatureExcludedHash(published.listing) };
       const parties: AgreementPartyV1[] = [
-        { role: 'buyer', bundleHash: jcsHashHex({ role: 'buyer', claim: wiring.signers.buyer.claim }), primaryClaim: wiring.signers.buyer.claim, vetRecordRef: vetRef },
-        { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: wiring.signers.seller.claim }), primaryClaim: wiring.signers.seller.claim, vetRecordRef: vetRef },
+        { role: 'buyer', bundleHash: jcsHashHex({ role: 'buyer', claim: wiring.signers.buyer.claim }), primaryClaim: wiring.signers.buyer.claim, vetRecordRef: published.vetRecordRefs?.buyer ?? fallback },
+        { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: wiring.signers.seller.claim }), primaryClaim: wiring.signers.seller.claim, vetRecordRef: published.vetRecordRefs?.seller ?? fallback },
       ];
       const committed = await commitAgreement({ jobId: run.jobId, listing: published.listing, listingRef: published.listingRef, parties,
         terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: listingDeliverableRef(published.listing), deadline: Date.now() + 3_600_000 } },
@@ -732,12 +768,13 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
   let bundleVerification = unavailable('bundle verification was not reached');
 
   let paidWitness: import('../adapters/dacs/pay-dem.js').PayDemSettlementWitness | undefined;
+  let vetVerification: NonNullable<DacsTestnetRunResult['verification']['vet']> | undefined;
   const failed = (stage: string, code: 'phase-failed' | 'verification-failed' = 'phase-failed'): DacsTestnetRunResult => ({
     jobId: config.jobId,
     mode: config.mode,
     rollup: 'FAIL',
     phases,
-    verification: { agreement: agreementVerification, bundle: bundleVerification },
+    verification: { agreement: agreementVerification, bundle: bundleVerification, ...(vetVerification ? { vet: vetVerification } : {}) },
     anchors,
     paramHash,
     // Once a payment was included, every later failure carries its witness so the moved DEM is never lost behind the stage that failed.
@@ -764,11 +801,13 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
 
   try {
     const vet = await deps.vetListing(listing, config);
+    vetVerification = { outcome: vet.outcome, detail: vet.detail, ...(vet.records ? { records: vet.records } : {}), ...(vet.singleFetch ? { singleFetch: vet.singleFetch } : {}) };
     if (vet.outcome !== 'pass') {
       const result = failed('vet', 'verification-failed');
       result.rollup = vet.outcome === 'indeterminate' ? 'INDETERMINATE' : 'FAIL';
       return result;
     }
+    if (vet.vetRecordRefs) listing = { ...listing, vetRecordRefs: vet.vetRecordRefs };
   } catch (error) {
     if (error instanceof DacsTestnetRefusal) throw error;
     return failed('vet');
@@ -851,7 +890,7 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
   const rollup = rollupColdVerifications(agreementVerification, bundleVerification);
   return {
     jobId: config.jobId, mode: config.mode, rollup, phases,
-    verification: { agreement: agreementVerification, bundle: bundleVerification },
+    verification: { agreement: agreementVerification, bundle: bundleVerification, ...(vetVerification ? { vet: vetVerification } : {}) },
     anchors, paramHash,
     ...(rollup === 'PASS' && config.mode === 'dry-run'
       ? { authorizeLiveWith: 'GATEWAY_LIVE_APPROVED=1 GATEWAY_DRYRUN_HASH=' + paramHash + ' LIVE=1' }
