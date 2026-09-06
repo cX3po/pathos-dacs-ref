@@ -124,9 +124,10 @@ async function makeSignature(signer: AdapterSigner, domain: DomainSeparator, has
   return { party: signer.claim, algorithm: signer.algorithm ?? 'ed25519', value: sigValue(await signer.sign(domain, hash)) };
 }
 
+/** The raw ed25519 key behind a `cci:` claim or the DACS-1 §6.3.1 agent DID (whose key component is the key itself, lowercase). */
 function cciKey(claim: Claim): Uint8Array | null {
   const raw = typeof claim === 'string'
-    ? /^cci:(?:0x)?([0-9a-fA-F]{64})$/.exec(claim)?.[1]
+    ? (/^cci:(?:0x)?([0-9a-fA-F]{64})$/.exec(claim) ?? /^did:demos:agent:([0-9a-f]{64})$/.exec(claim))?.[1]
     : claim.scheme === 'cci' ? claim.identifier.replace(/^0x/i, '') : undefined;
   return raw && /^[0-9a-fA-F]{64}$/.test(raw) ? Uint8Array.from(raw.match(/../g)!.map((x) => Number.parseInt(x, 16))) : null;
 }

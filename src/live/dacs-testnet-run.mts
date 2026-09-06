@@ -294,16 +294,16 @@ export async function createLiveAdapterWiring(
   const { config: loadEnvFile } = await import('dotenv');
   loadEnvFile({ path: env.DACS_ENV_PATH ?? '.env', processEnv: env as Record<string, string> });
   const { connectDemos, mnemonicFromEnv } = await import('../demos/connection.js');
-  const { claimRefFor, cciClaimForAddress, keyClaimForPubkeyClaim, signDomainHashAsAgent } = await import('../adapters/demos/identity.js');
+  const { claimRefFor, agentDidForAddress, keyClaimForPubkeyClaim, signDomainHashAsAgent } = await import('../adapters/demos/identity.js');
   const storage = await import('../demos/storage.js');
   const buyerHandle = await connectDemos(mnemonicFromEnv('DEMOS_MNEMONIC', env), config.rpc);
   const sellerHandle = await connectDemos(mnemonicFromEnv('DEMOS_SELLER_MNEMONIC', env), config.rpc);
   // DACS artifacts present the `cci:<pubkey>` claim, the form this repository's verifiers, the bundle finalizer
   // and the dry-run fixtures resolve to a public key; the DACS-1 listing address takes the registered `key:`
   // form of the same key; the wallet signs through its `demos:` claim (same ed25519 key: the address is the
-  // public key). Anchor writers and the node receipt provider both use the `cci:` form so authorship binds.
-  const buyer = { ...buyerHandle, name: 'buyer', role: 'buyer-reviewer' as const, mnemonicEnv: 'DEMOS_MNEMONIC', claim: claimRefFor(buyerHandle.address), dacsClaim: cciClaimForAddress(buyerHandle.address) };
-  const seller = { ...sellerHandle, name: 'seller', role: 'seller' as const, mnemonicEnv: 'DEMOS_SELLER_MNEMONIC', claim: claimRefFor(sellerHandle.address), dacsClaim: cciClaimForAddress(sellerHandle.address) };
+  // public key). Anchor writers and the node receipt provider both use the DACS-1 §6.3.1 agent DID form so authorship binds and any reader resolves the key from the claim itself.
+  const buyer = { ...buyerHandle, name: 'buyer', role: 'buyer-reviewer' as const, mnemonicEnv: 'DEMOS_MNEMONIC', claim: claimRefFor(buyerHandle.address), dacsClaim: agentDidForAddress(buyerHandle.address) };
+  const seller = { ...sellerHandle, name: 'seller', role: 'seller' as const, mnemonicEnv: 'DEMOS_SELLER_MNEMONIC', claim: claimRefFor(sellerHandle.address), dacsClaim: agentDidForAddress(sellerHandle.address) };
   const asSigner = (handle: typeof buyer | typeof seller): AdapterSigner => ({ claim: handle.dacsClaim, sign: (domain, hash) => signDomainHashAsAgent(handle, domain, hash) });
   const anchorsByLogical = new Map<string, AgreementAnchorResult>();
   return {

@@ -62,7 +62,7 @@ interface FixtureKey { privateKey: Uint8Array; publicKey: Uint8Array; claim: str
 function fixtureKey(seed: Uint8Array, role: string): FixtureKey {
   const privateKey = sha256(Buffer.concat([Buffer.from(seed), Buffer.from(`\0dacs-testnet:${role}`, 'utf8')]));
   const publicKey = ed25519.getPublicKey(privateKey);
-  return { privateKey, publicKey, claim: `cci:${Buffer.from(publicKey).toString('hex')}` };
+  return { privateKey, publicKey, claim: `did:demos:agent:${Buffer.from(publicKey).toString('hex')}` };
 }
 
 function signer(key: FixtureKey): AdapterSigner {

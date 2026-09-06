@@ -12,7 +12,7 @@ import {
 } from '../../src/live/demos-node-receipt-provider.js';
 import { createLiveAdapterWiring, DacsTestnetRefusal, main, parameterHash, selectReceiptProvider, withSessionAnchor, type DacsTestnetConfig } from '../../src/live/dacs-testnet-run.mjs';
 import { jcsCanonical } from '../../src/jcs.js';
-import { cciClaimForAddress } from '../../src/adapters/demos/identity.js';
+import { agentDidForAddress } from '../../src/adapters/demos/identity.js';
 import type { AnchorReceipt } from '../../src/types/bundle.js';
 
 // Shapes recorded read-only from the public testnet node on 2026-09-05 (stor-34efb7e7…, tx e30c766e…, block 216982).
@@ -56,7 +56,7 @@ function nodeCallFor(fixture: Node, calls: string[] = []): NodeCall {
 
 const config = { rpc: 'https://demosnode.discus.sh/' };
 const request = { logicalAddress: 'dacs1:listing:test', contentHash: CONTENT_HASH,
-  anchor: { logicalAddress: 'dacs1:listing:test', nativeAddress: NATIVE, transactionRef: { kind: 'demos', value: TX }, writer: cciClaimForAddress(OWNER), nonce: '403' } };
+  anchor: { logicalAddress: 'dacs1:listing:test', nativeAddress: NATIVE, transactionRef: { kind: 'demos', value: TX }, writer: agentDidForAddress(OWNER), nonce: '403' } };
 
 test('describe declares a finality-proving CORE §5.1 source', () => {
   const provider = createDemosNodeReceiptProvider(config, { nodeCall: nodeCallFor(nodeFixture()) });
@@ -76,7 +76,7 @@ test('a confirmed transaction in a confirmed block yields a finalized, fully bou
   assert.equal(receipt.logicalAddress, request.logicalAddress);
   assert.equal(receipt.contentHash, CONTENT_HASH);
   assert.deepEqual(receipt.transactionRef, { kind: 'demos', value: TX });
-  assert.equal(receipt.writer, cciClaimForAddress(OWNER));
+  assert.equal(receipt.writer, agentDidForAddress(OWNER));
   assert.equal(receipt.nonce, '403');
   assert.deepEqual(receipt.blockRef, { id: BLOCK_HASH, height: '216982', timestamp: 1788374743000 });
   assert.equal(receipt.observedAt, 1_800_000_000_000);
@@ -241,7 +241,7 @@ test('the provider performs only read-shaped node calls and leaves the environme
 });
 
 test('a cold request is enriched with the anchor this session wrote; an explicit anchor wins; unknown names pass through', () => {
-  const written = { logicalAddress: 'dacs1:listing:test', nativeAddress: NATIVE, transactionRef: { kind: 'demos', value: TX }, writer: cciClaimForAddress(OWNER), nonce: '403' };
+  const written = { logicalAddress: 'dacs1:listing:test', nativeAddress: NATIVE, transactionRef: { kind: 'demos', value: TX }, writer: agentDidForAddress(OWNER), nonce: '403' };
   const wiring = { anchored: (name: string) => (name === 'dacs1:listing:test' ? written : undefined) };
   const cold = { logicalAddress: 'dacs1:listing:test', contentHash: CONTENT_HASH };
   assert.deepEqual(withSessionAnchor(cold, wiring), { ...cold, anchor: written });
