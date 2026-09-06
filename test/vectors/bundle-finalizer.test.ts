@@ -89,11 +89,12 @@ async function session(state: ReturnType<typeof setup>): Promise<CompletedSessio
   const commitmentRef: AttestationRef = { anchor: { kind: 'storage-program', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash };
   state.commitments.set(commitmentRef.anchor.locator, { commitment: committed.commitment, agreement: committed.agreement, receipt: committed.receipt, anchor: { logicalAddress: committed.addresses.commitment.logical, nativeAddress: committed.addresses.commitment.native, transactionRef: committed.receipt.transactionRef, writer: committed.receipt.writer, nonce: committed.receipt.nonce } });
   const paymentLogical = 'dacs4:payment:bundle-job:pay-x402:2';
-  const payment = signedEvidence(emitSettlementEvidenceV1({ kind: 'payment', jobId: 'bundle-job', phase: 'pay-x402', phaseIndex: 2, outcome: 'success', observedAt: 1_780_000_000_000,
+  const payment = signedEvidence(emitSettlementEvidenceV1({ kind: 'payment', jobId: 'bundle-job', phase: 'pay-x402', outcome: 'success', observedAt: 1_780_000_000_000,
     paymentTxRefs: [{ rail: 'pay-x402', txHash: 'tx-payment', kind: 'x402' }], paymentAmount: '10', paymentCurrency: 'USDC', finalityModel: 'provider-receipt', finalityObservedAt: 1_780_000_000_000 }));
-  const delivery = signedEvidence(emitSettlementEvidenceV1({ kind: 'delivery', jobId: 'bundle-job', phase: 'deliver-attested-payload', phaseIndex: 3, outcome: 'success', observedAt: 1_780_000_000_000,
+  const delivery = signedEvidence(emitSettlementEvidenceV1({ kind: 'delivery', jobId: 'bundle-job', phase: 'deliver-attested-payload', outcome: 'success', observedAt: 1_780_000_000_000,
     deliverableContentHash: 'de'.repeat(32), deliverableAnchorKind: 'https', deliverableAnchorLocator: 'https://example.invalid/result' }));
-  const paymentStored = state.putEvidence(paymentLogical, payment), deliveryStored = state.putEvidence('evidence-delivery', delivery);
+  const deliveryLogical = 'dacs4:delivery:bundle-job:3';
+  const paymentStored = state.putEvidence(paymentLogical, payment), deliveryStored = state.putEvidence(deliveryLogical, delivery);
   return {
     jobId: 'bundle-job', listing, listingRef: { listingId: listing.listingId, version: listing.listingVersion, contentHash: listing.contentHash }, agreementRef: commitmentRef,
     parties: [{ role: 'buyer', bundleHash: '01'.repeat(32), primaryClaim: buyer.claim }, { role: 'seller', bundleHash: '02'.repeat(32), primaryClaim: seller.claim }, { role: 'orchestrator', bundleHash: '03'.repeat(32), primaryClaim: orchestrator.claim }],
@@ -101,7 +102,7 @@ async function session(state: ReturnType<typeof setup>): Promise<CompletedSessio
       { index: 0, kind: 'negotiate-fixed-price', outcome: 'ok', orchestrator: orchestrator.claim },
       { index: 1, kind: 'commit-agreement', outcome: 'ok', orchestrator: orchestrator.claim },
       { index: 2, kind: 'pay-x402', outcome: 'ok', orchestrator: orchestrator.claim, evidenceRef: paymentStored.ref, evidenceLogicalAddress: paymentLogical, evidenceAnchor: paymentStored.anchor },
-      { index: 3, kind: 'deliver-attested-payload', outcome: 'ok', orchestrator: orchestrator.claim, evidenceRef: deliveryStored.ref, evidenceLogicalAddress: 'evidence-delivery', evidenceAnchor: deliveryStored.anchor },
+      { index: 3, kind: 'deliver-attested-payload', outcome: 'ok', orchestrator: orchestrator.claim, evidenceRef: deliveryStored.ref, evidenceLogicalAddress: deliveryLogical, evidenceAnchor: deliveryStored.anchor },
     ], outcome: 'completed', faultedParty: 'none', recipeRegistryVersion: 1, railRegistryVersion: 1,
   };
 }
@@ -273,8 +274,8 @@ test('pinned settlement fixtures replay hashes, structural outcomes, and signatu
     const fixture = JSON.parse(bytes.toString('utf8')); const evidence = fixture.evidence; const signature = evidence.signature; const unsigned = { ...evidence }; delete unsigned.signature;
     assert.equal(jcsHashHex(unsigned), fixture.evidenceHash);
     const structural = verifySettlementEvidenceV1(evidence);
-    if (file.includes('payment')) assert.deepEqual(structural, { decision: 'fail', reasons: ['shape: each paymentTxRefs entry must be a {rail,txHash,kind?} object (rail+txHash required; kind optional)'] });
-    else assert.equal(structural.decision, 'pass');
+    // Both pinned fixtures pass structurally: the payment fixture's evm ChainTxRef was refused as a recorded divergence until the verifier read the §9.7 arms.
+    assert.deepEqual(structural, { decision: 'pass', reasons: [] }, file);
     const publicKey = new Uint8Array(Buffer.from(fixture.publicKeys[signature.signer], 'base64url'));
     assert.equal(verify(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, new Uint8Array(Buffer.from(signature.value, 'base64url')), new TextEncoder().encode(fixture.evidenceHash), publicKey), true);
   }
@@ -391,4 +392,13 @@ test('split references: the bundle cites the agreement document and the commitme
   state.memory.delete(agreementNative!);
   assert.notEqual((await verifyFinalizedBundleCold({ jobId: split.jobId, ...result, session: split }, state.deps)).outcome, 'pass');
   assert.notEqual((await verifyFinalizedBundleCold({ jobId: substrate.jobId, ...substrateOk, session: substrate }, state.deps)).outcome, 'pass');
+});
+
+test('SB-1: delivery evidence binds only at the complete derived dacs4:delivery address; a payment-namespace or foreign-job address never binds', async () => {
+  const state = setup(); const input = await session(state);
+  const codeIs = (code: string) => (error: unknown) => error instanceof BundleFinalizationError && error.code === code;
+  for (const wrong of ['dacs4:payment:wrong-job:wrong-rail:3', 'dacs4:delivery:other-job:3', 'dacs4:delivery:bundle-job:2']) {
+    const phases = input.phaseResults.map((p) => p.index === 3 ? { ...p, evidenceLogicalAddress: wrong, evidenceAnchor: { ...p.evidenceAnchor!, logicalAddress: wrong } } : p);
+    await assert.rejects(finalizeBundle({ ...input, phaseResults: phases }, state.deps), codeIs('seb-binding'), wrong);
+  }
 });

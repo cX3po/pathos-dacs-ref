@@ -354,8 +354,8 @@ if (LIVE && handles) {
   log('DACS-4', `pay-dem settled ${PRICE_DEM} DEM → tx demos:${pay.txHash.slice(0, 16)}… (bft-final)`);
 } else {
   payEvidence = emitSettlementEvidenceV1({
-    kind: 'payment', jobId, phase: 'pay-dem', phaseIndex: SETTLE_PHASE_INDEX, outcome: 'success',
-    paymentTxRefs: [{ rail: 'pay-dem', txHash: `demos:DRYRUN-${jobId}`, kind: 'payment' }],
+    kind: 'payment', jobId, phase: 'pay-dem', outcome: 'success',
+    paymentTxRefs: [{ kind: 'demos', txHash: `DRYRUN-${jobId}` }],
     paymentAmount: PRICE_DEM, paymentCurrency: 'DEM',
     finalityModel: 'bft-final', finalityObservedAt: now(), observedAt: now(),
   });
@@ -391,7 +391,7 @@ const deliverablePayload = jcsString(deliverableObj);
 const deliverableContentHash = jcsHashHex(deliverableObj);
 const deliverableLocator = await anchorString(handles?.seller ?? null, sellerOwner, anchorNames.deliverable(jobId), deliverablePayload);
 const deliveryEvidence = signSettlementEvidenceV1(emitSettlementEvidenceV1({
-  kind: 'delivery', jobId, phase: 'deliver-storage-program', phaseIndex: DELIVER_PHASE_INDEX, outcome: 'success',
+  kind: 'delivery', jobId, phase: 'deliver-storage-program', outcome: 'success',
   deliverableContentHash, deliverableAnchorKind: 'storage-program', deliverableAnchorLocator: deliverableLocator,
   observedAt: now(),
 }), `cci:${sellerCci}`, sellerKeys.privKey);

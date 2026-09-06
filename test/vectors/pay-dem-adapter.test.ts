@@ -276,7 +276,8 @@ test('exact included state with block witness returns success evidence', async (
   assert.deepEqual(outcome.finality, { model: 'bft-final' });
   assert.equal(outcome.evidence.paymentAmount.amount, '1.25');
   assert.equal(outcome.evidence.paymentAmount.currency, 'DEM');
-  assert.equal(outcome.evidence.paymentTxRefs[0]?.txHash, 'demos:hash-123');
+  assert.deepEqual(outcome.evidence.paymentTxRefs[0], { kind: 'demos', txHash: 'hash-123', blockNumber: 42 }, 'a §9.7 ChainTxRef demos arm, exact keys');
+  assert.ok(!('phaseIndex' in outcome.evidence), 'SB-1: no phaseIndex in the evidence body');
 });
 
 test('alternate pre-inclusion state fails without evidence', async () => {

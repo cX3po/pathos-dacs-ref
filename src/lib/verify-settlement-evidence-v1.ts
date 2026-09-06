@@ -25,8 +25,8 @@
  *         producers canonicalise before any SettlementEvidence hash) and
  *         paymentAmount MUST be strictly > 0 ("PriceTerm.amount positivity",
  *         DACS-4 §9.2); a fee is never negative.
- *       · paymentTxRefs entries are {rail,txHash,kind?} — rail+txHash required,
- *         kind optional (SDK isChainTxRef convergence, F3).
+ *       · paymentTxRefs entries are §9.7 ChainTxRef arms (exact keys per arm, as the pinned
+ *         dacs-sdk's isChainTxRef checks) or the legacy {rail,txHash,kind?} form.
  *   - DELIVERY evidence:
  *       · MUST NOT carry settlementFinality (PC-6).
  *       · deliverableContentHash MUST be a lowercase 64-hex sha256.
@@ -86,17 +86,75 @@ const FINALITY_MODELS: ReadonlySet<string> = new Set([
 ]);
 const FINALITY_COMMITMENTS: ReadonlySet<string> = new Set(['processed', 'confirmed', 'finalized']);
 
+const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+const nonNegInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+const nonNegSafeInt = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && !Object.is(v, -0);
+const posSafeInt = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
+const hex64 = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
+const minimalUnsignedDecimal = (v: unknown): v is string => typeof v === 'string' && /^(0|[1-9][0-9]*)$/.test(v);
+const onlyKeys = (o: Record<string, unknown>, allowed: string[]): boolean => Object.keys(o).every((k) => allowed.includes(k));
+const isCluster = (v: unknown): v is string => typeof v === 'string' && ['mainnet', 'devnet', 'testnet'].includes(v);
+const isAnchorKind = (v: unknown): v is string => typeof v === 'string' && ['storage-program', 'ipfs', 'https'].includes(v);
+/** Mirrors the pinned dacs-sdk's isCanonicalClaimRef (validators.ts:295): `<scheme>:<identifier>[?k=v&…]`, NFC, no whitespace or control characters, sorted unique query keys. */
+export function isCanonicalClaimRef(v: unknown): v is string {
+  if (!nonEmpty(v) || v.normalize('NFC') !== v || /[\s\u0000-\u001f\u007f]/.test(v)) return false;
+  const colon = v.indexOf(':');
+  if (colon <= 0 || !/^[a-z][a-z0-9-]*$/.test(v.slice(0, colon))) return false;
+  const remainder = v.slice(colon + 1);
+  const question = remainder.indexOf('?');
+  const identifier = question < 0 ? remainder : remainder.slice(0, question);
+  if (!identifier) return false;
+  if (question < 0) return true;
+  const query = remainder.slice(question + 1);
+  if (!query) return false;
+  const keys: string[] = [];
+  for (const parameter of query.split('&')) {
+    const equals = parameter.indexOf('=');
+    if (equals <= 0 || equals !== parameter.lastIndexOf('=')) return false;
+    const key = parameter.slice(0, equals), value = parameter.slice(equals + 1);
+    if (!key || /[:?]/.test(key) || /[:?]/.test(value) || /%(?![0-9A-F]{2})/.test(key) || /%(?![0-9A-F]{2})/.test(value)) return false;
+    if (keys.includes(key)) return false;
+    keys.push(key);
+  }
+  return keys.every((key, index) => index === 0 || keys[index - 1]! < key);
+}
+/** Mirrors the pinned dacs-sdk's isAttestationRef: exact wire keys, anchor kind set, sha256 contentHash, canonical signer claim. */
+const isTxRefAttestationRef = (v: unknown): boolean => isObject(v) && onlyKeys(v, ['anchor', 'contentHash', 'signer']) && isObject(v.anchor)
+  && onlyKeys(v.anchor, ['kind', 'locator']) && Object.keys(v.anchor).length === 2 && isAnchorKind(v.anchor.kind) && nonEmpty(v.anchor.locator)
+  && hex64(v.contentHash) && (v.signer === undefined || isCanonicalClaimRef(v.signer));
+
 /**
- * A §9.7 ChainTxRef entry. The SDK's isChainTxRef (settlement.ts L506) requires
- * ONLY rail+txHash (non-empty strings); `kind` is OPTIONAL. The emitter still
- * EMITS kind for the success fixtures — but the verifier MUST NOT reject an
- * entry that omits it. (F3)
+ * A §9.7 ChainTxRef entry in one of the arms the pinned dacs-sdk validates (isChainTxRef, src/artifacts/validators.ts:1661:
+ * exact keys and the same member predicates per arm), or the legacy {rail, txHash, kind?} form, exactly those keys, that
+ * our AP2 extension emits and that evidence anchored before 2026-09-06 carries. A `rail` member makes an entry the legacy
+ * form; any spec-arm member beside it is refused rather than reclassified.
  */
 function isPaymentTxRef(tx: unknown): boolean {
-  return isObject(tx)
-    && typeof tx.rail === 'string' && tx.rail.length > 0
-    && typeof tx.txHash === 'string' && tx.txHash.length > 0
-    && (tx.kind === undefined || typeof tx.kind === 'string');
+  if (!isObject(tx)) return false;
+  if ('rail' in tx) return onlyKeys(tx, ['rail', 'txHash', 'kind']) && nonEmpty(tx.rail) && nonEmpty(tx.txHash) && (tx.kind === undefined || typeof tx.kind === 'string');
+  switch (tx.kind) {
+    case 'demos': return onlyKeys(tx, ['kind', 'txHash', 'blockNumber']) && nonEmpty(tx.txHash) && (tx.blockNumber === undefined || nonNegInt(tx.blockNumber));
+    case 'storage-program': return onlyKeys(tx, ['kind', 'address', 'writeTxHash']) && nonEmpty(tx.address) && nonEmpty(tx.writeTxHash);
+    case 'evm': return onlyKeys(tx, ['kind', 'chainId', 'txHash']) && nonNegInt(tx.chainId) && nonEmpty(tx.txHash);
+    case 'evm-event': return onlyKeys(tx, ['kind', 'chainId', 'txHash', 'logIndex']) && posSafeInt(tx.chainId) && hex64(tx.txHash) && nonNegSafeInt(tx.logIndex);
+    case 'solana': return onlyKeys(tx, ['kind', 'cluster', 'signature']) && isCluster(tx.cluster) && nonEmpty(tx.signature);
+    case 'solana-instruction': return onlyKeys(tx, ['kind', 'cluster', 'signature', 'instructionIndex']) && isCluster(tx.cluster) && nonEmpty(tx.signature) && nonNegSafeInt(tx.instructionIndex);
+    case 'x402': return onlyKeys(tx, ['kind', 'httpResource', 'paymentReceiptHash', 'settlementTxHash', 'chainId', 'protocolVersion'])
+      && nonEmpty(tx.httpResource) && hex64(tx.paymentReceiptHash) && nonEmpty(tx.protocolVersion)
+      && (tx.settlementTxHash === undefined || nonEmpty(tx.settlementTxHash)) && (tx.chainId === undefined || nonNegInt(tx.chainId));
+    case 'x402-event': return onlyKeys(tx, ['kind', 'httpResource', 'paymentReceiptHash', 'settlementTxHash', 'chainId', 'logIndex', 'protocolVersion'])
+      && nonEmpty(tx.httpResource) && hex64(tx.paymentReceiptHash) && hex64(tx.settlementTxHash) && posSafeInt(tx.chainId) && nonNegSafeInt(tx.logIndex) && minimalUnsignedDecimal(tx.protocolVersion);
+    case 'ap2': return onlyKeys(tx, ['kind', 'mandateId', 'providerRef', 'protocolVersion', 'receiptAttestation'])
+      && nonEmpty(tx.mandateId) && nonEmpty(tx.providerRef) && nonEmpty(tx.protocolVersion) && (tx.receiptAttestation === undefined || isTxRefAttestationRef(tx.receiptAttestation));
+    case 'htlc-lock': case 'htlc-reveal': case 'htlc-claim': case 'htlc-refund': {
+      const hashField = { 'htlc-lock': 'lockTxHash', 'htlc-reveal': 'revealTxHash', 'htlc-claim': 'claimTxHash', 'htlc-refund': 'refundTxHash' }[tx.kind];
+      return onlyKeys(tx, ['kind', 'chainId', 'contractAddress', hashField]) && nonNegInt(tx.chainId) && nonEmpty(tx.contractAddress) && nonEmpty(tx[hashField]);
+    }
+    case 'liquidity-tank': return onlyKeys(tx, ['kind', 'bridgeId', 'sourceChainId', 'destChainId', 'lockTxHash', 'releaseTxHash', 'recoveryDeadline'])
+      && nonEmpty(tx.bridgeId) && nonNegInt(tx.sourceChainId) && nonNegInt(tx.destChainId) && nonEmpty(tx.lockTxHash)
+      && (tx.releaseTxHash === undefined || nonEmpty(tx.releaseTxHash)) && (tx.recoveryDeadline === undefined || nonNegInt(tx.recoveryDeadline));
+    default: return false;
+  }
 }
 
 /** §9.7 SettlementFinalityRecord shape validation. */
@@ -186,7 +244,7 @@ export function verifySettlementEvidenceV1(e: unknown): VerifySettlementEvidence
     }
     if (txRefs !== undefined) {
       if (!Array.isArray(txRefs) || !txRefs.every(isPaymentTxRef)) {
-        fail('shape: each paymentTxRefs entry must be a {rail,txHash,kind?} object (rail+txHash required; kind optional)');
+        fail('shape: each paymentTxRefs entry must be a §9.7 ChainTxRef arm (exact keys and member predicates as the pinned dacs-sdk checks) or exactly the legacy {rail,txHash,kind?} form');
       }
     }
     if (amount !== undefined) {

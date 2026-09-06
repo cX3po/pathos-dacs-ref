@@ -69,8 +69,7 @@ import {
   AP2_SIMULATION_ASSURANCE,
   AP2_SIMULATION_VERDICT,
   type Ap2AttestedReceiptRecord,
-  type MockAp2PaymentEvidence,
-} from './ap2-provider-receipt.js';
+  type MockAp2PaymentEvidence, ap2RecordLogicalAddress } from './ap2-provider-receipt.js';
 
 const hex = (b: Uint8Array) => bytesToHex(b);
 const jcsString = (v: unknown) => new TextDecoder().decode(jcsCanonical(v));
@@ -199,7 +198,7 @@ log('DACS-4', `AP2-2 attested fetch (${receiptAttestation.type}, scope=${receipt
 // §9.7 — the pay-ap2 payment SettlementEvidence (finality: provider-receipt, AP2-4).
 // txHash = the rail's canonical reference (SB-1 discipline): ap2:{providerTxId}.
 const emittedPayEvidence = emitSettlementEvidenceV1({
-  kind: 'payment', jobId, phase: PAY_AP2_RAIL_ID, phaseIndex: PAY_PHASE_INDEX, outcome: 'success',
+  kind: 'payment', jobId, phase: PAY_AP2_RAIL_ID, outcome: 'success',
   paymentTxRefs: [{ rail: PAY_AP2_RAIL_ID, txHash: `ap2:${providerReceipt.providerTxId}`, kind: 'payment' }],
   paymentAmount: PRICE_AP2, paymentCurrency: CURRENCY,
   finalityModel: 'provider-receipt', finalityObservedAt: capturedAt, observedAt: now(),
@@ -235,12 +234,14 @@ let ap2Record: Ap2AttestedReceiptRecord = {
   finalityModel: 'provider-receipt',
   providerReceipt, receiptAttestation, observedAt: now(),
 };
+const ap2AnchorContext = { paymentEvidenceLogicalAddress: anchorNames.paymentEvidence(jobId, PAY_AP2_RAIL_ID, PAY_PHASE_INDEX), recordLogicalAddress: ap2RecordLogicalAddress(jobId, PAY_PHASE_INDEX) };
 ap2Record = signAp2AttestedReceiptRecord(
   ap2Record,
   payEvidence,
   verifiedAgreement,
   `cci:${buyerCci}`,
   buyerKeys.privKey,
+  ap2AnchorContext,
 );
 const ap2RecordStr = jcsString(ap2Record);
 const ap2RecordHash = jcsHashHex(ap2Record);
@@ -257,7 +258,7 @@ const deliverableObj = {
 const deliverableContentHash = jcsHashHex(deliverableObj);
 const deliverableLocator = anchorString(sellerOwner, anchorNames.deliverable(jobId), jcsString(deliverableObj));
 const deliveryEvidence = signSettlementEvidenceV1(emitSettlementEvidenceV1({
-  kind: 'delivery', jobId, phase: 'deliver-storage-program', phaseIndex: DELIVER_PHASE_INDEX, outcome: 'success',
+  kind: 'delivery', jobId, phase: 'deliver-storage-program', outcome: 'success',
   deliverableContentHash, deliverableAnchorKind: 'storage-program', deliverableAnchorLocator: deliverableLocator,
   observedAt: now(),
 }), `cci:${sellerCci}`, sellerKeys.privKey);
@@ -329,6 +330,7 @@ const ap2SemanticVerification = verifyMockAp2AttestedReceiptRecord(
   ap2Record,
   payEvidence,
   verifiedAgreement,
+  ap2AnchorContext,
 );
 const ap2SelfChecks = {
   ap2_1_binding_jobId: providerReceipt.metadata['dacs_job_id'] === jobId,

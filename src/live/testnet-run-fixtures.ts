@@ -197,15 +197,15 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
         receipt: result.committed.receipt, addresses: result.committed.addresses }, { fetchAnchored, receiptProvider: fetchReceipt, verifySignature });
     },
     async settlePayment(_agreement, run) {
-      const evidence = signedEvidence(emitSettlementEvidenceV1({ kind: 'payment', jobId: run.jobId, phase: 'pay-dem', phaseIndex: 2,
-        outcome: 'success', paymentTxRefs: [{ rail: 'pay-dem', txHash: `demos:${jcsHashHex({ jobId: run.jobId, payment: 1 })}`, kind: 'payment' }],
+      const evidence = signedEvidence(emitSettlementEvidenceV1({ kind: 'payment', jobId: run.jobId, phase: 'pay-dem',
+        outcome: 'success', paymentTxRefs: [{ kind: 'demos', txHash: jcsHashHex({ jobId: run.jobId, payment: 1 }) }],
         paymentAmount: run.priceDem, paymentCurrency: 'DEM', finalityModel: 'bft-final', finalityObservedAt: FIXTURE_NOW, observedAt: FIXTURE_NOW }), orchestrator);
       return storeEvidence(paymentLogicalAddress(run.jobId, 'pay-dem', 2), evidence);
     },
     async deliver(_agreement, run): Promise<DeliveryResult> {
       const deliverable = { organ: run.organ, queryCommitment: jcsHashHex({ query: run.query }), answer: 'fixture-severity-band' };
       const deliverableAnchor = await anchor({ logicalAddress: anchorNames.deliverable(run.jobId), content: deliverable, contentHash: jcsHashHex(deliverable) });
-      const evidence = signedEvidence(emitSettlementEvidenceV1({ kind: 'delivery', jobId: run.jobId, phase: 'deliver-storage-program', phaseIndex: 3,
+      const evidence = signedEvidence(emitSettlementEvidenceV1({ kind: 'delivery', jobId: run.jobId, phase: 'deliver-storage-program',
         outcome: 'success', deliverableContentHash: jcsHashHex(deliverable), deliverableAnchorKind: 'storage-program',
         deliverableAnchorLocator: deliverableAnchor.nativeAddress, observedAt: FIXTURE_NOW }), orchestrator);
       return { ...await storeEvidence(anchorNames.deliveryEvidence(run.jobId, 3), evidence), deliverableAnchor };
