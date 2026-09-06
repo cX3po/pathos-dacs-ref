@@ -274,10 +274,14 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     const indexBound = phase.evidenceLogicalAddress === logicalAddress && (bodyIndex === undefined || bodyIndex === phase.index);
     if (evidence.jobId !== input.jobId || evidence.phase !== phase.kind || !indexBound) throw new BundleFinalizationError('seb-binding', `evidence does not bind phase (${phase.index},${phase.kind})`);
     if ((evidence.outcome === 'success') !== (phase.outcome === 'ok')) throw new BundleFinalizationError('seb-outcome', `evidence outcome contradicts phase ${phase.index}`);
-    // A payment phase's txRefs, when present, are exactly the evidence's ChainTxRef arms: the SDK verifies the evidence against them.
-    if (phase.txRefs !== undefined) {
-      const fromEvidence = settlementTxRefs(evidence);
-      if (!fromEvidence || jcsHashHex(fromEvidence) !== jcsHashHex(phase.txRefs)) throw new BundleFinalizationError('seb-binding', `phase ${phase.index} txRefs do not match the evidence's payment references`);
+    // A successful payment phase carries exactly the evidence's ChainTxRef arms as txRefs: the SDK verifies the evidence
+    // against them and treats their absence as indeterminate, so an omitted or legacy-only reference list never finalizes.
+    const fromEvidence = settlementTxRefs(evidence);
+    if (phase.kind.startsWith('pay-') && evidence.outcome === 'success') {
+      if (!fromEvidence) throw new BundleFinalizationError('seb-binding', `phase ${phase.index} payment evidence carries no ChainTxRef arms to project as txRefs`);
+      if (!phase.txRefs || jcsHashHex(fromEvidence) !== jcsHashHex(phase.txRefs)) throw new BundleFinalizationError('seb-binding', `phase ${phase.index} txRefs are absent or do not match the evidence's payment references`);
+    } else if (phase.txRefs !== undefined && (!fromEvidence || jcsHashHex(fromEvidence) !== jcsHashHex(phase.txRefs))) {
+      throw new BundleFinalizationError('seb-binding', `phase ${phase.index} txRefs do not match the evidence's payment references`);
     }
     const signature = object(evidence.signature);
     const signerKey = claimKey(signature.signer), orchestratorSignerKey = claimKey(phase.orchestrator);

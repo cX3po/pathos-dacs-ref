@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import * as ed25519 from '@noble/ed25519';
-import { BundleFinalizationError, finalizeBundle, verifyBundleListing, verifyFinalizedBundleCold, type BundleFinalizerDependencies, type CompletedSessionEvidence, type ResolvedCommitment, paymentRailId, paymentLogicalAddress } from '../../src/adapters/dacs/bundle-finalizer.js';
+import { BundleFinalizationError, finalizeBundle, verifyBundleListing, verifyFinalizedBundleCold, type BundleFinalizerDependencies, type CompletedSessionEvidence, type ResolvedCommitment, paymentRailId, paymentLogicalAddress, settlementTxRefs } from '../../src/adapters/dacs/bundle-finalizer.js';
 import { commitAgreement, type AgreementCommitmentDependencies } from '../../src/adapters/dacs/agreement-commitment.js';
 import { emitSettlementEvidenceV1, evidenceHashV1 } from '../../src/lib/emit-settlement-evidence-v1.js';
 import { verifySettlementEvidenceV1 } from '../../src/lib/verify-settlement-evidence-v1.js';
@@ -90,7 +90,7 @@ async function session(state: ReturnType<typeof setup>): Promise<CompletedSessio
   state.commitments.set(commitmentRef.anchor.locator, { commitment: committed.commitment, agreement: committed.agreement, receipt: committed.receipt, anchor: { logicalAddress: committed.addresses.commitment.logical, nativeAddress: committed.addresses.commitment.native, transactionRef: committed.receipt.transactionRef, writer: committed.receipt.writer, nonce: committed.receipt.nonce } });
   const paymentLogical = 'dacs4:payment:bundle-job:pay-x402:2';
   const payment = signedEvidence(emitSettlementEvidenceV1({ kind: 'payment', jobId: 'bundle-job', phase: 'pay-x402', outcome: 'success', observedAt: 1_780_000_000_000,
-    paymentTxRefs: [{ rail: 'pay-x402', txHash: 'tx-payment', kind: 'x402' }], paymentAmount: '10', paymentCurrency: 'USDC', finalityModel: 'provider-receipt', finalityObservedAt: 1_780_000_000_000 }));
+    paymentTxRefs: [{ kind: 'x402', httpResource: 'https://example.invalid/pay', paymentReceiptHash: 'ab'.repeat(32), protocolVersion: '1' }], paymentAmount: '10', paymentCurrency: 'USDC', finalityModel: 'provider-receipt', finalityObservedAt: 1_780_000_000_000 }));
   const delivery = signedEvidence(emitSettlementEvidenceV1({ kind: 'delivery', jobId: 'bundle-job', phase: 'deliver-attested-payload', outcome: 'success', observedAt: 1_780_000_000_000,
     deliverableContentHash: 'de'.repeat(32), deliverableAnchorKind: 'https', deliverableAnchorLocator: 'https://example.invalid/result' }));
   const deliveryLogical = 'dacs4:delivery:bundle-job:3';
@@ -101,7 +101,7 @@ async function session(state: ReturnType<typeof setup>): Promise<CompletedSessio
     phaseResults: [
       { index: 0, kind: 'negotiate-fixed-price', outcome: 'ok', orchestrator: orchestrator.claim },
       { index: 1, kind: 'commit-agreement', outcome: 'ok', orchestrator: orchestrator.claim },
-      { index: 2, kind: 'pay-x402', outcome: 'ok', orchestrator: orchestrator.claim, evidenceRef: paymentStored.ref, evidenceLogicalAddress: paymentLogical, evidenceAnchor: paymentStored.anchor },
+      { index: 2, kind: 'pay-x402', outcome: 'ok', orchestrator: orchestrator.claim, evidenceRef: paymentStored.ref, evidenceLogicalAddress: paymentLogical, evidenceAnchor: paymentStored.anchor, txRefs: settlementTxRefs(payment) },
       { index: 3, kind: 'deliver-attested-payload', outcome: 'ok', orchestrator: orchestrator.claim, evidenceRef: deliveryStored.ref, evidenceLogicalAddress: deliveryLogical, evidenceAnchor: deliveryStored.anchor },
     ], outcome: 'completed', faultedParty: 'none', recipeRegistryVersion: 1, railRegistryVersion: 1,
   };
@@ -403,13 +403,20 @@ test('SB-1: delivery evidence binds only at the complete derived dacs4:delivery 
   }
 });
 
-test('a payment phase entry\'s txRefs must equal the evidence record\'s ChainTxRef arms; a disagreeing list refuses', async () => {
+test('a successful payment phase carries txRefs equal to the evidence record\'s ChainTxRef arms; omission, a disagreeing list, or legacy-only evidence refuses', async () => {
   const state = setup(); const input = await session(state);
   const codeIs = (code: string) => (error: unknown) => error instanceof BundleFinalizationError && error.code === code;
   const withTx = (txRefs: unknown) => ({ ...input, phaseResults: input.phaseResults.map((p) => p.index === 2 ? { ...p, txRefs: txRefs as never } : p) });
-  await assert.rejects(finalizeBundle(withTx([{ kind: 'demos', txHash: 'not-the-evidence' }]), state.deps), codeIs('seb-binding'));
-  // The session's payment evidence carries a legacy entry, which is not a ChainTxRef: no txRefs can be projected from it.
-  await assert.rejects(finalizeBundle(withTx([{ kind: 'x402', httpResource: 'https://x', paymentReceiptHash: 'ab'.repeat(32), protocolVersion: '1' }]), state.deps), codeIs('seb-binding'));
   const ok = await finalizeBundle(input, state.deps);
-  assert.equal((ok.bundles.buyer!.bundle.phaseSummary[2] as { txRefs?: unknown }).txRefs, undefined);
+  assert.deepEqual((ok.bundles.buyer!.bundle.phaseSummary[2] as { txRefs?: unknown }).txRefs, [{ kind: 'x402', httpResource: 'https://example.invalid/pay', paymentReceiptHash: 'ab'.repeat(32), protocolVersion: '1' }]);
+  assert.equal((await verifyFinalizedBundleCold({ jobId: input.jobId, ...ok, session: input }, state.deps)).outcome, 'pass');
+  await assert.rejects(finalizeBundle(withTx(undefined), state.deps), codeIs('seb-binding'), 'omitted txRefs on a successful payment');
+  await assert.rejects(finalizeBundle(withTx([{ kind: 'demos', txHash: 'not-the-evidence' }]), state.deps), codeIs('seb-binding'), 'a disagreeing list');
+  await assert.rejects(finalizeBundle(withTx([]), state.deps), codeIs('seb-binding'), 'an empty list');
+  // Legacy-only evidence: a {rail, txHash, kind} entry is not a ChainTxRef, so nothing can be projected and the phase cannot finalize.
+  const legacy = signedEvidence(emitSettlementEvidenceV1({ kind: 'payment', jobId: 'bundle-job', phase: 'pay-x402', outcome: 'success', observedAt: 1_780_000_000_000,
+    paymentTxRefs: [{ rail: 'pay-x402', txHash: 'tx-payment', kind: 'x402' }], paymentAmount: '10', paymentCurrency: 'USDC', finalityModel: 'provider-receipt', finalityObservedAt: 1_780_000_000_000 }));
+  const legacyStored = state.putEvidence('dacs4:payment:bundle-job:pay-x402:2', legacy);
+  const legacySession = { ...input, phaseResults: input.phaseResults.map((p) => p.index === 2 ? { ...p, evidenceRef: legacyStored.ref, evidenceAnchor: legacyStored.anchor, txRefs: undefined } : p) };
+  await assert.rejects(finalizeBundle(legacySession, state.deps), codeIs('seb-binding'), 'legacy-only evidence');
 });
