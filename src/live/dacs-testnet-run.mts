@@ -242,8 +242,10 @@ export async function createLiveSettlementDependency(
   // (6) Only now query balance and run the gateway-equivalent spend estimate.
   const balanceDem = await seams.balance(wiring.handles.buyer);
   const spend = await seams.preflight({
-    purpose: `dacs-testnet live session ${config.jobId}`, estWrites: 8, estCostPerWriteDem: 1,
-    createCostDem: Number(config.priceDem), maxSpendDem: config.spendCapDem, balanceDem,
+    // Measured on the testnet (2026-09-06): every transaction carries a 2 DEM fee (network 1 + rpc 1), the
+    // eight SR-2 writes included, and the pay-dem transfer pays that fee on top of the price.
+    purpose: `dacs-testnet live session ${config.jobId}`, estWrites: 8, estCostPerWriteDem: TESTNET_FEE_PER_TX_DEM,
+    createCostDem: Number(config.priceDem) + TESTNET_FEE_PER_TX_DEM, maxSpendDem: config.spendCapDem, balanceDem,
     balanceMarginDem: 2, operatorApproved: env.GATEWAY_LIVE_APPROVED === '1', dryRunHash: suppliedHash,
   });
   if (spend.verdict !== 'PROCEED') {
@@ -599,6 +601,9 @@ export async function createLiveDependencies(
 }
 
 /** The bundle form is a session parameter: anything but the two known forms is a configuration refusal. */
+/** Fee the testnet charged on every transaction we measured (network 1 DEM + rpc 1 DEM). */
+export const TESTNET_FEE_PER_TX_DEM = 2;
+
 export function parseBundleKind(raw: string): 'ebfab' | 'fab' {
   if (raw === 'ebfab' || raw === 'fab') return raw;
   throw new DacsTestnetRefusal('config', `DACS_BUNDLE_KIND must be "ebfab" or "fab", got "${raw}"`);
