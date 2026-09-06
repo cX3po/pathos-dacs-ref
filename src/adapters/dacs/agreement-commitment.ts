@@ -255,8 +255,11 @@ function validateAgreement(listing: JsonObject, agreement: Omit<AgreementDocumen
   if (sealed === 'negotiate-sealed-envelope' || sealed === 'negotiate-sealed-envelope-procurement') {
     const sellerRecord = listing.seller === undefined ? undefined : object(listing.seller);
     const identity = sellerRecord?.identity === undefined ? undefined : object(sellerRecord.identity);
-    const publisher = (sellerRecord?.primaryClaim ?? identity?.primary ?? listing.publisher) as Claim | undefined;
-    if (publisher !== undefined) {
+    // DACS-1 §6.3.4: the publisher is the identity bundle's presented claim; older listing shapes named it as seller.primaryClaim,
+    // identity.primary or publisher. A sealed pattern without a resolvable publisher cannot establish SE-8 role direction.
+    const publisher = (identity?.presentedBy ?? sellerRecord?.primaryClaim ?? identity?.primary ?? listing.publisher) as Claim | undefined;
+    if (publisher === undefined) throw new AgreementCommitmentError('sealed-envelope-publisher', 'sealed-envelope listing does not name its publisher (SE-8)');
+    {
       const publisherRole = agreement.parties.find((party) => claimKey(party.primaryClaim) === claimKey(publisher))?.role;
       const expectedRole = sealed === 'negotiate-sealed-envelope' ? 'seller' : 'buyer';
       if (publisherRole !== expectedRole) throw new AgreementCommitmentError('sealed-envelope-role-direction', 'agreement buyer/seller direction contradicts auctionMode (SE-8)');

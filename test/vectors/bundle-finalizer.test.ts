@@ -440,4 +440,8 @@ test('verifyBundleListing reads the DACS-1 Listing: the seller identity presenta
   await assert.rejects(verifyBundleListing(otherPresenter, {}), codeIs('listing-signer'));
   const tampered = { ...listing, offering: { ...(listing.offering as object), title: 'changed' } };
   await assert.rejects(verifyBundleListing(tampered as never, {}), codeIs('listing-signature'));
+  // A DACS-1 listing without the seller identity bundle is refused even when correctly signed: the identity checks are not optional for the Standard shape.
+  const { seller: _seller, ...withoutIdentity } = unsigned; void _seller;
+  const noIdentity = (await signDacs1Listing({ ...withoutIdentity, seller: { displayName: 'seller' } }, signer(seller))).listing;
+  await assert.rejects(verifyBundleListing(noIdentity, {}), codeIs('listing-identity'));
 });

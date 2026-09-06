@@ -27,6 +27,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { opaqueListingProgramName } from '../dacs1/addressing.js';
 import { signatureExcludedHash } from '../lib/content-hash.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -264,7 +265,8 @@ const listingHash = jcsHashHex(listingBody);
 const listingSig = sign(DOMAIN_SEPARATORS.LISTING, listingCanonical, sellerKeys.privKey);
 const listingSigned = { ...listingBody, signature: Buffer.from(listingSig).toString('base64') };
 const listingAnchored = jcsString(listingSigned);
-const listingLocator = await anchorString(handles?.seller ?? null, sellerOwner, anchorNames.listing(listingLogical), listingAnchored);
+// This gateway still publishes the pre-DACS-1 listing body (ledger demo-producers-dacs1-listing), so it keeps the opaque program name that body was designed with.
+const listingLocator = await anchorString(handles?.seller ?? null, sellerOwner, opaqueListingProgramName(listingLogical), listingAnchored);
 log('DACS-1', `listing ${listingHash.slice(0, 16)}… anchored @ ${listingLocator}`);
 
 // §6.3.4(c) / LR: produce the well-known index + catalog view, then resolve strictly through

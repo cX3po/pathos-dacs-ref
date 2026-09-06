@@ -315,6 +315,9 @@ export async function verifyBundleListing(listing: JsonObject, deps: Pick<Bundle
   if (listing.contentHash !== undefined && listing.contentHash !== contentHash) throw new BundleFinalizationError('listing-hash', 'listing contentHash does not match its signed scope (SEB-1)');
   if (!await signatureValid(deps, DOMAIN_SEPARATORS.LISTING, contentHash, signature)) throw new BundleFinalizationError('listing-signature', 'listing signature is invalid (SEB-1)');
   const seller = listing.seller && typeof listing.seller === 'object' && !Array.isArray(listing.seller) ? object(listing.seller) : undefined;
+  // A DACS-1 §6.3.4 listing (dacsVersion "1") always presents the seller's identity bundle; only listings published before
+  // 2026-09-06 (no dacsVersion, a seller.primaryClaim) are read without one.
+  if (listing.dacsVersion === '1' && seller?.identity === undefined) throw new BundleFinalizationError('listing-identity', 'a DACS-1 listing must present the seller identity bundle (§6.3.4)');
   if (seller?.identity !== undefined) {
     // §6.3.2 / §6.3.4: the listing signer is the claim the seller's identity bundle presents, and the per-claim presentation
     // (the wallet's signature over `dacs-bundle-presentation:v1:` || bundle_hash) verifies under that claim.
