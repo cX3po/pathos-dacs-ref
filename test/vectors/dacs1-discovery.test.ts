@@ -1,4 +1,4 @@
-import { deepEqual, equal, match, notEqual, ok, rejects } from 'node:assert/strict';
+import { deepEqual, equal, match, notEqual, ok, rejects, throws } from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -235,4 +235,27 @@ test('listing-pub dry-run wires CF-4 metadata and colon-free naming into the min
   match(String(receipt['storageProgramName']), /^dacs1listing-[0-9a-f]{64}$/);
   equal(String(receipt['storageProgramName']).includes(':'), false);
   equal(receipt['contentHash'], listingContentHash(listing()));
+});
+
+test('§6.3.4: a DACS-1 listing binds to the seller it presents; publication under another seller\'s address and resolution of a substituted listing are refused', async () => {
+  const sellerA = `did:demos:agent:${'aa'.repeat(32)}`, sellerB = `did:demos:agent:${'bb'.repeat(32)}`;
+  const dacs1 = (presentedBy: string): Record<string, unknown> => ({
+    dacsVersion: '1', listingVersion: 1, listingId: 'lst-presented',
+    seller: { identity: { bundleVersion: '1', presentedBy, presentedAt: 1, claims: [{ ref: presentedBy }], presentation: { kind: 'per-claim', signatures: [{ ref: presentedBy, signature: 'x' }] } }, displayName: 'seller' },
+    offering: { title: 't', description: 'd', category: 'c', tags: [], deliverable: { kind: 'storage-program' } },
+    buyerRequirement: { requirementVersion: '1', required: [] }, pipeline: [{ kind: 'negotiate-fixed-price' }, { kind: 'commit-agreement' }, { kind: 'pay-dem', parameters: { rail: 'pay-dem' } }, { kind: 'deliver-storage-program' }],
+    pricing: { kind: 'fixed', price: { amount: '1', currency: 'DEM' } }, acceptedRails: [{ railId: 'pay-dem' }], terms: {}, validity: { notBefore: 1 },
+    signature: { algorithm: 'ed25519', signer: presentedBy, value: 'x' },
+  });
+  const native = 'stor-' + 'ab'.repeat(20);
+  const origin = 'https://seller.invalid';
+  throws(() => buildDiscoveryArtifacts({ listing: dacs1(sellerA), sellerPrimaryClaim: sellerB, nativeAddress: native, publisherOrigin: origin, generatedAt: 1 }), /does not present the address seller/);
+  const built = buildDiscoveryArtifacts({ listing: dacs1(sellerA), sellerPrimaryClaim: sellerA, nativeAddress: native, publisherOrigin: origin, generatedAt: 1 });
+  const logical = listingLogicalAddress(sellerA, 'lst-presented', 1);
+  const resources = new Map<string, Uint8Array>([[`${origin}/.well-known/agent.json`, built.agentCardBytes], [`${origin}/.well-known/dacs/listings.json`, built.indexBytes]]);
+  const fetchResource = async (url: string) => { const v = resources.get(url); if (!v) throw new Error('missing'); return v; };
+  const ok = await resolveListingFromPublishedBinding(`${origin}/.well-known/agent.json`, logical, fetchResource, async () => ({ storageAddress: native, data: dacs1(sellerA) }));
+  equal(ok.nativeAddress, native);
+  // The native record substituted with a listing that presents another seller is refused before any hash comparison.
+  await rejects(resolveListingFromPublishedBinding(`${origin}/.well-known/agent.json`, logical, fetchResource, async () => ({ storageAddress: native, data: dacs1(sellerB) })), /presents a different seller/);
 });

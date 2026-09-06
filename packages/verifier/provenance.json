@@ -27,7 +27,7 @@
     },
     {
       "sourcePath": "src/adapters/dacs/agreement-commitment.ts",
-      "sha256": "d60cf1e1b0b9969e2f621a0b93e8e4787c3caead901421b4403d2b164956ffb1"
+      "sha256": "ea490d3eb401223fcabd3551a948227a50b6aa70a398be6e38f2b0860dd5232a"
     },
     {
       "sourcePath": "src/demos/connection.ts",
@@ -106,7 +106,7 @@
       "sha256": "165d2f3a872c1300c34ff98482948fc0c2a9ea7e7c8b98902ccc97cfcd5708c0"
     }
   ],
-  "sourceManifestSha256": "969ea2516dd6aea9820fbbb08910ffcf0a3454d4b39d239b2245f22c29ab174d",
+  "sourceManifestSha256": "8e34366d96c754a7358605827494e8401674709eec036419a9371e66565967b2",
   "emitted": [
     {
       "path": "packages/verifier/src/cli.d.ts",
@@ -146,7 +146,7 @@
     },
     {
       "path": "src/adapters/dacs/agreement-commitment.js",
-      "sha256": "32d33032414e2d16e141f7ca9fae2319c3d0a503a541a02c7dcfb5d73827a911"
+      "sha256": "4d0804cd6b41227c333d2ea91f2af8bf97ad62cb498847f6ca1e7584c00fb317"
     },
     {
       "path": "src/demos/connection.d.ts",
@@ -301,5 +301,5 @@
       "sha256": "cc4e23422ec114b49a43bb29d442339934e2d38ca79d41ebd4d9d253a7a122cf"
     }
   ],
-  "emittedSha256": "23732e7780c0fccd51fb4290d5b044a49c8914c48312d5f7edf3bd689d0f65cd"
+  "emittedSha256": "b1f49eda2ccb616e14e5615da645a8201c5dbf35cbc007e5a6652eaa6507c430"
 }
