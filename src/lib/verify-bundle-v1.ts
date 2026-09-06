@@ -446,6 +446,12 @@ function authorizedArtifactSigners(
     }
     return null;
   }
+  if (kind === 'agreement') {
+    // The agreement's authority is fixed by the Standard: the bundle's buyer and seller both sign it. A reference
+    // pin never widens or narrows that set, so a document signed only by a pinned stranger cannot pass.
+    const pair = bundle.parties.filter((p) => p.role === 'buyer' || p.role === 'seller').map((p) => claimKey(p.primaryClaim));
+    return pair.length === 2 && pair.every((k): k is string => k !== null) ? new Set(pair) : null;
+  }
   if (refSigner) return new Set([refSigner]);
   if (kind === 'listing') {
     const seller = asRecord(artifact.seller);
@@ -453,12 +459,6 @@ function authorizedArtifactSigners(
     const primary = identity?.primary ?? identity?.presentedBy ?? seller?.primaryClaim ?? artifact.sellerClaim;
     const key = claimKey(primary);
     return key ? new Set([key]) : null;
-  }
-  if (kind === 'agreement') {
-    const parties = Array.isArray(artifact.parties)
-      ? artifact.parties.map((p) => claimKey(asRecord(p)?.primaryClaim)).filter((k): k is string => k !== null)
-      : [claimKey(artifact.buyer), claimKey(artifact.seller)].filter((k): k is string => k !== null);
-    return parties.length > 0 ? new Set(parties) : null;
   }
   if (kind === 'evidence') {
     // A fresh attacker key must not become authorized merely by self-signing the evidence.

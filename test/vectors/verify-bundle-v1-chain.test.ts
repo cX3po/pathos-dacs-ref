@@ -655,10 +655,10 @@ test('agreement referenced artifact: this job\'s document naming the bundle\'s b
       parties: parties.map((p) => ({ role: p.role, bundleHash: 'aa'.repeat(32), primaryClaim: `cci:${p.key.pubHex}`, vetRecordRef: { anchor: { kind: 'storage-program', locator: 'vet' }, contentHash: 'ef'.repeat(32) } })),
       terms: { price: { amount: '1', currency: 'DEM' }, deliverable: { deliverableType: 'storage-program', hash: 'de'.repeat(32) }, deadline: 1735689600000 },
       derivedFromPattern: 'fixed-price', generatedAt: 1735689600000 }, signers);
-  const refFor = (artifact: object, locator: string) => ({ anchor: { kind: 'storage-program' as const, locator }, contentHash: hexOf(sha256(jcsCanonical(artifact))) });
-  const run = async (artifact: object) => {
-    const locator = 'stor-' + sha256Hex(JSON.stringify(artifact));
-    const c = twoSidedMap({ jobId, settlementEvidence: [refFor(artifact, locator)] });
+  const refFor = (artifact: object, locator: string, signer?: string) => ({ anchor: { kind: 'storage-program' as const, locator }, contentHash: hexOf(sha256(jcsCanonical(artifact))), ...(signer ? { signer } : {}) });
+  const run = async (artifact: object, signer?: string) => {
+    const locator = 'stor-' + sha256Hex(JSON.stringify(artifact) + String(signer));
+    const c = twoSidedMap({ jobId, settlementEvidence: [refFor(artifact, locator, signer)] });
     const m = new Map<string, unknown>(c.map); m.set(locator, artifact);
     return verifyBundleV1Full(c.buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(m) });
   };
@@ -671,4 +671,10 @@ test('agreement referenced artifact: this job\'s document naming the bundle\'s b
   assert.equal(s.attestationsFailed, 1, JSON.stringify(s.attestationSteps)); assert.match(s.attestationSteps[0]!.detail, /buyer and seller/);
   const h = await run(agreementFor(jobId, pair, [seller]));
   assert.equal(h.attestationsFailed, 1, JSON.stringify(h.attestationSteps)); assert.match(h.attestationSteps[0]!.detail, /missing authorized party signature/);
+  // A pin never replaces the parties' authority: a document naming the right job and parties but signed only by a pinned stranger fails.
+  const p = await run(agreementFor(jobId, pair, [stranger]), `cci:${stranger.pubHex}`);
+  assert.equal(p.attestationsFailed, 1, JSON.stringify(p.attestationSteps)); assert.match(p.attestationSteps[0]!.detail, /not authorized/);
+  // A pin naming a party does not excuse the other party's signature.
+  const q = await run(agreementFor(jobId, pair, [seller]), `cci:${seller.pubHex}`);
+  assert.equal(q.attestationsFailed, 1, JSON.stringify(q.attestationSteps)); assert.match(q.attestationSteps[0]!.detail, /missing authorized party signature/);
 });

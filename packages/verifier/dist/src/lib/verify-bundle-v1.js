@@ -396,6 +396,12 @@ function authorizedArtifactSigners(artifact, ref, bundle, kind, verifiedSigners 
         }
         return null;
     }
+    if (kind === 'agreement') {
+        // The agreement's authority is fixed by the Standard: the bundle's buyer and seller both sign it. A reference
+        // pin never widens or narrows that set, so a document signed only by a pinned stranger cannot pass.
+        const pair = bundle.parties.filter((p) => p.role === 'buyer' || p.role === 'seller').map((p) => claimKey(p.primaryClaim));
+        return pair.length === 2 && pair.every((k) => k !== null) ? new Set(pair) : null;
+    }
     if (refSigner)
         return new Set([refSigner]);
     if (kind === 'listing') {
@@ -404,12 +410,6 @@ function authorizedArtifactSigners(artifact, ref, bundle, kind, verifiedSigners 
         const primary = identity?.primary ?? identity?.presentedBy ?? seller?.primaryClaim ?? artifact.sellerClaim;
         const key = claimKey(primary);
         return key ? new Set([key]) : null;
-    }
-    if (kind === 'agreement') {
-        const parties = Array.isArray(artifact.parties)
-            ? artifact.parties.map((p) => claimKey(asRecord(p)?.primaryClaim)).filter((k) => k !== null)
-            : [claimKey(artifact.buyer), claimKey(artifact.seller)].filter((k) => k !== null);
-        return parties.length > 0 ? new Set(parties) : null;
     }
     if (kind === 'evidence') {
         // A fresh attacker key must not become authorized merely by self-signing the evidence.
@@ -461,6 +461,20 @@ function verifyReferencedArtifact(data, ref, bundle, verifiedSigners = new Set()
             && committed.every((k, i) => k !== null && k === expectedPair[i]);
         if (!bound)
             return { outcome: 'fail', detail: 'commitment artifact does not bind exactly the bundle\'s buyer and seller claims' };
+    }
+    if (kind === 'agreement') {
+        // The cited agreement must be this job's and must name exactly the bundle's buyer and seller; signer authority
+        // derived from the document's own parties would otherwise accept any correctly signed foreign agreement.
+        if ((artifact.agreementVersion !== undefined || artifact.jobId !== undefined) && artifact.jobId !== bundle.jobId) {
+            return { outcome: 'fail', detail: `agreement artifact is for job ${String(artifact.jobId)}, not ${bundle.jobId}` };
+        }
+        const named = Array.isArray(artifact.parties) ? artifact.parties.map((p) => asRecord(p)).filter((p) => p !== null) : null;
+        const claimOf = (role) => named ? claimKey(named.find((p) => p.role === role)?.primaryClaim) : claimKey(artifact[role]);
+        for (const role of ['buyer', 'seller']) {
+            const expected = claimKey(bundle.parties.find((p) => p.role === role)?.primaryClaim);
+            if (!expected || claimOf(role) !== expected)
+                return { outcome: 'fail', detail: 'agreement artifact does not name exactly the bundle\'s buyer and seller claims' };
+        }
     }
     const rawSignatures = Array.isArray(artifact.signatures)
         ? artifact.signatures.map((s) => (asRecord(s) ?? {}))
