@@ -56,14 +56,15 @@ export const agentDidSignatureVerifier: PresentationSignatureVerifier = ({ domai
 /** The §6.3.4 members a producer's listing may carry: the Standard's, plus the CF-4 logical address the anchored record carries as metadata (DACS-1-IDENTIFY §6.3.4(b)). */
 const LISTING_MEMBERS = new Set(['dacsVersion', 'listingVersion', 'listingId', 'requiredCapabilities', 'seller', 'offering', 'buyerRequirement', 'pipeline', 'pricing', 'acceptedRails', 'terms', 'validity', 'signature', 'logical_address']);
 /**
- * Mirrored from the pinned dacs-sdk's validators.ts (3aa1d7df) on 2026-09-06: PHASE_TYPES, NO_PARAMETER_PHASES, the
- * deliverable and verification-method kinds. A drift from that file is a dated fact; the differential test
+ * Mirrored from the pinned dacs-sdk's validators.ts (3aa1d7df) on 2026-09-06: PHASE_TYPES, NO_PARAMETER_PHASES and the
+ * deliverable kinds. A drift from that file is a dated fact; the differential test
  * (test/vectors/producer-listing-sdk-differential.test.ts, run with DACS_SDK_DIR) measures this check against the SDK's
  * own isListing on the shapes the producers emit and the refusals reviews found.
  */
 const PHASE_TYPES = new Set(['vet-credentials', 'negotiate-fixed-price', 'negotiate-rfq', 'negotiate-sealed-envelope', 'negotiate-sealed-envelope-procurement', 'commit-agreement', 'commit-payee-bound-agreement', 'pay-evm-erc20', 'pay-solana-spl', 'pay-cross-chain-htlc', 'pay-cross-chain-liquidity-tank', 'pay-ap2', 'pay-x402', 'pay-dem', 'pay-alternative', 'deliver-storage-program', 'deliver-entitlement', 'deliver-attested-payload', 'rate']);
 const NO_PARAMETER_PHASES = new Set(['vet-credentials', 'negotiate-fixed-price', 'commit-agreement', 'commit-payee-bound-agreement', 'deliver-storage-program', 'deliver-entitlement', 'deliver-attested-payload']);
-const VERIFICATION_METHOD_KINDS = new Set(['verifiable-credential', 'tlsnotary', 'zktls', 'consensus-backed-proxy', 'oauth-attested', 'evm-rpc', 'domain-tls-control', 'self-signed', 'demos-gcr-domain']);
+/** The verification-method kinds the pre-flight validates completely: the SDK's field-less kinds. Any other kind (tlsnotary, zktls, ...) carries fields this pre-flight does not check, so it is refused rather than half-validated (a declared stricter rule; the producers emit self-signed only). */
+const FIELDLESS_VERIFICATION_METHOD_KINDS = new Set(['self-signed', 'demos-gcr-domain']);
 /** LR-2: the complete canonical signed record, as the pinned dacs-sdk measures it (validators.ts isListingEnvelope). */
 export const DACS1_LISTING_SIZE_CAP_BYTES = 16_384;
 
@@ -88,7 +89,8 @@ function assertDeliverable(d: unknown): void {
       if (!isPosInt(d.durationSec) || typeof d.renewable !== 'boolean') fail('listing.offering.deliverable (entitlement): durationSec positive integer, renewable boolean');
       return;
     case 'attested-payload':
-      if (!isStr(d.payloadFormat) || d.payloadFormat.length === 0 || (d.verificationMethod !== undefined && !(isObj(d.verificationMethod) && VERIFICATION_METHOD_KINDS.has(d.verificationMethod.kind as string))) || (d.expectedSizeBytes !== undefined && !isUint(d.expectedSizeBytes))) fail('listing.offering.deliverable (attested-payload): payloadFormat non-empty, verificationMethod { kind } of a known kind, expectedSizeBytes uint');
+      if (!isStr(d.payloadFormat) || d.payloadFormat.length === 0 || (d.expectedSizeBytes !== undefined && !isUint(d.expectedSizeBytes))) fail('listing.offering.deliverable (attested-payload): payloadFormat non-empty, expectedSizeBytes uint');
+      if (d.verificationMethod !== undefined && !(isObj(d.verificationMethod) && FIELDLESS_VERIFICATION_METHOD_KINDS.has(d.verificationMethod.kind as string) && Object.keys(d.verificationMethod).length === 1)) fail('listing.offering.deliverable.verificationMethod: this pre-flight accepts only { kind: "self-signed" } or { kind: "demos-gcr-domain" }; other kinds carry fields it does not validate');
       return;
     default:
       fail('listing.offering.deliverable.kind must be storage-program, entitlement or attested-payload here');

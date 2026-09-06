@@ -64,6 +64,10 @@ const MUTATIONS: Mutation[] = [
   { name: 'rate with required boolean (valid)', unsigned: (u) => ({ ...u, pipeline: [...(u.pipeline as unknown[]), step('rate', { required: true })] }) },
   { name: 'deliver-attested-payload without a verification method', unsigned: (u) => ({ ...u, offering: { ...(u.offering as object), deliverable: { kind: 'attested-payload', payloadFormat: 'application/json' } }, pipeline: [step('negotiate-fixed-price'), step('commit-agreement'), step('pay-dem', { rail: 'pay-dem' }), step('deliver-attested-payload')] }) },
   { name: 'deliver-attested-payload with self-signed (valid)', unsigned: (u) => ({ ...u, offering: { ...(u.offering as object), deliverable: { kind: 'attested-payload', payloadFormat: 'application/json', verificationMethod: { kind: 'self-signed' } } }, pipeline: [step('negotiate-fixed-price'), step('commit-agreement'), step('pay-dem', { rail: 'pay-dem' }), step('deliver-attested-payload')] }) },
+  // Verification methods with fields: the pre-flight refuses them instead of half-validating them (declared stricter); the SDK refuses the incomplete one too.
+  { name: 'deliver-attested-payload with tlsnotary without endpoint', unsigned: (u) => ({ ...u, offering: { ...(u.offering as object), deliverable: { kind: 'attested-payload', payloadFormat: 'application/json', verificationMethod: { kind: 'tlsnotary' } } }, pipeline: [step('negotiate-fixed-price'), step('commit-agreement'), step('pay-dem', { rail: 'pay-dem' }), step('deliver-attested-payload')] }) },
+  { name: 'deliver-attested-payload with a complete tlsnotary method', stricter: true, unsigned: (u) => ({ ...u, offering: { ...(u.offering as object), deliverable: { kind: 'attested-payload', payloadFormat: 'application/json', verificationMethod: { kind: 'tlsnotary', endpoint: 'https://notary.invalid/session' } } }, pipeline: [step('negotiate-fixed-price'), step('commit-agreement'), step('pay-dem', { rail: 'pay-dem' }), step('deliver-attested-payload')] }) },
+  { name: 'self-signed method with an extra field', stricter: true, unsigned: (u) => ({ ...u, offering: { ...(u.offering as object), deliverable: { kind: 'attested-payload', payloadFormat: 'application/json', verificationMethod: { kind: 'self-signed', extra: 1 } } }, pipeline: [step('negotiate-fixed-price'), step('commit-agreement'), step('pay-dem', { rail: 'pay-dem' }), step('deliver-attested-payload')] }) },
   { name: 'recipeVersion null', unsigned: (u) => ({ ...u, buyerRequirement: { requirementVersion: '1', required: [{ scheme: 'did', verificationRequired: true, recipeVersion: null }] } }) },
   { name: 'requirement parameters null', unsigned: (u) => ({ ...u, buyerRequirement: { requirementVersion: '1', required: [{ scheme: 'did', verificationRequired: true, parameters: null }] } }) },
   { name: 'requirement maxAge uint (valid)', unsigned: (u) => ({ ...u, buyerRequirement: { requirementVersion: '1', required: [{ scheme: 'did', verificationRequired: true, maxAge: 3600 }] } }) },
@@ -110,7 +114,7 @@ test('the producers\' pre-flight agrees with the pinned SDK\'s isListing on ever
     if (local !== expectedLocal) disagreements.push(`${m.name}: local=${local} sdk=${sdk}${reason ? ` (${reason})` : ''}`);
   }
   equal(disagreements.length, 0, disagreements.join('\n'));
-  t.diagnostic(`SDK refused ${refusals} of ${MUTATIONS.length} shapes; local agreed on every one but the declared stricter rule`);
+  t.diagnostic(`SDK refused ${refusals} of ${MUTATIONS.length} shapes; local agreed on every one but the declared stricter rules`);
   ok(refusals >= 30, `the enumeration must exercise refusals (SDK refused ${refusals} of ${MUTATIONS.length})`);
   equal(isListing(published.listing), true);
 });
