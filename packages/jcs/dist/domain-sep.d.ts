@@ -34,6 +34,7 @@ export declare const DOMAIN_SEPARATORS: {
     readonly LISTING: "dacs-listing:v1:";
     readonly BUNDLE_PRESENTATION: "dacs-bundle-presentation:v1:";
     readonly SESSION_BINDING: "dacs-session-binding:v1:";
+    readonly VERIFY_RESULT: "dacs-verifyresult:v1:";
     readonly COMPOSITE_VERIFY: "dacs-composite:v1:";
     readonly CHANNEL_MSG: "dacs-channelmsg:v1:";
     readonly AGREEMENT: "dacs-agreement:v1:";

@@ -65,6 +65,8 @@ export const anchorNames = {
   deliverable: (jobId: string) => `dacs4:deliverable:${jobId}`,
   deliveryEvidence: (jobId: string, phaseIndex: number) => `dacs4:delivery:${jobId}:${phaseIndex}`,
   bundle: (jobId: string, role: 'buyer' | 'seller') => `dacs5:bundle:${jobId}:${role}`,
+  /** A party's presented IdentityBundle (DACS-1 §6.3.2), anchored by that party so the vet phase's evidence is readable cold. The Standard names no address for a bundle; this one is ours. */
+  identityBundle: (jobId: string, role: 'buyer' | 'seller') => `pathos:identity-bundle:${jobId}:${role}`,
 } as const;
 
 /**

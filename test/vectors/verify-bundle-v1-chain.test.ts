@@ -730,3 +730,54 @@ test('§7.5.2 contentHash: a signed document anchored as text matches its signat
   const wrong = await run('ab'.repeat(32), text);
   assert.equal(wrong.attestationsFailed, 1);
 });
+
+// DACS-2 §7.5 / §7.7 (2026-09-06): a VerifyResult (resultVersion) signs under dacs-verifyresult:v1:, a composite (recordVersion) under
+// dacs-composite:v1:; the walk must select the separator by artifact kind, never route a VerifyResult through the composite one.
+function signedVetArtifact(unsigned: Record<string, unknown>, separator: string, key: { priv: Uint8Array; pubHex: string }) {
+  const artifactHash = hexOf(sha256(jcsCanonical(unsigned)));
+  const value = Buffer.from(sign(separator, enc.encode(artifactHash), key.priv)).toString('base64');
+  const artifact = JSON.stringify({ ...unsigned, signature: { algorithm: 'ed25519', signer: `cci:${key.pubHex}`, value } });
+  const locator = 'stor-' + sha256Hex(`vet-anchor-${separator}-${artifactHash}`);
+  return { artifact, ref: { anchor: { kind: 'storage-program' as const, locator }, contentHash: artifactHash, signer: `cci:${key.pubHex}` } };
+}
+const verifyResultScope = (jobId: string) => ({ resultVersion: '1', scheme: 'did', identifier: `demos:agent:${'ab'.repeat(32)}`, recipeVersion: 1, method: 'self-signed', decision: 'pass', reason: 'self-signed presentation verified',
+  attestation: { anchor: { kind: 'storage-program', locator: 'stor-listing' }, contentHash: 'cd'.repeat(32) }, fetchedAt: 1735689600000, verifiedAt: 1735689600000, jobId });
+const compositeScope = (jobId: string) => ({ recordVersion: '1', jobId, evaluatedParty: `did:demos:agent:${'ab'.repeat(32)}`, bundleHash: 'ef'.repeat(32), requirementHash: '12'.repeat(32),
+  freshness: [], supplementary: [], dealSpecific: [{ anchor: { kind: 'storage-program', locator: 'stor-result' }, contentHash: '34'.repeat(32), recipeVersion: 1 }], overallDecision: 'pass', generatedAt: 1735689600000 });
+
+test('DACS-2 §7.5: a referenced VerifyResult signed under dacs-verifyresult:v1: by its pinned signer verifies', async () => {
+  const jobId = 'v1-ref-verify-result-ok';
+  const verifier = mk(0x31);
+  const { artifact, ref } = signedVetArtifact(verifyResultScope(jobId), DOMAIN_SEPARATORS.VERIFY_RESULT, verifier);
+  const { buyerCopy, map } = twoSidedMap({ jobId, vetRecords: [ref] });
+  map.set(ref.anchor.locator, artifact);
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.attestationsVerified, 1, JSON.stringify(v.attestationSteps));
+  assert.equal(v.attestationsFailed, 0);
+  assert.equal(v.rollup, 'pass', JSON.stringify(v.attestationSteps));
+});
+
+test('DACS-2 §7.5: a VerifyResult signed under the composite separator does not verify (wrong domain, not a pass)', async () => {
+  const jobId = 'v1-ref-verify-result-wrong-domain';
+  const verifier = mk(0x32);
+  const { artifact, ref } = signedVetArtifact(verifyResultScope(jobId), DOMAIN_SEPARATORS.COMPOSITE_VERIFY, verifier);
+  const { buyerCopy, map } = twoSidedMap({ jobId, vetRecords: [ref] });
+  map.set(ref.anchor.locator, artifact);
+  const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.attestationsVerified, 0, JSON.stringify(v.attestationSteps));
+  assert.equal(v.attestationsFailed, 1);
+  assert.equal(v.rollup, 'fail');
+});
+
+test('DACS-2 §7.7: a referenced composite record signed under dacs-composite:v1: by its pinned signer verifies, and not under the VerifyResult separator', async () => {
+  const jobId = 'v1-ref-composite';
+  const verifier = mk(0x33);
+  for (const [separator, expectVerified] of [[DOMAIN_SEPARATORS.COMPOSITE_VERIFY, 1], [DOMAIN_SEPARATORS.VERIFY_RESULT, 0]] as const) {
+    const { artifact, ref } = signedVetArtifact(compositeScope(jobId), separator, verifier);
+    const { buyerCopy, map } = twoSidedMap({ jobId, vetRecords: [ref] });
+    map.set(ref.anchor.locator, artifact);
+    const v = await verifyBundleV1Full(buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(map) });
+    assert.equal(v.attestationsVerified, expectVerified, `${separator}: ${JSON.stringify(v.attestationSteps)}`);
+    assert.equal(v.rollup, expectVerified === 1 ? 'pass' : 'fail');
+  }
+});

@@ -51,6 +51,8 @@ export declare const anchorNames: {
     readonly deliverable: (jobId: string) => string;
     readonly deliveryEvidence: (jobId: string, phaseIndex: number) => string;
     readonly bundle: (jobId: string, role: "buyer" | "seller") => string;
+    /** A party's presented IdentityBundle (DACS-1 §6.3.2), anchored by that party so the vet phase's evidence is readable cold. The Standard names no address for a bundle; this one is ours. */
+    readonly identityBundle: (jobId: string, role: "buyer" | "seller") => string;
 };
 /**
  * Resolve an anchored program by (expected owner, canonical name) via exact-name

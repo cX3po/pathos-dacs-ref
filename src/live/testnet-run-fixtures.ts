@@ -1,7 +1,7 @@
 /** Deterministic, public test material and in-memory DACS coordinator dependencies. */
 
 import * as ed25519 from '@noble/ed25519';
-import { emitVerifyResult, vetRecordAddress, vetRecordProgramName, type VetRecordRefs } from './vet-record.js';
+import { vetParties } from './party-vet.js';
 import { dacs1Listing, presentSellerIdentity, signDacs1Listing, listingDeliverableRef } from './listing-wire.js';
 import { signatureExcludedHash } from '../lib/content-hash.js';
 import { sha256, sha512 } from '@noble/hashes/sha2';
@@ -178,25 +178,22 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
       try { await verifyBundleListing(published.listing, { verifySignature }); }
       catch (error) { return { outcome: 'fail', detail: error instanceof Error ? error.message : 'listing vet failed' }; }
       const listingRef = { anchor: { kind: 'storage-program' as const, locator: published.anchor.nativeAddress }, contentHash: published.listingRef.contentHash };
-      const refs: Partial<VetRecordRefs> = {}; const records = {} as NonNullable<VetVerdict['records']>;
-      for (const role of ['buyer', 'seller'] as const) {
-        const key = role === 'buyer' ? buyer : seller;
-        const decision = role === 'seller' ? 'pass' as const : 'indeterminate' as const;
-        const reason = role === 'seller' ? 'the seller wallet signed the listing and its identity bundle (self-signed presentation verified)' : 'the buyer presented no identity bundle before the agreement (self-signed presentation not observed)';
-        const { record, contentHash } = await emitVerifyResult({ claim: key.claim, method: 'self-signed', decision, reason, attestation: listingRef, fetchedAt: FIXTURE_NOW, verifiedAt: FIXTURE_NOW }, signer(orchestrator));
-        const address = vetRecordAddress(run.jobId, record.scheme, record.identifier, record.recipeVersion);
-        const anchored = await anchor({ logicalAddress: vetRecordProgramName(address), content: record, contentHash: jcsHashHex(record) });
-        refs[role] = { anchor: { kind: 'storage-program', locator: anchored.nativeAddress }, contentHash, signer: orchestrator.claim };
-        records[role] = { method: record.method, decision: record.decision };
+      let vetted;
+      try {
+        vetted = await vetParties({ jobId: run.jobId, listing: published.listing, listingRef, signers: { buyer: signer(buyer), seller: signer(seller) },
+          anchor, verifySignature: (request) => verifySignature(request as Parameters<typeof verifySignature>[0]), now: FIXTURE_NOW });
+      } catch (error) {
+        return { outcome: 'fail', detail: error instanceof Error ? error.message : 'party vet failed' };
       }
-      return { outcome: 'pass', detail: 'seller listing claim and signature verified; party vet records anchored', vetRecordRefs: refs as VetRecordRefs, records,
+      return { outcome: 'pass', detail: 'seller listing claim and signature verified; party vet composites anchored', vetRecordRefs: vetted.refs, records: vetted.records,
         singleFetch: { executed: false, trustLevel: 'not-applicable', reason: 'no lei: claim presented; the GLEIF single-fetch recipe does not apply' } };
     },
     async emitAgreement(published, run): Promise<AgreementResult> {
-      const fallback: AttestationRef = { anchor: { kind: 'storage-program', locator: published.anchor.nativeAddress }, contentHash: signatureExcludedHash(published.listing) };
+      const vet = published.vetRecordRefs;
+      if (!vet) throw new Error('agreement refused: the vet phase anchored no party vet records');
       const parties: AgreementPartyV1[] = [
-        { role: 'buyer', bundleHash: jcsHashHex({ role: 'buyer', claim: buyer.claim }), primaryClaim: buyer.claim, vetRecordRef: published.vetRecordRefs?.buyer ?? fallback },
-        { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: seller.claim }), primaryClaim: seller.claim, vetRecordRef: published.vetRecordRefs?.seller ?? fallback },
+        { role: 'buyer', bundleHash: vet.buyer.bundleHash, primaryClaim: buyer.claim, vetRecordRef: vet.buyer.composite },
+        { role: 'seller', bundleHash: vet.seller.bundleHash, primaryClaim: seller.claim, vetRecordRef: vet.seller.composite },
       ];
       const committed = await commitAgreement({ jobId: run.jobId, listing: published.listing, listingRef: published.listingRef, parties,
         terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: listingDeliverableRef(published.listing), deadline: FIXTURE_NOW + 3_600_000 } },
@@ -228,9 +225,11 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
     },
     async finalize(input): Promise<FinalizationResult> {
       const agreement = input.agreement.committed;
+      const vet = input.listing.vetRecordRefs;
+      if (!vet) throw new Error('finalization refused: the session carries no party vet records');
       const parties = [
-        { role: 'buyer' as const, bundleHash: jcsHashHex({ role: 'buyer', claim: buyer.claim }), primaryClaim: buyer.claim },
-        { role: 'seller' as const, bundleHash: jcsHashHex({ role: 'seller', claim: seller.claim }), primaryClaim: seller.claim },
+        { role: 'buyer' as const, bundleHash: vet.buyer.bundleHash, primaryClaim: buyer.claim },
+        { role: 'seller' as const, bundleHash: vet.seller.bundleHash, primaryClaim: seller.claim },
       ];
       const phaseResults = [
         { index: 0, kind: 'negotiate-fixed-price', outcome: 'ok' as const, orchestrator: orchestrator.claim },

@@ -123,9 +123,10 @@ test('a finalized copy cites the anchored agreement document, not the finality c
     const { signatures: _sigs, ...unsignedCited } = cited as Record<string, unknown>; void _sigs;
     assert.equal(ref.contentHash, jcsHashHex(unsignedCited), 'DACS-2 §7.5.2: contentHash covers the signature-excluded document');
     for (const party of cited!.parties as Array<{ vetRecordRef: { anchor: { locator: string }; contentHash: string } }>) {
-      const listing = store!.get(party.vetRecordRef.anchor.locator) as Record<string, unknown>;
-      const { signature: _ls, ...unsignedListing } = listing; void _ls;
-      assert.equal(party.vetRecordRef.contentHash, jcsHashHex(unsignedListing), 'the vet placeholder cites the anchored listing by its signature-excluded hash');
+      const composite = store!.get(party.vetRecordRef.anchor.locator) as Record<string, unknown>;
+      assert.equal(composite.recordVersion, '1', 'DACS-3 §8.5: the party cites a DACS-2 composite record');
+      const { signature: _cs, ...unsignedComposite } = composite; void _cs;
+      assert.equal(party.vetRecordRef.contentHash, jcsHashHex(unsignedComposite), 'the citation hashes the signature-excluded composite');
     }
     for (const ev of bundle.settlementEvidence as Array<{ anchor: { locator: string }; contentHash: string }>) {
       const record = store!.get(ev.anchor.locator) as Record<string, unknown>;
@@ -207,12 +208,13 @@ test('the dry-run listing is a DACS-1 Listing: Standard members only, a per-clai
   assert.ok(!sdkListingProgramName(logical).includes(':'), 'colon-free program name');
 });
 
-// DACS-2 §7.5: the vet phase records one VerifyResult per party (self-signed: the seller signed what it presented, the buyer presented nothing
-// yet), anchors each under its CM-2 address, and the agreement parties cite them; the run result carries the single-fetch outcome honestly.
-test('the vet phase anchors a DACS-2 VerifyResult per party, the agreement parties cite them, and the run result records the single-fetch outcome', async () => {
+// DACS-2 §7.5 / §7.7 and DACS-3 §8.5: the vet phase anchors, per party, a self-signed VerifyResult signed by the counterparty and the composite
+// that evaluates it under the requirement the counterparty holds; the agreement parties cite the composites and carry the evaluated bundle hashes.
+test('the vet phase anchors a counterparty-signed VerifyResult and composite per party, the agreement cites the composites, and the run result records the single-fetch outcome', async () => {
   const { verifyDomainHashAgentSignature } = await import('../../src/adapters/demos/identity.js');
   const { DOMAIN_SEPARATORS } = await import('../../src/domain-sep.js');
   const { jcsHashHex } = await import('../../src/jcs.js');
+  const { identityBundleHash, selfSignedBundleRequirement } = await import('../../src/live/listing-wire.js');
   let store: Map<string, unknown> | undefined; const chunks: string[] = [];
   const out = process.stdout.write.bind(process.stdout);
   process.stdout.write = ((c: string | Uint8Array) => { chunks.push(String(c)); return true; }) as typeof process.stdout.write;
@@ -222,21 +224,41 @@ test('the vet phase anchors a DACS-2 VerifyResult per party, the agreement parti
   } finally { process.stdout.write = out; }
   const result = JSON.parse(chunks.join('').trim().split('\n').pop()!);
   assert.equal(result.verification.vet.outcome, 'pass');
-  assert.deepEqual(result.verification.vet.records, { buyer: { method: 'self-signed', decision: 'indeterminate' }, seller: { method: 'self-signed', decision: 'pass' } });
+  assert.deepEqual(result.verification.vet.records, { buyer: { method: 'self-signed', decision: 'pass', composite: 'pass' }, seller: { method: 'self-signed', decision: 'pass', composite: 'pass' } });
   assert.equal(result.verification.vet.singleFetch.trustLevel, 'not-applicable'); assert.equal(result.verification.vet.singleFetch.executed, false);
   const entries = [...store!.values()].filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null);
   const agreement = entries.find((v) => v.agreementVersion === '1')!;
-  for (const party of agreement.parties as Array<{ role: string; primaryClaim: string; vetRecordRef: { anchor: { locator: string }; contentHash: string; signer?: string } }>) {
-    const record = store!.get(party.vetRecordRef.anchor.locator) as Record<string, unknown>;
-    assert.ok(record, `${party.role} vet record resolves`);
-    assert.equal(record.resultVersion, '1'); assert.equal(record.method, 'self-signed'); assert.equal(record.scheme, 'did'); assert.ok(String(record.identifier).startsWith('demos:agent:'));
+  const listing = entries.find((v) => v.dacsVersion === '1' && v.listingVersion !== undefined)!;
+  const buyerBundle = entries.find((v) => v.bundleVersion === '1' && v.presentedBy !== (listing.seller as { identity: { presentedBy: string } }).identity.presentedBy)!;
+  assert.ok(buyerBundle, 'the buyer anchored the identity bundle it presented');
+  const claimOf = (role: string) => (agreement.parties as Array<{ role: string; primaryClaim: string }>).find((p) => p.role === role)!.primaryClaim;
+  for (const party of agreement.parties as Array<{ role: 'buyer' | 'seller'; primaryClaim: string; bundleHash: string; vetRecordRef: { anchor: { locator: string }; contentHash: string; signer?: string } }>) {
+    const counterparty = claimOf(party.role === 'buyer' ? 'seller' : 'buyer');
+    const composite = store!.get(party.vetRecordRef.anchor.locator) as Record<string, unknown>;
+    assert.ok(composite, `${party.role} composite resolves`);
+    assert.deepEqual(Object.keys(composite).sort(), ['bundleHash', 'dealSpecific', 'evaluatedParty', 'freshness', 'generatedAt', 'jobId', 'overallDecision', 'recordVersion', 'requirementHash', 'signature', 'supplementary'], 'exact §7.7 wire keys');
+    assert.equal(composite.jobId, result.jobId); assert.equal(composite.evaluatedParty, party.primaryClaim); assert.equal(composite.overallDecision, 'pass');
+    const evaluatedBundle = party.role === 'seller' ? (listing.seller as { identity: Record<string, unknown> }).identity : buyerBundle;
+    assert.equal(composite.bundleHash, identityBundleHash(evaluatedBundle as never), 'the composite binds the identity bundle the party presented');
+    assert.equal(party.bundleHash, composite.bundleHash, 'the agreement party carries the evaluated bundle hash');
+    const requirement = party.role === 'buyer' ? listing.buyerRequirement : selfSignedBundleRequirement('did');
+    assert.equal(composite.requirementHash, jcsHashHex(requirement), party.role === 'buyer' ? 'the buyer is evaluated under the listing buyerRequirement' : 'the seller is evaluated under the buyer self-signed requirement');
+    const { signature: cSig, ...cScope } = composite as { signature: { signer: string; value: string } };
+    assert.equal(party.vetRecordRef.contentHash, jcsHashHex(cScope)); assert.equal(party.vetRecordRef.signer, cSig.signer); assert.equal(cSig.signer, counterparty, 'the counterparty signed the composite');
+    assert.equal(verifyDomainHashAgentSignature(cSig.signer as `${string}:${string}`, DOMAIN_SEPARATORS.COMPOSITE_VERIFY, jcsHashHex(cScope), Buffer.from(cSig.value, 'base64url')), true, 'signed over dacs-composite:v1:');
+    const dealSpecific = composite.dealSpecific as Array<{ anchor: { kind: string; locator: string }; contentHash: string; recipeVersion: number }>;
+    assert.equal(dealSpecific.length, 1); assert.deepEqual(Object.keys(dealSpecific[0]!).sort(), ['anchor', 'contentHash', 'recipeVersion']);
+    const record = store!.get(dealSpecific[0]!.anchor.locator) as Record<string, unknown>;
+    assert.ok(record, `${party.role} VerifyResult resolves`);
+    assert.equal(record.resultVersion, '1'); assert.equal(record.method, 'self-signed'); assert.equal(record.decision, 'pass'); assert.equal(record.recipeVersion, 1);
     assert.equal(`${record.scheme}:${record.identifier}`, party.primaryClaim, 'the record names the party claim');
-    assert.equal(record.decision, party.role === 'seller' ? 'pass' : 'indeterminate');
-    const { signature, ...scope } = record as { signature: { signer: string; value: string; algorithm: string } };
-    assert.equal(party.vetRecordRef.contentHash, jcsHashHex(scope), 'the reference hashes the signature-excluded record');
-    assert.equal(party.vetRecordRef.signer, signature.signer, 'the reference pins the verifier');
+    const { signature, ...scope } = record as { signature: { signer: string; value: string } };
+    assert.equal(dealSpecific[0]!.contentHash, jcsHashHex(scope), 'the composite cites the signature-excluded result hash');
+    assert.equal(signature.signer, counterparty, 'the counterparty signed the VerifyResult');
     assert.equal(verifyDomainHashAgentSignature(signature.signer as `${string}:${string}`, DOMAIN_SEPARATORS.VERIFY_RESULT, jcsHashHex(scope), Buffer.from(signature.value, 'base64url')), true, 'signed over dacs-verifyresult:v1:');
-    assert.equal((record.attestation as { anchor: { locator: string } }).anchor.locator, result.anchors.listing, 'the self-signed attestation cites the anchored listing');
-    assert.deepEqual(Object.keys(record.attestation as object).sort(), ['anchor', 'contentHash'], 'exact AttestationRef wire keys');
+    const attestation = record.attestation as { anchor: { locator: string }; contentHash: string };
+    assert.deepEqual(Object.keys(attestation).sort(), ['anchor', 'contentHash'], 'exact AttestationRef wire keys');
+    if (party.role === 'seller') assert.equal(attestation.anchor.locator, result.anchors.listing, 'the seller result attests the anchored listing');
+    else assert.equal(store!.get(attestation.anchor.locator), buyerBundle, 'the buyer result attests the anchored buyer bundle');
   }
 });

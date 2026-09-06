@@ -8,6 +8,10 @@
  */
 import { DOMAIN_SEPARATORS } from '../domain-sep.js';
 import { jcsHashHex } from '../jcs.js';
+/** The requirement a party holds of a Demos agent counterparty: its DID claim, self-signed at recipe version 1 (the only recipe this session runs). */
+export function selfSignedBundleRequirement(scheme) {
+    return { requirementVersion: '1', required: [{ scheme, verificationRequired: true, recipeVersion: 1, parameters: { verificationMethod: 'self-signed' } }] };
+}
 function signatureValue(value) {
     return typeof value === 'string' ? value : Buffer.from(value).toString('base64url');
 }
@@ -18,13 +22,36 @@ export function identityBundleHash(bundle) {
     return jcsHashHex(scope);
 }
 /** The seller's own identity bundle: one claim (its primary claim), presented per-claim by the wallet that holds it. */
-export async function presentSellerIdentity(signer, presentedAt) {
+/** An IdentityBundle presenting the signer's own primary claim with a per-claim presentation signature (DACS-1 §6.3.2). */
+export async function presentIdentity(signer, presentedAt) {
     const claim = String(signer.claim);
     const unsigned = { bundleVersion: '1', presentedBy: claim, presentedAt, claims: [{ ref: claim }] };
     const signature = signatureValue(await signer.sign(DOMAIN_SEPARATORS.BUNDLE_PRESENTATION, identityBundleHash(unsigned)));
     return { ...unsigned, presentation: { kind: 'per-claim', signatures: [{ ref: claim, signature }] } };
 }
-/** The unsigned DACS-1 Listing: exactly the Standard's members, with the fixed-price pattern and an empty buyer requirement. */
+export const presentSellerIdentity = presentIdentity;
+/**
+ * DACS-1 §6.3.2: the bundle's presenter is one of its claims and its per-claim presentation signature verifies over
+ * `dacs-bundle-presentation:v1:` || bundle_hash under that claim. Returns the presenter claim; throws otherwise.
+ */
+export async function verifyIdentityPresentation(identity, verifySignature) {
+    const presentedBy = identity.presentedBy;
+    const claims = Array.isArray(identity.claims) ? identity.claims.map((c) => c?.ref) : [];
+    if (identity.bundleVersion !== '1' || typeof presentedBy !== 'string' || !claims.includes(presentedBy))
+        throw new Error('identity bundle presenter is not one of its claims (§6.3.2)');
+    const presentation = identity.presentation;
+    if (presentation?.kind !== 'per-claim' || !Array.isArray(presentation.signatures))
+        throw new Error('identity presentation kind is not supported here (per-claim expected)');
+    const entry = presentation.signatures.find((entry) => entry?.ref === presentedBy);
+    const { presentation: _presentation, ...scope } = identity;
+    void _presentation;
+    const ok = entry !== undefined && typeof entry.signature === 'string'
+        && await verifySignature({ domain: DOMAIN_SEPARATORS.BUNDLE_PRESENTATION, hash: identityBundleHash(scope), signer: presentedBy, algorithm: 'ed25519', value: entry.signature });
+    if (!ok)
+        throw new Error('identity presentation does not verify (§6.3.2)');
+    return presentedBy;
+}
+/** The unsigned DACS-1 Listing: exactly the Standard's members, with the fixed-price pattern; the buyer requirement is the seller's actual policy: a Demos agent DID the buyer's wallet signs for (self-signed). */
 export function dacs1Listing(input) {
     return {
         dacsVersion: '1',
@@ -32,7 +59,7 @@ export function dacs1Listing(input) {
         listingId: input.listingId,
         seller: { identity: input.seller.identity, displayName: input.seller.displayName },
         offering: { title: input.offering.title, description: input.offering.description, category: input.offering.category, tags: input.offering.tags, deliverable: input.offering.deliverable },
-        buyerRequirement: { requirementVersion: '1', required: [] },
+        buyerRequirement: selfSignedBundleRequirement('did'),
         pipeline: input.pipeline.map((step) => (step.parameters === undefined ? { kind: step.kind } : { kind: step.kind, parameters: step.parameters })),
         pricing: input.pricing,
         acceptedRails: input.acceptedRails,
