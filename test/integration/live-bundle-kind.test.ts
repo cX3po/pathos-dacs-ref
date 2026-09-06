@@ -135,3 +135,26 @@ test('a finalized copy cites the anchored agreement document, not the finality c
     assert.notEqual(cited, commitments[0], 'the commitment is not the cited artifact');
   }
 });
+
+// DACS-5: the payment phase's summary entry carries the settlement's ChainTxRefs, the same arms the evidence record carries;
+// the pinned dacs-sdk's Agent verifies a successful payment phase's evidence against exactly that entry (Agent.ts verifyEvidence).
+test('a finalized copy\'s payment phase entry carries txRefs equal to the evidence record\'s ChainTxRef arms, and every settlement phase entry cites its evidence', async () => {
+  let store: Map<string, unknown> | undefined;
+  const out = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (() => true) as typeof process.stdout.write;
+  try {
+    const exit = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (run) => { const deps = createDryRunDependencies(run); store = deps.fixtureState.byNative; return deps; });
+    assert.equal(exit, 0);
+  } finally { process.stdout.write = out; }
+  const bundles = [...(store ?? new Map()).values()].filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null && 'anchoredByRole' in v);
+  assert.ok(bundles.length >= 2);
+  for (const bundle of bundles) {
+    const phases = bundle.phaseSummary as Array<{ index: number; kind: string; txRefs?: unknown[]; attestationRef?: { anchor: { locator: string } } }>;
+    const pay = phases.find((p) => p.kind === 'pay-dem')!, deliver = phases.find((p) => p.kind === 'deliver-storage-program')!;
+    assert.ok(pay.attestationRef && deliver.attestationRef, 'settlement phases cite their evidence');
+    const evidence = store!.get(pay.attestationRef!.anchor.locator) as { paymentTxRefs: unknown[] };
+    assert.deepEqual(pay.txRefs, evidence.paymentTxRefs, 'txRefs are the evidence record\'s ChainTxRef arms');
+    assert.equal((pay.txRefs as Array<{ kind: string }>)[0]!.kind, 'demos');
+    assert.equal(deliver.txRefs, undefined);
+  }
+});
