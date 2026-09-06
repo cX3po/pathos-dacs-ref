@@ -7,8 +7,9 @@ The checked-in `reference-dacs1-listing.json` is a neutral conformance fixture, 
 offer or cryptographic receipt: a signed DACS-1 §6.3.4 Listing (`dacsVersion` "1") whose seller
 presents its IdentityBundle under a self-certifying agent DID (`did:demos:agent:<pubkey>`, a
 deterministic test key), signed over the signature-excluded JCS hash, with the Standard's members
-and no `logical_address` member (the address derives from seller/listingId/listingVersion; the
-program name is the pinned dacs-sdk's form, the logical address with each ':' percent-encoded).
+and the CF-4 `logical_address` the anchored record carries as metadata (§6.3.4(b); it must equal the
+address derived from seller/listingId/listingVersion; the program name is the pinned dacs-sdk's form,
+the logical address with each ':' percent-encoded).
 `listing-pub --dry-run` verifies it the way a counterparty would before deriving those
 coordinates. Re-run the generator with a real immutable `stor-` locator when preparing deployment.
 

@@ -10,10 +10,12 @@ import { buildDiscoveryArtifacts } from '../../src/dacs1/discovery.js';
 import { DOMAIN_SEPARATORS } from '../../src/domain-sep.js';
 import { jcsCanonical, jcsHashHex } from '../../src/jcs.js';
 import { sign, verify } from '../../src/lib/sign.js';
-import { identityBundleHash, sdkListingProgramName, selfSignedBundleRequirement } from '../../src/live/listing-wire.js';
+import { identityBundleHash, sdkListingProgramName, selfSignedBundleRequirement, signDacs1Listing } from '../../src/live/listing-wire.js';
 import {
   agentDidForPubkey,
   agentDidSignatureVerifier,
+  assertDacs1Listing,
+  DACS1_LISTING_SIZE_CAP_BYTES,
   keypairSigner,
   publishProducerListing,
   type ProducerKeypair,
@@ -57,7 +59,7 @@ test('a producer listing is a DACS-1 §6.3.4 Listing presenting the seller ident
   const anchored: Array<{ programName: string; bytes: string }> = [];
   const published = await publish(anchored);
   const listing = published.listing;
-  deepEqual(Object.keys(listing).sort(), ['acceptedRails', 'buyerRequirement', 'dacsVersion', 'listingId', 'listingVersion', 'offering', 'pipeline', 'pricing', 'seller', 'signature', 'terms', 'validity']);
+  deepEqual(Object.keys(listing).sort(), ['acceptedRails', 'buyerRequirement', 'dacsVersion', 'listingId', 'listingVersion', 'logical_address', 'offering', 'pipeline', 'pricing', 'seller', 'signature', 'terms', 'validity']);
   equal(listing.dacsVersion, '1');
   equal(listing.listingId, 'job-producer-1-listing');
   equal(listing.listingVersion, 1);
@@ -81,8 +83,9 @@ test('a producer listing is a DACS-1 §6.3.4 Listing presenting the seller ident
   equal(sig.signer, sellerDid);
   equal(sig.algorithm, 'ed25519');
   ok(verify(DOMAIN_SEPARATORS.LISTING, new Uint8Array(Buffer.from(sig.value, 'base64url')), new TextEncoder().encode(published.contentHash), seller.pubKey));
-  // Address and program name: the logical address derives from the DID, the program name is the SDK's percent-encoded form.
+  // Address and program name: the logical address derives from the DID, is carried on the record inside the signed scope (§6.3.4(b)), and the program name is the SDK's percent-encoded form.
   equal(published.logicalAddress, listingLogicalAddress(sellerDid, 'job-producer-1-listing', 1));
+  equal(listing.logical_address, published.logicalAddress);
   equal(published.programName, sdkListingProgramName(published.logicalAddress));
   equal(published.programName.includes(':'), false);
   match(published.programName, /^dacs1%3Adid%3Ademos%3Aagent%3A[0-9a-f]{64}%3Ajob-producer-1-listing%3Av1$/);
@@ -113,6 +116,52 @@ test('the coordinator\'s listing rules accept the producer listing and refuse a 
   let refused = false;
   try { anchorByOther(); } catch (e) { refused = /does not present the address seller/.test((e as Error).message); }
   equal(refused, true);
+});
+
+test('the structural check refuses what the pinned SDK\'s isListing would refuse, member by member, on correctly signed records', async () => {
+  const published = await publish();
+  const signer = keypairSigner(seller);
+  const { signature: _signature, ...scope } = published.listing; void _signature;
+  const resign = async (mutate: (unsigned: Record<string, unknown>) => Record<string, unknown>) => (await signDacs1Listing(mutate({ ...scope }), signer)).listing;
+  const refused = async (listing: unknown, reason: RegExp) => { let message = ''; try { assertDacs1Listing(listing); } catch (e) { message = (e as Error).message; } match(message, reason); };
+  assertDacs1Listing(published.listing);
+  // A member outside §6.3.4 inside the signed scope (the class the review found: a self contentHash the finalizer tolerates) is refused before any signature check.
+  await refused(await resign((u) => ({ ...u, contentHash: published.contentHash })), /contentHash is not a DACS-1 §6.3.4 member/);
+  await refused(await resign((u) => ({ ...u, offering: null })), /offering/);
+  await refused(await resign((u) => ({ ...u, pricing: null })), /pricing/);
+  await refused(await resign((u) => ({ ...u, buyerRequirement: null })), /buyerRequirement/);
+  await refused(await resign((u) => ({ ...u, terms: null })), /terms/);
+  await refused(await resign((u) => ({ ...u, validity: null })), /validity/);
+  await refused(await resign((u) => ({ ...u, pipeline: [{ kind: 'identify' }, ...(u.pipeline as unknown[])] })), /not a PhaseStep kind: identify/);
+  await refused(await resign((u) => ({ ...u, pipeline: [{ kind: 'pay-dem' }] })), /pay-dem needs parameters/);
+  await refused(await resign((u) => ({ ...u, pipeline: [{ kind: 'vet-credentials', parameters: {} }] })), /takes no parameters/);
+  await refused(await resign((u) => ({ ...u, listingId: 'has:colon' })), /listingId/);
+  await refused(await resign((u) => ({ ...u, logical_address: listingLogicalAddress(sellerDid, 'other-listing', 1) })), /logical_address must be the CF-4 address/);
+  await refused(await resign((u) => { const { logical_address: _l, ...rest } = u; void _l; return rest; }), /logical_address must be the CF-4 address/);
+  await refused(await resign((u) => ({ ...u, validity: { notBefore: NOW, notAfter: NOW - 1 } })), /notAfter >= notBefore/);
+  // A stranger presented as signer without a matching identity claim.
+  await refused({ ...published.listing, signature: { ...(published.listing.signature as object), signer: agentDidForPubkey(keyOf('stranger').pubKey) } }, /signer must be the claim the seller identity bundle presents/);
+});
+
+test('the LR-2 cap is measured on the complete signed record, as the pinned SDK measures it', async () => {
+  const published = await publish();
+  const signer = keypairSigner(seller);
+  const { signature: _signature, ...scope } = published.listing; void _signature;
+  const signedOverhead = jcsCanonical(published.listing).length - jcsCanonical(scope).length;
+  ok(signedOverhead > 100, `a signature adds ${signedOverhead} bytes`);
+  // Pad an uncapped member (terms.termsOfServiceUrl) so the unsigned scope sits under the cap while the signed record does not.
+  const withUrl = (url: string) => ({ ...scope, terms: { ...(scope.terms as object), termsOfServiceUrl: url } });
+  const pad = (target: number) => { let d = 'https://terms.invalid/'; while (jcsCanonical(withUrl(d)).length < target) d += 'x'; return d; };
+  const under = withUrl(pad(DACS1_LISTING_SIZE_CAP_BYTES - Math.floor(signedOverhead / 2)));
+  equal(jcsCanonical(under).length <= DACS1_LISTING_SIZE_CAP_BYTES, true);
+  const signedOver = (await signDacs1Listing(under, signer)).listing;
+  ok(jcsCanonical(signedOver).length > DACS1_LISTING_SIZE_CAP_BYTES);
+  let message = ''; try { assertDacs1Listing(signedOver); } catch (e) { message = (e as Error).message; }
+  match(message, /over the LR-2 cap of 16384/);
+  const fits = withUrl(pad(DACS1_LISTING_SIZE_CAP_BYTES - signedOverhead - 64));
+  const signedFits = (await signDacs1Listing(fits, signer)).listing;
+  ok(jcsCanonical(signedFits).length <= DACS1_LISTING_SIZE_CAP_BYTES);
+  assertDacs1Listing(signedFits);
 });
 
 test('a listing the coordinator\'s rules would refuse never reaches the anchor', async () => {

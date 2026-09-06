@@ -57,7 +57,11 @@ test('rehearsal on testnet, mainnet disabled, nothing signed', () => {
   assert.equal(openapi['x-network'].mainnet.enabled, false);
   assert.equal(listing['x-pathos'].availability['demos:testnet'], true);
   assert.equal(listing['x-pathos'].availability['demos:mainnet'], false);
-  assert.equal(listing.signature, 'unsigned-draft');
+  // An unsigned DACS-1 draft: the Standard's members with the seller identity, validity and logical_address unset until deploy; no signature member.
+  assert.equal(listing.dacsVersion, '1');
+  assert.equal(listing.signature, undefined);
+  assert.equal(listing.seller.identity.presentedBy, 'did:demos:agent:unset-until-deploy');
+  assert.match(listing['x-pathos'].publish, /signDacs1Listing/);
   assert.equal(offers.provider.identity.identifier, 'unset-until-deploy');
   assert.equal(manifest.provider.signingKey.identifier, 'unset-until-deploy');
   for (const service of manifest.services) {
@@ -71,8 +75,8 @@ test('the verify SKU price equals the verify endpoint default and the listing pr
   assert.ok('priceDem' in config, JSON.stringify(config));
   assert.equal(verify.price.amountDem, (config as { priceDem: string }).priceDem);
   assert.equal(verify.price.amountOs, (config as { amountOs: string }).amountOs);
-  assert.equal(listing.price.amount, verify.price.amountDem);
-  assert.equal(listing.price.currency, 'DEM');
+  assert.equal(listing.pricing.price.amount, verify.price.amountDem);
+  assert.equal(listing.pricing.price.currency, 'DEM');
   assert.equal(verify.limits.maxBodyBytes, 1048576);
 });
 
@@ -93,7 +97,7 @@ test('artifact hashes are pinned (a price or term change is a deliberate diff)',
     'offers.json': 'ad582c63a59e8809d6bdfb7aba982ccc2358de1530afe72198c67f541f1ab74b',
     'service-manifest.json': 'abafad61614e2815673b5951232d7b25ba0f28dd87500ba9f5aff860a371e522',
     'openapi.json': 'a76868e4b4d33c820c6e259514f630fb96e2f0e49b97da719d4025c8debdb856',
-    'discovery-registration.json': 'd619fcd796729fa925d688460a9df60e6218e24a3385e5315ceb360c762e8e6d',
+    'discovery-registration.json': '5fbeccf550116f1a61d557b9f1e5d90f9f0a8599ab72f28a3be23362ed5bbd13',
   };
   for (const [name, hash] of Object.entries(pinned)) {
     assert.equal(jcsHashHex(load(name)), hash, name);

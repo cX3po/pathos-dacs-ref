@@ -7,13 +7,14 @@
  * What this tool does:
  *   1. Read a signed DACS-1 Listing JSON (dacsVersion "1") from disk; signing happens elsewhere
  *      (listing-wire's signDacs1Listing, or the producer-listing helper the demo producers use)
- *   2. Validate the §6.3.4 members, then verify the record the way a counterparty would
- *      (verifyBundleListing: signature over the signature-excluded JCS hash, the presented seller
- *      identity bundle, presenter = signer; the signer is the seller's self-certifying agent DID)
- *   3. Derive the CF-4 logical address from (seller claim, listingId, listingVersion) and the storage
- *      program name in the pinned dacs-sdk's form (the logical address with each ':' percent-encoded),
- *      so that SDK's Agent resolves the listing by (owner, name)
- *   4. JCS-canonicalise; reject a signed scope over 16 KB (§6.3.4 size cap)
+ *   2. Check the §6.3.4 members, the pipeline's PhaseStep kinds, the on-record CF-4 logical address
+ *      (§6.3.4(b): derived from seller claim, listingId, listingVersion) and the LR-2 16 KiB cap on the
+ *      complete signed record, as the pinned dacs-sdk's isListing does; then verify the record the way a
+ *      counterparty would (verifyBundleListing: signature over the signature-excluded JCS hash, the
+ *      presented seller identity bundle, presenter = signer; the signer is the seller's agent DID)
+ *   3. Name the storage program in the pinned dacs-sdk's form (the logical address with each ':'
+ *      percent-encoded) so that SDK's Agent resolves the listing by (owner, name)
+ *   4. JCS-canonicalise the complete signed record (the bytes that are anchored)
  *   5. --dry-run stops here and prints the coordinates
  *   6. Anchor the complete signed record via Demos SR-2 and emit the §6.3.4(c) discovery artifacts
  *
@@ -23,12 +24,11 @@
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { verifyBundleListing } from '../adapters/dacs/bundle-finalizer.js';
-import { listingLogicalAddress } from '../dacs1/addressing.js';
 import { emitDiscoveryArtifacts, listingContentHash } from '../dacs1/discovery.js';
 import { connectDemos, mnemonicFromEnv, anchor } from '../demos/index.js';
 import { jcsCanonical } from '../jcs.js';
 import { sdkListingProgramName } from '../live/listing-wire.js';
-import { agentDidSignatureVerifier } from '../live/producer-listing.js';
+import { agentDidSignatureVerifier, assertDacs1Listing, DACS1_LISTING_SIZE_CAP_BYTES } from '../live/producer-listing.js';
 
 const USAGE = `
 pathos-dacs-listing-pub — DACS-1 Listing publisher
@@ -46,7 +46,7 @@ Options:
   --discovery-dir <path>   Artifact output root (default: discovery)
   --help                   Show this message
 
-Exits non-zero on validation failure, a signature or identity presentation that does not verify, or size-cap exceeded.
+Exits non-zero on a member, pipeline, logical-address or size-cap failure, or a signature or identity presentation that does not verify.
 `;
 
 interface CliArgs {
@@ -86,69 +86,36 @@ function parseCliArgs(): CliArgs {
 }
 
 type Dacs1Listing = Record<string, unknown> & {
-  dacsVersion: '1';
   listingId: string;
   listingVersion: number;
+  logical_address: string;
   seller: { identity: { presentedBy: string }; displayName: string };
   signature: { algorithm: 'ed25519'; signer: string; value: string };
 };
 
-const REQUIRED_MEMBERS = ['dacsVersion', 'listingVersion', 'listingId', 'seller', 'offering', 'buyerRequirement', 'pipeline', 'pricing', 'acceptedRails', 'terms', 'validity', 'signature'] as const;
-
-/** The DACS-1 §6.3.4 members this publisher reads; the signature and the identity presentation are verified afterwards. */
-function validateDacs1Listing(listing: unknown): asserts listing is Dacs1Listing {
-  if (typeof listing !== 'object' || listing === null || Array.isArray(listing)) throw new Error('listing must be an object');
-  const l = listing as Record<string, unknown>;
-  if (l.dacsVersion !== '1') throw new Error(`listing.dacsVersion must be "1" (a DACS-1 §6.3.4 Listing; got: ${String(l.dacsVersion)})`);
-  for (const member of REQUIRED_MEMBERS) if (l[member] === undefined) throw new Error(`listing.${member} required (§6.3.4)`);
-  if (typeof l.listingId !== 'string' || !l.listingId) throw new Error('listing.listingId must be a non-empty string');
-  if (!Number.isSafeInteger(l.listingVersion) || (l.listingVersion as number) < 1) throw new Error('listing.listingVersion must be an integer >= 1');
-  const seller = l.seller as Record<string, unknown> | null;
-  if (typeof seller !== 'object' || seller === null) throw new Error('listing.seller required');
-  const identity = seller.identity as Record<string, unknown> | null | undefined;
-  if (typeof identity !== 'object' || identity === null || typeof identity.presentedBy !== 'string') {
-    throw new Error('listing.seller.identity must be an IdentityBundle presented by the seller claim (§6.3.2)');
-  }
-  if (typeof seller.displayName !== 'string') throw new Error('listing.seller.displayName required');
-  if (!Array.isArray(l.pipeline) || l.pipeline.length === 0) throw new Error('listing.pipeline must be a non-empty PhaseStep array');
-  if (!Array.isArray(l.acceptedRails)) throw new Error('listing.acceptedRails must be an array');
-  const signature = l.signature as Record<string, unknown> | null;
-  if (typeof signature !== 'object' || signature === null || signature.algorithm !== 'ed25519' || typeof signature.signer !== 'string' || typeof signature.value !== 'string') {
-    throw new Error('listing.signature must be { algorithm: "ed25519", signer, value } (§6.3.4)');
-  }
-  if (signature.signer !== identity.presentedBy) throw new Error('listing signer must be the claim the seller identity bundle presents (§6.3.4)');
-}
-
 async function main(): Promise<void> {
   const args = parseCliArgs();
 
-  // 1-2. Load, validate the members, verify as a counterparty would.
+  // 1-2. Load; check the members, the pipeline kinds, the on-record logical address and the LR-2 cap on the complete
+  // signed record the way the pinned dacs-sdk's isListing does; then verify as a counterparty would.
   const raw = readFileSync(args.listingFile, 'utf-8');
   const listingObj: unknown = JSON.parse(raw);
-  validateDacs1Listing(listingObj);
-  const listing = listingObj;
+  assertDacs1Listing(listingObj);
+  const listing = listingObj as Dacs1Listing;
   await verifyBundleListing(listing, { verifySignature: agentDidSignatureVerifier as never });
   const sellerClaim = listing.seller.identity.presentedBy;
 
-  // 3. Coordinates.
-  const logicalAddress = listingLogicalAddress(sellerClaim, listing.listingId, listing.listingVersion);
-  if (listing.logical_address !== undefined && listing.logical_address !== logicalAddress) {
-    throw new Error(`listing.logical_address mismatch: expected ${logicalAddress}`);
-  }
+  // 3. Coordinates: the logical address the record carries (already checked against the tuple); the program name is the pinned dacs-sdk's form.
+  const logicalAddress = listing.logical_address;
   const storageProgramName = sdkListingProgramName(logicalAddress);
   console.error(`✓ Loaded DACS-1 listing: listingId=${listing.listingId}, listingVersion=${listing.listingVersion}, seller=${sellerClaim}`);
-  console.error(`✓ Signature and identity presentation verified under the seller's agent DID`);
-  console.error(`✓ Logical address (CF-4): ${logicalAddress}`);
+  console.error(`✓ Members, pipeline kinds and on-record logical address checked; signature and identity presentation verified under the seller's agent DID`);
+  console.error(`✓ Logical address (CF-4, on record): ${logicalAddress}`);
   console.error(`✓ Storage program name (pinned dacs-sdk form, colon-free): ${storageProgramName}`);
 
-  // 4. Size cap over the signature-omitted canonical form (§6.3.4).
-  const { signature: _signature, ...unsigned } = listing;
-  void _signature;
-  const canonical = jcsCanonical(unsigned);
-  if (canonical.length > 16 * 1024) {
-    throw new Error(`listing canonical bytes = ${canonical.length}, exceeds §6.3.4 16 KB cap. Trim before publishing.`);
-  }
-  console.error(`✓ JCS canonical bytes: ${canonical.length} (< 16 KB cap)`);
+  // 4. Size: the complete canonical signed record is what LR-2 caps (assertDacs1Listing refused anything over it).
+  const canonical = jcsCanonical(listing);
+  console.error(`✓ JCS canonical signed record: ${canonical.length} bytes (cap ${DACS1_LISTING_SIZE_CAP_BYTES})`);
   const contentHash = listingContentHash(listing);
 
   // 5. Dry run stops here.

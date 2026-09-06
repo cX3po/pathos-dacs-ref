@@ -87,9 +87,10 @@
   "validity": {
     "notBefore": 1784006400000
   },
+  "logical_address": "dacs1:did%3Ademos%3Aagent%3A95843dc3ee5db7c2a3a278dcabc990539ee753d84aca093f0a373c57b3f6734b:weather-band:v1",
   "signature": {
     "algorithm": "ed25519",
     "signer": "did:demos:agent:95843dc3ee5db7c2a3a278dcabc990539ee753d84aca093f0a373c57b3f6734b",
-    "value": "uxNdM5dsHYbsk6afRMXxrt8z_c8syuMbYwtDBrr8hcovwqlTBHl_J0BkxYJv9oDu1pwvMGyacoIff85heQ8RCA"
+    "value": "36DhVrhu5HpHkYjX2oJF-XWF9cLa2r_n7b62E2KXizu4IE4E0S4-2PrWw45odTjFDcIPwL5s9Ik7xLft2qpsCw"
   }
 }

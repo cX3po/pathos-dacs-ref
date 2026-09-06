@@ -236,17 +236,21 @@ test('listing-pub dry-run verifies the signed DACS-1 reference listing and deriv
   const receipt = JSON.parse(stdout) as Record<string, unknown>;
   const logical = listingLogicalAddress(seller, 'weather-band', 1);
   equal(receipt['logical_address'], logical);
+  equal(fixture.logical_address, logical);
   equal(receipt['storageProgramName'], logical.replace(/:/g, '%3A'));
   equal(String(receipt['storageProgramName']).includes(':'), false);
   equal(receipt['contentHash'], listingContentHash(fixture));
   equal(receipt['sellerClaim'], seller);
   equal(receipt['signatureVerified'], true);
-  // A v0.1 body is no longer accepted, and a tampered DACS-1 record fails its signature check before any coordinate is derived.
+  // A v0.1 body is no longer accepted; a record with a member outside §6.3.4 (a self contentHash inside the signed scope), one without its on-record logical address, and a tampered record are refused before any coordinate is derived.
   const root = mkdtempSync(join(tmpdir(), 'listing-pub-'));
   try {
     const legacy = join(root, 'legacy.json'); writeFileSync(legacy, JSON.stringify(listing()));
+    const withHash = join(root, 'with-hash.json'); writeFileSync(withHash, JSON.stringify({ ...fixture, contentHash: listingContentHash(fixture) }));
+    const { logical_address: _l, ...withoutLogical } = fixture; void _l;
+    const noLogical = join(root, 'no-logical.json'); writeFileSync(noLogical, JSON.stringify(withoutLogical));
     const tampered = join(root, 'tampered.json'); writeFileSync(tampered, JSON.stringify({ ...fixture, pricing: { kind: 'fixed', price: { amount: '2', currency: 'DEM' } } }));
-    for (const [file, message] of [[legacy, /dacsVersion must be "1"/], [tampered, /listing signature is invalid/]] as const) {
+    for (const [file, message] of [[legacy, /is not a DACS-1 §6.3.4 member/], [withHash, /contentHash is not a DACS-1 §6.3.4 member/], [noLogical, /logical_address must be the CF-4 address/], [tampered, /listing signature is invalid/]] as const) {
       const run = spawnSync('npx', ['tsx', 'src/cli/listing-pub.ts', '--listing-file', file, '--dry-run'], { cwd: process.cwd(), encoding: 'utf8' });
       equal(run.status, 1);
       match(run.stderr, message);

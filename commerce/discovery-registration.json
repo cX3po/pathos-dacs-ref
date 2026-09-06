@@ -1,50 +1,96 @@
 {
-  "v": "dacs-1-listing:0.1",
-  "id": "pathos-verify-bundle",
-  "version": 1,
-  "logical_address": "unset-until-signed",
+  "dacsVersion": "1",
+  "listingVersion": 1,
+  "listingId": "pathos-verify-bundle",
   "seller": {
-    "displayName": "PATH-OS",
     "identity": {
-      "primary": {
-        "scheme": "key",
-        "identifier": "unset-until-deploy"
+      "bundleVersion": "1",
+      "presentedBy": "did:demos:agent:unset-until-deploy",
+      "presentedAt": 0,
+      "claims": [
+        {
+          "ref": "did:demos:agent:unset-until-deploy"
+        }
+      ],
+      "presentation": {
+        "kind": "per-claim",
+        "signatures": []
       }
+    },
+    "displayName": "PATH-OS"
+  },
+  "offering": {
+    "title": "DACS attestation-bundle verification (d402)",
+    "description": "DACS attestation-bundle verification behind a d402 payment gate: POST /verify, 402 until paid, verdict plus an HTTP receipt that names the on-chain payment. Pricing and the other three services: commerce/offers.json.",
+    "category": "verification.dacs5",
+    "tags": [
+      "dacs5",
+      "verify",
+      "d402"
+    ],
+    "deliverable": {
+      "kind": "attested-payload",
+      "payloadFormat": "application/json"
     }
   },
-  "capability": {
-    "key": "dacs5-verify",
-    "description": "DACS attestation-bundle verification behind a d402 payment gate: POST /verify, 402 until paid, verdict plus an HTTP receipt that names the on-chain payment. Pricing and the other three services: commerce/offers.json."
+  "buyerRequirement": {
+    "requirementVersion": "1",
+    "required": [
+      {
+        "scheme": "did",
+        "verificationRequired": true,
+        "recipeVersion": 1,
+        "parameters": {
+          "verificationMethod": "self-signed"
+        }
+      }
+    ]
   },
-  "price": {
-    "amount": "0.1",
-    "currency": "DEM",
-    "perUnit": "request"
-  },
-  "requiredCapabilities": [
-    "sr-2-anchored-storage"
+  "pipeline": [
+    {
+      "kind": "vet-credentials"
+    },
+    {
+      "kind": "negotiate-fixed-price"
+    },
+    {
+      "kind": "commit-agreement"
+    },
+    {
+      "kind": "pay-dem",
+      "parameters": {
+        "rail": "pay-dem"
+      }
+    },
+    {
+      "kind": "deliver-attested-payload"
+    }
   ],
-  "buyerRequirements": {
-    "primaryAcceptable": [
-      "key"
-    ],
-    "requiredClaims": [],
-    "verificationRecipes": {}
+  "pricing": {
+    "kind": "fixed",
+    "price": {
+      "amount": "0.1",
+      "currency": "DEM"
+    }
   },
   "acceptedRails": [
-    "pay-dem"
+    {
+      "railId": "pay-dem"
+    }
   ],
-  "acceptedNegotiation": [
-    "negotiate-fixed-price"
-  ],
-  "publishedAt": "unset-until-signed",
-  "signature": "unsigned-draft",
+  "terms": {
+    "deadlineSecAfterCommit": 600
+  },
+  "validity": {
+    "notBefore": 0
+  },
   "x-pathos": {
+    "draft": "unsigned DACS-1 \u00a76.3.4 draft; not a member of the listing wire shape and stripped before signing. The x-pathos block itself is not \u00a76.3.4 and listing-pub refuses a record that still carries it.",
     "availability": {
       "demos:testnet": true,
       "demos:mainnet": false
     },
-    "publish": "sign and anchor with `npm run listing-pub` at deploy; this file is the unsigned draft and is never indexed as is",
+    "publish": "at deploy: present the seller identity under the deployer wallet's agent DID (listing-wire presentIdentity), set seller.identity, validity.notBefore and logical_address (dacs1:{CF-4 seller DID}:pathos-verify-bundle:v1), sign with listing-wire signDacs1Listing (or the producer-listing helper), drop this x-pathos block, then anchor with `npm run listing-pub -- --listing-file <signed> --mnemonic-env <ENV> --publisher-origin <origin>`; this file is never indexed as is",
     "offers": "commerce/offers.json",
     "manifest": "commerce/service-manifest.json"
   }
