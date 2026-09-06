@@ -1,50 +1,99 @@
 {
-  "v": "dacs-1-listing:0.1",
-  "id": "pathos-verify-bundle",
-  "version": 1,
-  "logical_address": "unset-until-signed",
+  "dacsVersion": "1",
+  "listingVersion": 1,
+  "listingId": "pathos-verify-bundle",
   "seller": {
-    "displayName": "PATH-OS",
     "identity": {
-      "primary": {
-        "scheme": "key",
-        "identifier": "unset-until-deploy"
+      "bundleVersion": "1",
+      "presentedBy": "did:demos:agent:unset-until-deploy",
+      "presentedAt": 0,
+      "claims": [
+        {
+          "ref": "did:demos:agent:unset-until-deploy"
+        }
+      ],
+      "presentation": {
+        "kind": "per-claim",
+        "signatures": []
+      }
+    },
+    "displayName": "PATH-OS"
+  },
+  "offering": {
+    "title": "DACS attestation-bundle verification (d402)",
+    "description": "DACS attestation-bundle verification behind a d402 payment gate: POST /verify, 402 until paid, verdict plus an HTTP receipt that names the on-chain payment. Pricing and the other three services: commerce/offers.json.",
+    "category": "verification.dacs5",
+    "tags": [
+      "dacs5",
+      "verify",
+      "d402"
+    ],
+    "deliverable": {
+      "kind": "attested-payload",
+      "payloadFormat": "application/json",
+      "verificationMethod": {
+        "kind": "self-signed"
       }
     }
   },
-  "capability": {
-    "key": "dacs5-verify",
-    "description": "DACS attestation-bundle verification behind a d402 payment gate: POST /verify, 402 until paid, verdict plus an HTTP receipt that names the on-chain payment. Pricing and the other three services: commerce/offers.json."
+  "buyerRequirement": {
+    "requirementVersion": "1",
+    "required": [
+      {
+        "scheme": "did",
+        "verificationRequired": true,
+        "recipeVersion": 1,
+        "parameters": {
+          "verificationMethod": "self-signed"
+        }
+      }
+    ]
   },
-  "price": {
-    "amount": "0.1",
-    "currency": "DEM",
-    "perUnit": "request"
-  },
-  "requiredCapabilities": [
-    "sr-2-anchored-storage"
+  "pipeline": [
+    {
+      "kind": "vet-credentials"
+    },
+    {
+      "kind": "negotiate-fixed-price"
+    },
+    {
+      "kind": "commit-agreement"
+    },
+    {
+      "kind": "pay-dem",
+      "parameters": {
+        "rail": "pay-dem"
+      }
+    },
+    {
+      "kind": "deliver-attested-payload"
+    }
   ],
-  "buyerRequirements": {
-    "primaryAcceptable": [
-      "key"
-    ],
-    "requiredClaims": [],
-    "verificationRecipes": {}
+  "pricing": {
+    "kind": "fixed",
+    "price": {
+      "amount": "0.1",
+      "currency": "DEM"
+    }
   },
   "acceptedRails": [
-    "pay-dem"
+    {
+      "railId": "pay-dem"
+    }
   ],
-  "acceptedNegotiation": [
-    "negotiate-fixed-price"
-  ],
-  "publishedAt": "unset-until-signed",
-  "signature": "unsigned-draft",
+  "terms": {
+    "deadlineSecAfterCommit": 600
+  },
+  "validity": {
+    "notBefore": 0
+  },
   "x-pathos": {
+    "draft": "unsigned DACS-1 \u00a76.3.4 draft. The x-pathos block is not a \u00a76.3.4 member: remove it before signing (listing-pub refuses a record that still carries it). The verdict payload is self-signed by the service's own key (DPA-1 verificationMethod self-signed): key possession, not an independent attestation.",
     "availability": {
       "demos:testnet": true,
       "demos:mainnet": false
     },
-    "publish": "sign and anchor with `npm run listing-pub` at deploy; this file is the unsigned draft and is never indexed as is",
+    "publish": "at deploy, in this order: (1) present the seller identity under the deployer wallet's agent DID (listing-wire presentIdentity) and set seller.identity; (2) set validity.notBefore and logical_address = dacs1:{CF-4 seller DID}:pathos-verify-bundle:v1; (3) remove this x-pathos block; (4) sign the remaining record with listing-wire signDacs1Listing (or the producer-listing helper); (5) anchor with `npm run listing-pub -- --listing-file <signed> --mnemonic-env <ENV> --publisher-origin <origin>`, which verifies the record first. This file is never indexed as is.",
     "offers": "commerce/offers.json",
     "manifest": "commerce/service-manifest.json"
   }

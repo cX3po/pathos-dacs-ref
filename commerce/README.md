@@ -11,7 +11,7 @@ and a key, not a design.
 | `offers.json` | Four SKUs priced in canonical DEM strings and integer OS base units, with quote, retry, failure and refund terms and the written paid-order procedure for the three manual services | buyers, the d402 gate, tests |
 | `service-manifest.json` | Provider identity slot, profiles, one entry per service with how to submit, where the result lands, and the proof of delivery | buyers, discovery |
 | `openapi.json` | The HTTP surface (`/healthz`, `/schemas/*`, `/verify`) with the 402 challenge, the receipt and the retained-proof 503; `x-skus` names the three manually fulfilled services | HTTP clients |
-| `discovery-registration.json` | DACS-1-shaped listing draft for the verify service, not yet registry-validated; signed, validated and anchored with `npm run listing-pub` at deploy | the listing publisher |
+| `discovery-registration.json` | Unsigned DACS-1 §6.3.4 listing draft for the verify service (seller identity, validity and `logical_address` unset until deploy; the `x-pathos` block is stripped before signing); signed with listing-wire at deploy and anchored with `npm run listing-pub`, which verifies it first | the listing publisher at deploy; discovery indexes only the anchored record |
 
 ## The four SKUs
 

@@ -2,55 +2,51 @@
 /**
  * DACS-1 Listing publisher CLI
  *
- * Spec source: DACS v0.7 + DACS-1..5 v0.1 §6.3.4
+ * Spec source: DACS-1 v0.1 §6.3.4 (Listing), §6.3.2 (IdentityBundle presentation), §6.3.4(c) (discovery).
  *
  * What this tool does:
- *   1. Read a Listing JSON from disk
- *   2. Validate structural conformance to §6.3.4 (v, id, version, seller, capability, price, ...)
- *   3. JCS-canonicalise; reject if > 16 KB (§6.3.4 size cap)
- *   4. Verify `version` is monotonically increasing for the (id) tuple
- *      (LP-3 — but we can only check against the operator's local history; chain-side
- *      check happens at anchor time)
- *   5. Preserve any caller-supplied signature while computing contentHash over
- *      the signature-omitted canonical form (CORE §B.2)
- *   6. Anchor via Demos SR-2 under an opaque colon-free write-input name
- *   7. Emit §6.3.5/§6.3.6 discovery artifacts and print the native locator
+ *   1. Read a signed DACS-1 Listing JSON (dacsVersion "1") from disk; signing happens elsewhere
+ *      (listing-wire's signDacs1Listing, or the producer-listing helper the demo producers use)
+ *   2. Check the §6.3.4 members, the pipeline's PhaseStep kinds, the on-record CF-4 logical address
+ *      (§6.3.4(b): derived from seller claim, listingId, listingVersion) and the LR-2 16 KiB cap on the
+ *      complete signed record, as the pinned dacs-sdk's isListing does; then verify the record the way a
+ *      counterparty would (verifyBundleListing: signature over the signature-excluded JCS hash, the
+ *      presented seller identity bundle, presenter = signer; the signer is the seller's agent DID)
+ *   3. Name the storage program in the pinned dacs-sdk's form (the logical address with each ':'
+ *      percent-encoded) so that SDK's Agent resolves the listing by (owner, name)
+ *   4. JCS-canonicalise the complete signed record (the bytes that are anchored)
+ *   5. --dry-run stops here and prints the coordinates
+ *   6. Anchor the complete signed record via Demos SR-2 and emit the §6.3.4(c) discovery artifacts
  *
- * Cryptographic signing is intentionally outside this CLI's conformance lane.
+ * The v0.1 pre-DACS-1 listing body (`v: "dacs-1-listing:0.1"`, `id`/`version`, `capability`) is no longer accepted.
  */
 
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import type { Listing, UnsignedListing } from '../types/index.js';
-import { jcsCanonical } from '../jcs.js';
-import { connectDemos, mnemonicFromEnv, anchor } from '../demos/index.js';
-import {
-  assertRegisteredClaimReference,
-  formatClaimReference,
-  listingLogicalAddress,
-  opaqueListingProgramName,
-} from '../dacs1/addressing.js';
+import { verifyBundleListing } from '../adapters/dacs/bundle-finalizer.js';
 import { emitDiscoveryArtifacts, listingContentHash } from '../dacs1/discovery.js';
+import { connectDemos, mnemonicFromEnv, anchor } from '../demos/index.js';
+import { jcsCanonical } from '../jcs.js';
+import { sdkListingProgramName } from '../live/listing-wire.js';
+import { agentDidSignatureVerifier, assertDacs1Listing, DACS1_LISTING_SIZE_CAP_BYTES } from '../live/producer-listing.js';
 
 const USAGE = `
 pathos-dacs-listing-pub — DACS-1 Listing publisher
 
 Usage:
-  pathos-dacs-listing-pub --listing-file <path> --mnemonic-env <ENVVAR>
+  pathos-dacs-listing-pub --listing-file <path> --mnemonic-env <ENVVAR> --publisher-origin <https://origin>
   pathos-dacs-listing-pub --listing-file <path> --dry-run
 
 Options:
-  --listing-file <path>    Path to listing JSON conformant to §6.3.4 schema
-  --mnemonic-env <name>    Env var holding the seller's Demos mnemonic (e.g. DEMOS_MNEMONIC)
-  --dry-run                Validate + canonicalise, but skip the SR-2 anchor/discovery write
+  --listing-file <path>    Path to a signed DACS-1 §6.3.4 Listing JSON (dacsVersion "1")
+  --mnemonic-env <name>    Env var holding the deployer wallet's Demos mnemonic (e.g. DEMOS_MNEMONIC); never a CLI value
+  --dry-run                Validate, verify and derive the coordinates; skip the SR-2 anchor/discovery write
   --rpc <url>              Demos node RPC URL (default: https://demosnode.discus.sh/)
-  --publisher-origin <url> HTTPS origin that will host the emitted discovery artifacts
+  --publisher-origin <url> HTTPS origin that will host the emitted discovery artifacts (or DACS_PUBLISHER_ORIGIN)
   --discovery-dir <path>   Artifact output root (default: discovery)
   --help                   Show this message
 
-Exits non-zero on validation failure or size-cap exceeded.
-
-DACS spec sections enforced: §6.3.4 (LP-1..LP-4)
+Exits non-zero on a member, pipeline, logical-address or size-cap failure, or a signature or identity presentation that does not verify.
 `;
 
 interface CliArgs {
@@ -76,109 +72,72 @@ function parseCliArgs(): CliArgs {
     strict: true,
   });
   if (values.help || !values['listing-file']) {
-    console.log(USAGE);
-    process.exit(values.help ? 0 : 3);
+    console.error(USAGE);
+    process.exit(values.help ? 0 : 1);
   }
   return {
     listingFile: values['listing-file'] as string,
     mnemonicEnv: values['mnemonic-env'] as string | undefined,
     dryRun: values['dry-run'] as boolean,
-    rpc: values['rpc'] as string,
+    rpc: values.rpc as string,
     publisherOrigin: (values['publisher-origin'] as string | undefined) ?? process.env.DACS_PUBLISHER_ORIGIN,
     discoveryDir: values['discovery-dir'] as string,
   };
 }
 
-/** Minimal §6.3.4 structural validation. Full schema validation comes via a JSON schema in v0.2. */
-function validateListing(listing: unknown): asserts listing is Listing {
-  if (typeof listing !== 'object' || listing === null) {
-    throw new Error('listing must be an object');
-  }
-  const l = listing as Record<string, unknown>;
-  if (l.v !== 'dacs-1-listing:0.1') {
-    throw new Error(`listing.v must be "dacs-1-listing:0.1" (got: ${String(l.v)})`);
-  }
-  if (typeof l.id !== 'string' || !l.id) throw new Error('listing.id must be a non-empty string');
-  if (typeof l.version !== 'number' || l.version < 1) throw new Error('listing.version must be >= 1');
-  if (typeof l.seller !== 'object' || !l.seller) throw new Error('listing.seller required');
-  if (typeof l.capability !== 'object' || !l.capability) throw new Error('listing.capability required');
-  if (typeof l.price !== 'object' || !l.price) throw new Error('listing.price required');
-  const seller = l.seller as Record<string, unknown>;
-  const identity = seller['identity'];
-  if (!identity || typeof identity !== 'object' || Array.isArray(identity)) {
-    throw new Error('listing.seller.identity required');
-  }
-  const primary = (identity as Record<string, unknown>)['primary'];
-  if (!primary || typeof primary !== 'object' || Array.isArray(primary)) {
-    throw new Error('listing.seller.identity.primary required');
-  }
-  if (!Array.isArray(l.requiredCapabilities)) throw new Error('listing.requiredCapabilities must be array');
-  // §6.3.4 LP-3: SR-2 MUST be in requiredCapabilities (anchoring depends on it)
-  if (!(l.requiredCapabilities as string[]).includes('sr-2-anchored-storage')) {
-    throw new Error('listing.requiredCapabilities MUST include "sr-2-anchored-storage" per §6.3.4');
-  }
-}
+type Dacs1Listing = Record<string, unknown> & {
+  listingId: string;
+  listingVersion: number;
+  logical_address: string;
+  seller: { identity: { presentedBy: string }; displayName: string };
+  signature: { algorithm: 'ed25519'; signer: string; value: string };
+};
 
 async function main(): Promise<void> {
   const args = parseCliArgs();
 
-  // 1. Load + validate
+  // 1-2. Load; check the members, the pipeline kinds, the on-record logical address and the LR-2 cap on the complete
+  // signed record the way the pinned dacs-sdk's isListing does; then verify as a counterparty would.
   const raw = readFileSync(args.listingFile, 'utf-8');
   const listingObj: unknown = JSON.parse(raw);
-  validateListing(listingObj);
-  const draft = listingObj as Listing;
-  const sellerPrimaryClaim = formatClaimReference(draft.seller.identity.primary);
-  assertRegisteredClaimReference(sellerPrimaryClaim);
-  const logicalAddress = listingLogicalAddress(sellerPrimaryClaim, draft.id, draft.version);
-  if (draft.signature !== undefined && draft.logical_address === undefined) {
-    throw new Error('a signed listing must already carry logical_address in its signed scope; add it and re-sign before minting');
-  }
-  if (draft.logical_address !== undefined && draft.logical_address !== logicalAddress) {
-    throw new Error(`listing.logical_address mismatch: expected ${logicalAddress}`);
-  }
-  const listing: Listing = { ...draft, logical_address: logicalAddress };
-  const storageProgramName = opaqueListingProgramName(logicalAddress);
-  console.error(`✓ Loaded listing: id=${listing.id}, version=${listing.version}, capability=${listing.capability.key}`);
-  console.error(`✓ Logical address (CF-4 metadata): ${logicalAddress}`);
-  console.error(`✓ Opaque Storage Program name is colon-free`);
+  assertDacs1Listing(listingObj);
+  const listing = listingObj as Dacs1Listing;
+  await verifyBundleListing(listing, { verifySignature: agentDidSignatureVerifier as never });
+  const sellerClaim = listing.seller.identity.presentedBy;
 
-  // 2. Strip signature for canonicalisation
-  const unsigned: UnsignedListing = { ...listing };
-  delete (unsigned as Record<string, unknown>).signature;
+  // 3. Coordinates: the logical address the record carries (already checked against the tuple); the program name is the pinned dacs-sdk's form.
+  const logicalAddress = listing.logical_address;
+  const storageProgramName = sdkListingProgramName(logicalAddress);
+  console.error(`✓ Loaded DACS-1 listing: listingId=${listing.listingId}, listingVersion=${listing.listingVersion}, seller=${sellerClaim}`);
+  console.error(`✓ Members, pipeline kinds and on-record logical address checked; signature and identity presentation verified under the seller's agent DID`);
+  console.error(`✓ Logical address (CF-4, on record): ${logicalAddress}`);
+  console.error(`✓ Storage program name (pinned dacs-sdk form, colon-free): ${storageProgramName}`);
 
-  // 3. JCS-canonicalise + size cap (§6.3.4)
-  const canonical = jcsCanonical(unsigned);
-  if (canonical.length > 16 * 1024) {
-    throw new Error(
-      `listing canonical bytes = ${canonical.length}, exceeds §6.3.4 16 KB cap. Trim before publishing.`
-    );
-  }
-  console.error(`✓ JCS canonical bytes: ${canonical.length} (< 16 KB cap)`);
+  // 4. Size: the complete canonical signed record is what LR-2 caps (assertDacs1Listing refused anything over it).
+  const canonical = jcsCanonical(listing);
+  console.error(`✓ JCS canonical signed record: ${canonical.length} bytes (cap ${DACS1_LISTING_SIZE_CAP_BYTES})`);
+  const contentHash = listingContentHash(listing);
 
-  const contentHash = listingContentHash(listing as unknown as Record<string, unknown>);
-
-  // 4. Dry-run path — exits after CF-4, registered-scheme, hash-scope, and name checks.
+  // 5. Dry run stops here.
   if (args.dryRun) {
     console.error('✓ Dry run — Demos connection + anchor step skipped');
     console.log(JSON.stringify({
       status: 'dry-run',
+      listingId: listing.listingId,
+      listingVersion: listing.listingVersion,
+      sellerClaim,
       canonicalBytes: canonical.length,
       logical_address: logicalAddress,
       storageProgramName,
       contentHash,
-      schemeValidated: true,
+      signatureVerified: true,
     }, null, 2));
     process.exit(0);
   }
 
-  // 5. Anchor via Demos SR-2. Refuse the write if no hostable discovery origin was supplied:
-  // a go-forward §6.3.4(c) producer must emit the binding after the native locator exists.
+  // 6. Anchor via Demos SR-2; refuse without a hostable discovery origin (§6.3.4(c) needs the native locator).
   if (!args.mnemonicEnv) {
     console.error('Error: --mnemonic-env required (or use --dry-run)');
-    process.exit(3);
-  }
-  if (typeof listing.signature !== 'string' || listing.signature.length === 0) {
-    console.error('Error: live minting requires a caller-supplied listing signature that covers logical_address');
     process.exit(3);
   }
   if (!args.publisherOrigin) {
@@ -190,23 +149,16 @@ async function main(): Promise<void> {
 
   const handle = await connectDemos(mn, args.rpc);
   console.error(`✓ Connected to Demos: ${handle.rpc}`);
-  console.error(`  Wallet address (CCI): ${handle.address}`);
+  console.error(`  Wallet address: ${handle.address}`);
 
-  // The deployer address is a native-address write input; it is not the seller ClaimReference.
-  // Anchor the complete listing (including any supplied signature) while contentHash remains
-  // bound to the §B.2 signature-omitted canonical form computed above.
+  // The deployer address is a native-address write input; the seller is the claim the listing presents.
   const anchoredBytes = jcsCanonical(listing);
   console.error(`  Anchoring ${anchoredBytes.length} bytes to SR-2...`);
-  const result = await anchor(
-    handle,
-    storageProgramName,
-    new TextDecoder().decode(anchoredBytes),
-    { acl: 'public' }
-  );
+  const result = await anchor(handle, storageProgramName, new TextDecoder().decode(anchoredBytes), { acl: 'public' });
 
   const discoveryFiles = emitDiscoveryArtifacts({
-    listing: listing as unknown as Record<string, unknown>,
-    sellerPrimaryClaim,
+    listing,
+    sellerPrimaryClaim: sellerClaim,
     nativeAddress: result.storageAddress,
     publisherOrigin: args.publisherOrigin,
     generatedAt: Date.now(),
@@ -220,10 +172,12 @@ async function main(): Promise<void> {
 
   console.log(JSON.stringify({
     status: 'anchored',
-    listingId: listing.id,
-    version: listing.version,
+    listingId: listing.listingId,
+    listingVersion: listing.listingVersion,
+    sellerClaim,
     canonicalBytes: canonical.length,
     logical_address: logicalAddress,
+    storageProgramName,
     contentHash,
     storageAddress: result.storageAddress,
     txHash: result.txHash,
