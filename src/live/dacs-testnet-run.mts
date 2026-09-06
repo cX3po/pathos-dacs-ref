@@ -12,6 +12,8 @@
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { jcsHashHex } from '../jcs.js';
 import { createDemosNodeReceiptProvider } from './demos-node-receipt-provider.js';
@@ -332,6 +334,112 @@ export function createNodeReceiptProvider(config: Pick<DacsTestnetConfig, 'rpc'>
   };
 }
 
+/** The seller's real deliverable in LIVE: a PATH-OS proof-organ answer, produced by the organ bridge CLI. */
+export interface OrganDeliverable {
+  v: 'pathos-organ-deliverable:0.1';
+  jobId: string;
+  organ: string;
+  answer: Record<string, unknown>;
+  input_commitment: string;
+  commitment_scheme: string;
+  fetched_at: string;
+}
+
+/** A bridge output or run problem after payment is a delivery-phase failure, never a refusal that hides the session. */
+export class OrganDeliverableError extends Error {
+  constructor(message: string) { super(message); this.name = 'OrganDeliverableError'; }
+}
+
+const HEX64 = /^[0-9a-f]{64}$/;
+const NONCE = /^[0-9a-f]{16,128}$/;
+
+/** Public answer schemas per organ: only these keys, with these value shapes, are ever anchored.
+ *  The bridge is trusted to compute the answer; this projection is the confidentiality boundary. */
+const ORGAN_ANSWER_PROJECTIONS: ReadonlyMap<string, (answer: Record<string, unknown>) => Record<string, unknown>> = new Map([
+  ['nws_alerts', (answer: Record<string, unknown>): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    const own = (key: string): unknown => (Object.hasOwn(answer, key) ? answer[key] : undefined);
+    const coverage = own('coverage');
+    if (coverage !== 'indeterminate' && coverage !== 'verified-empty' && coverage !== 'reported') throw new OrganDeliverableError('nws_alerts answer.coverage is not a known value');
+    out.coverage = coverage;
+    const active = own('active');
+    if (active !== null && typeof active !== 'boolean') throw new OrganDeliverableError('nws_alerts answer.active is not boolean or null');
+    out.active = active ?? null;
+    for (const key of ['highest_band', 'count_band'] as const) {
+      const value = own(key);
+      if (value !== undefined) {
+        if (typeof value !== 'string' || !/^[a-z-]{1,32}$/.test(value)) throw new OrganDeliverableError(`nws_alerts answer.${key} is not a short band label`);
+        out[key] = value;
+      }
+    }
+    const basis = own('basis');
+    if (basis !== undefined) {
+      if (typeof basis !== 'string' || basis.length > 200) throw new OrganDeliverableError('nws_alerts answer.basis is not a short string');
+      out.basis = basis;
+    }
+    return out;
+  }],
+]);
+
+export function supportedOrgans(): string[] { return [...ORGAN_ANSWER_PROJECTIONS.keys()]; }
+
+function containsNonce(value: unknown, nonce: string): boolean {
+  if (typeof value === 'string') return value.includes(nonce);
+  if (Array.isArray(value)) return value.some((v) => containsNonce(v, nonce));
+  if (typeof value === 'object' && value !== null) return Object.entries(value).some(([k, v]) => k.includes(nonce) || containsNonce(v, nonce));
+  return false;
+}
+
+/** Validate the organ bridge's JSON and shape the deliverable. The commitment nonce keys the HMAC input
+ *  commitment: it must be present as a hex string (so it can be checked) and no key or string value of the
+ *  deliverable may contain it. Only the organ's projected public answer fields are carried. */
+export function organDeliverableFrom(raw: string, run: Pick<DacsTestnetConfig, 'jobId' | 'organ'>): OrganDeliverable {
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new OrganDeliverableError('organ bridge output is not JSON'); }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new OrganDeliverableError('organ bridge output is not an object');
+  const o = parsed as Record<string, unknown>;
+  if ('error' in o) throw new OrganDeliverableError('organ bridge reported an error');
+  if (o.organ !== run.organ) throw new OrganDeliverableError('organ bridge answered for a different organ');
+  const project = ORGAN_ANSWER_PROJECTIONS.get(run.organ);
+  if (!project) throw new OrganDeliverableError(`organ ${run.organ} has no public answer schema`);
+  if (typeof o.answer !== 'object' || o.answer === null || Array.isArray(o.answer) || Object.keys(o.answer as object).length === 0) {
+    throw new OrganDeliverableError('organ bridge produced no answer');
+  }
+  if (typeof o.input_commitment !== 'string' || !HEX64.test(o.input_commitment)) throw new OrganDeliverableError('organ bridge input commitment is not a 64-hex digest');
+  if (typeof o.commitment_scheme !== 'string' || !o.commitment_scheme || o.commitment_scheme.length > 120) throw new OrganDeliverableError('organ bridge names no commitment scheme');
+  if (typeof o.fetched_at !== 'string' || Number.isNaN(Date.parse(o.fetched_at))) throw new OrganDeliverableError('organ bridge fetched_at is not a timestamp');
+  if (typeof o.commitment_nonce !== 'string' || !NONCE.test(o.commitment_nonce)) throw new OrganDeliverableError('organ bridge nonce is missing or not a hex string; the commitment cannot be trusted');
+  const deliverable: OrganDeliverable = {
+    v: 'pathos-organ-deliverable:0.1', jobId: run.jobId, organ: run.organ, answer: project(o.answer as Record<string, unknown>),
+    input_commitment: o.input_commitment, commitment_scheme: o.commitment_scheme, fetched_at: o.fetched_at,
+  };
+  if (containsNonce(deliverable, o.commitment_nonce)) throw new OrganDeliverableError('organ bridge nonce would be anchored');
+  return deliverable;
+}
+
+/** Configuration the LIVE deliverable needs, checked before any phase runs (so before payment). */
+export function requireOrganBridgeConfig(env: NodeJS.ProcessEnv, run: Pick<DacsTestnetConfig, 'organ'>): { cli: string; py: string } {
+  const cli = env.ORGAN_CLI;
+  if (!cli || cli.trim() !== cli) throw new DacsTestnetRefusal('config', 'LIVE delivery requires ORGAN_CLI (the proof-organ bridge); a placeholder deliverable is never anchored in LIVE');
+  if (!ORGAN_ANSWER_PROJECTIONS.has(run.organ)) throw new DacsTestnetRefusal('config', `organ ${run.organ} has no public answer schema for LIVE delivery`);
+  return { cli, py: env.AXIOM_PY ?? 'python3' };
+}
+
+export type OrganExec = (file: string, args: string[], options: { timeout: number; maxBuffer: number; env: NodeJS.ProcessEnv }) => Promise<{ stdout: string }>;
+const defaultOrganExec: OrganExec = promisify(execFile) as unknown as OrganExec;
+
+/** Run the configured organ bridge for the session's organ and query. Runtime failure is a delivery failure. */
+export async function runOrganBridge(env: NodeJS.ProcessEnv, run: Pick<DacsTestnetConfig, 'jobId' | 'organ' | 'query'>, execImpl: OrganExec = defaultOrganExec): Promise<OrganDeliverable> {
+  const { cli, py } = requireOrganBridgeConfig(env, run);
+  let stdout: string;
+  try {
+    ({ stdout } = await execImpl(py, [cli, run.organ, run.query], { timeout: 60_000, maxBuffer: 1_048_576, env: { PATH: env.PATH ?? '', HOME: env.HOME ?? '' } }));
+  } catch {
+    throw new OrganDeliverableError('organ bridge did not complete');
+  }
+  return organDeliverableFrom(stdout, run);
+}
+
 /** Construct the selected LIVE dependency set through the gateway-equivalent pay-dem gate. */
 export async function createLiveDependencies(
   config: DacsTestnetConfig,
@@ -340,6 +448,8 @@ export async function createLiveDependencies(
   settlementSeams: Partial<LiveSettlementSeams> = {},
 ): Promise<DacsTestnetDependencies> {
   const { wiring, settlePayment } = await createLiveSettlementDependency(config, env, receiptProvider, settlementSeams);
+  // The deliverable's configuration is checked here, before any phase (so before payment) can run.
+  requireOrganBridgeConfig(env, config);
   const { DOMAIN_SEPARATORS } = await import('../domain-sep.js');
   const { listingLogicalAddress } = await import('../dacs1/addressing.js');
   const { commitAgreement, verifyAgreementCommitmentCold } = await import('../adapters/dacs/agreement-commitment.js');
@@ -420,7 +530,7 @@ export async function createLiveDependencies(
     },
     settlePayment,
     async deliver(_agreement, run) {
-      const deliverable = { organ: run.organ, query: run.query, producedAt: new Date().toISOString() };
+      const deliverable = await runOrganBridge(env, run);
       const deliverableAnchor = await wiring.anchor({ logicalAddress: anchorNames.deliverable(run.jobId), content: deliverable, contentHash: jcsHashHex(deliverable) });
       const evidence = await signEvidence(emitSettlementEvidenceV1({ kind: 'delivery', jobId: run.jobId, phase: 'deliver-storage-program', phaseIndex: 3,
         outcome: 'success', deliverableContentHash: jcsHashHex(deliverable), deliverableAnchorKind: 'storage-program',
@@ -655,7 +765,7 @@ function parseCli(argv: readonly string[], env: NodeJS.ProcessEnv): CliOptions {
   return { dryRun: env.LIVE !== '1', json, help, jobId, ...(fixtureSeedHex ? { fixtureSeedHex: fixtureSeedHex.toLowerCase() } : {}), ...(receiptProvider ? { receiptProvider } : {}) };
 }
 
-const HELP = `Usage: node --import tsx src/live/dacs-testnet-run.mts [--dry-run] [--job-id ID] [--fixture-seed HEX] [--receipt-provider observer|demos-node] [--json]\n\nLIVE=1 selects LIVE. --dry-run is the explicit default and overrides no LIVE request.\n--receipt-provider demos-node selects the finality-proving CORE §5.1 receipt source (the node's confirmed block); it enters the parameter hash, so the dry run and the LIVE run must both name it.`;
+const HELP = `Usage: node --import tsx src/live/dacs-testnet-run.mts [--dry-run] [--job-id ID] [--fixture-seed HEX] [--receipt-provider observer|demos-node] [--json]\n\nLIVE=1 selects LIVE. --dry-run is the explicit default and overrides no LIVE request.\n--receipt-provider demos-node selects the finality-proving CORE §5.1 receipt source (the node's confirmed block); it enters the parameter hash, so the dry run and the LIVE run must both name it.\nLIVE delivery runs the proof-organ bridge: ORGAN_CLI (script path) under AXIOM_PY (default python3) with <organ> <query>; its JSON answer becomes the anchored deliverable, minus the commitment nonce.`;
 
 export async function main(
   argv = process.argv.slice(2),

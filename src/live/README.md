@@ -77,6 +77,24 @@ of those canonical bytes; the adapters compare that hash with the expected
 The flag enters the parameter hash, so the dry run and the LIVE run must both
 name it. No credential is read and nothing is written by the provider.
 
+LIVE delivery is the real proof-organ answer, not a placeholder: `deliver` runs the
+organ bridge named by `ORGAN_CLI` under `AXIOM_PY` (default `python3`) with the
+session's organ and query, validates the JSON (organ name, non-empty answer object,
+64-hex input commitment, scheme, timestamp), and anchors
+`{v: 'pathos-organ-deliverable:0.1', jobId, organ, answer, input_commitment,
+commitment_scheme, fetched_at}`. The bridge's commitment nonce keys the HMAC and is
+never anchored; a run without `ORGAN_CLI` refuses with reason `config`. Dry-run
+keeps its fixture deliverable.
+
+Trusted-bridge boundary: the coordinator trusts the bridge to compute the answer
+and publishes only the organ's projected public fields (for `nws_alerts`: coverage,
+active, band labels, a short basis). The literal nonce scan refuses a copied nonce,
+but it cannot detect an encoded secret inside a permitted string field; that
+residual is accepted only because the bridge is operator-owned code running with a
+filtered environment. Prototype-inherited organ names (`constructor`, `__proto__`)
+are not organs: the schema table is a Map and answer fields are read as own
+properties.
+
 ## Files
 - `organ-gateway.mts` — the DACS-1→5 orchestrator (dry-run + live)
 - `dacs-testnet-run.mts` — fail-closed testnet lifecycle coordinator and CLI
