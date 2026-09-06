@@ -105,6 +105,18 @@ export async function anchor(handle, programName, data, options = {}) {
     // live: storagePrograms.sign(payload) → demos.confirm(tx) → demos.broadcastAndWait(validity).
     const demosAny = demos;
     const tx = await demosAny.storagePrograms.sign(payload);
+    // The locally signed transaction is the authority for what this wallet sent: pin its hash, signer and nonce
+    // now, and require every fact read back from the node to match them.
+    const signed = tx;
+    const signedHash = typeof signed.hash === 'string' && /^[0-9a-f]{64}$/.test(signed.hash) ? signed.hash : undefined;
+    const signedFrom = typeof signed.content?.from === 'string' ? signed.content.from : undefined;
+    const signedNonce = typeof signed.content?.nonce === 'number' && Number.isSafeInteger(signed.content.nonce) ? String(signed.content.nonce)
+        : typeof signed.content?.nonce === 'string' && /^\d+$/.test(signed.content.nonce) ? signed.content.nonce : undefined;
+    if (signedHash === undefined || signedFrom === undefined || signedNonce === undefined) {
+        throw new Error(`SR-2 anchor of "${programName}": the signed transaction lacks a hash, signer or nonce; nothing is broadcast`);
+    }
+    if (signedFrom !== address)
+        throw new Error(`SR-2 anchor of "${programName}": signed transaction is from ${signedFrom.slice(0, 12)}, not this wallet`);
     const validity = await demosAny.confirm(tx);
     // Broadcast wait window. A slow devnet node can take >90s to CONFIRM a tx it already accepted for
     // propagation (the 2026-07-11 + 2026-07-23 BroadcastTimeoutError). Raise the default and make it tunable.
@@ -153,13 +165,41 @@ export async function anchor(handle, programName, data, options = {}) {
         result = { broadcast: { response: { hash: timedOutHash } }, status: { state: 'included' } };
     }
     // Tx hash from the broadcast response (storage-program flow puts it under broadcast.response.hash).
-    const txHash = result.broadcast?.response?.hash
+    const broadcastHash = result.broadcast?.response?.hash
         ?? result.broadcast?.data?.tx_hash ?? result.broadcast?.data?.hash ?? '';
     // Require an explicit terminal `included` — a missing/other state is NOT success (matches the
     // receipt-anchor's positive check; never treat an unobserved anchor as confirmed).
     if (result.status?.state !== 'included') {
         throw new Error(`SR-2 anchor of "${programName}" not included (state=${result.status?.state ?? 'missing'})`);
     }
+    // The anchor result must state the facts a CORE §5.1 receipt will be checked against: the creating
+    // transaction and the nonce that transaction carries. The broadcast payload's hash field varies by SDK
+    // version (observed empty on 4.0.16) and the wallet nonce read before signing is not the nonce the SDK
+    // places in the transaction (observed off by one). The signed transaction is the authority; the node is
+    // read back (briefly retried while the record propagates) to confirm the write, and every fact must agree
+    // with what this wallet signed. Contradiction or an unreadable record fails closed: no result the receipt
+    // provider will contradict is ever returned.
+    const attempts = Math.max(1, Math.min(options.readBackAttempts ?? 5, 20));
+    const delayMs = Math.max(0, Math.min(options.readBackDelayMs ?? 3_000, 60_000));
+    let facts = null;
+    for (let attempt = 0; attempt < attempts && !facts; attempt++) {
+        if (attempt > 0)
+            await new Promise((r) => setTimeout(r, delayMs));
+        facts = await anchorFactsFromNode(handle.rpc, storageAddress, { fetchImpl: options.fetchImpl });
+    }
+    if (!facts) {
+        throw new Error(`SR-2 anchor of "${programName}" was included but its creating transaction and nonce could not be read back from the node after ${attempts} attempt(s)`);
+    }
+    if (facts.owner !== address)
+        throw new Error(`SR-2 anchor of "${programName}": node records owner ${facts.owner.slice(0, 12)}, not this wallet`);
+    if (facts.txHash !== signedHash)
+        throw new Error(`SR-2 anchor of "${programName}": node's creating transaction ${facts.txHash.slice(0, 12)} is not the transaction this wallet signed ${signedHash.slice(0, 12)}`);
+    if (facts.nonce !== signedNonce)
+        throw new Error(`SR-2 anchor of "${programName}": node records nonce ${facts.nonce}, the signed transaction carried ${signedNonce}`);
+    if (broadcastHash && broadcastHash !== facts.txHash) {
+        throw new Error(`SR-2 anchor of "${programName}": broadcast hash ${broadcastHash.slice(0, 12)} differs from the node's creating transaction ${facts.txHash.slice(0, 12)}`);
+    }
+    const txHash = facts.txHash;
     const sizeBytes = StorageProgram.getDataSize(storedData, encoding);
     const contentBytes = typeof data === 'string'
         ? new TextEncoder().encode(data).byteLength
@@ -170,8 +210,60 @@ export async function anchor(handle, programName, data, options = {}) {
         sizeBytes,
         contentBytes,
         anchoredAt: new Date().toISOString(),
-        nonce: String(nonce),
+        nonce: facts.nonce,
     };
+}
+/** One `nodeCall` POST; the node reports a missing record as HTTP 200 with envelope result 404. */
+async function nodeCallJson(rpc, message, data, fetchImpl = fetch) {
+    const httpRes = await fetchImpl(rpc, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'nodeCall', params: [{ message, data, muid: `dacs-anchor-facts-${message}-${String(Object.values(data)[0] ?? '').slice(0, 24)}` }] }),
+    });
+    if (!httpRes.ok)
+        throw new Error(`${message} HTTP ${httpRes.status}`);
+    const envelope = (await httpRes.json());
+    if (envelope?.result === 404)
+        return null;
+    if (envelope?.result !== 200)
+        throw new Error(`${message} RPC result=${String(envelope?.result)}`);
+    return envelope.response ?? null;
+}
+/** A node record that exists but contradicts itself or the request; never retried. */
+export class AnchorFactsContradiction extends Error {
+    constructor(message) { super(message); this.name = 'AnchorFactsContradiction'; }
+}
+/**
+ * The facts a receipt is checked against, read from the node after inclusion: the storage program's
+ * creating transaction and the nonce that transaction carries. Returns null only when the record or its
+ * transaction is not (yet) available; a record that is present but contradictory (foreign address, malformed
+ * or foreign creating transaction, signer not the owner, unusable nonce) throws AnchorFactsContradiction.
+ */
+export async function anchorFactsFromNode(rpc, storageAddress, options = {}) {
+    const program = await nodeCallJson(rpc, 'getStorageProgram', { storageAddress }, options.fetchImpl);
+    if (!program)
+        return null;
+    if (program.storageAddress !== storageAddress)
+        throw new AnchorFactsContradiction('node returned a storage record under another address');
+    const txHash = program.createdByTx;
+    if (typeof txHash !== 'string' || !/^[0-9a-f]{64}$/.test(txHash))
+        throw new AnchorFactsContradiction('storage record names no valid creating transaction');
+    if (typeof program.owner !== 'string' || !program.owner)
+        throw new AnchorFactsContradiction('storage record has no owner');
+    const tx = await nodeCallJson(rpc, 'getTxByHash', { hash: txHash }, options.fetchImpl);
+    if (!tx)
+        return null;
+    if (tx.hash !== txHash)
+        throw new AnchorFactsContradiction('node returned another transaction than the creating one');
+    if (!tx.content || tx.content.type !== 'storageProgram')
+        throw new AnchorFactsContradiction('creating transaction is not a storage program');
+    if (tx.content.from !== program.owner)
+        throw new AnchorFactsContradiction('creating transaction signer differs from the storage owner');
+    const nonce = tx.content.nonce;
+    if (typeof nonce === 'number' && Number.isSafeInteger(nonce) && nonce >= 0)
+        return { txHash, nonce: String(nonce), owner: program.owner };
+    if (typeof nonce === 'string' && /^\d+$/.test(nonce))
+        return { txHash, nonce, owner: program.owner };
+    throw new AnchorFactsContradiction('creating transaction carries no usable nonce');
 }
 /**
  * Fetch a previously anchored Storage Program by its address.

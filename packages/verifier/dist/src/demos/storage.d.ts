@@ -74,7 +74,27 @@ export declare function anchor(handle: DemosHandle, programName: string, data: R
     acl?: 'public' | 'private';
     salt?: string;
     encoding?: 'binary';
+    fetchImpl?: typeof fetch;
+    readBackAttempts?: number;
+    readBackDelayMs?: number;
 }): Promise<AnchorResult>;
+/** A node record that exists but contradicts itself or the request; never retried. */
+export declare class AnchorFactsContradiction extends Error {
+    constructor(message: string);
+}
+/**
+ * The facts a receipt is checked against, read from the node after inclusion: the storage program's
+ * creating transaction and the nonce that transaction carries. Returns null only when the record or its
+ * transaction is not (yet) available; a record that is present but contradictory (foreign address, malformed
+ * or foreign creating transaction, signer not the owner, unusable nonce) throws AnchorFactsContradiction.
+ */
+export declare function anchorFactsFromNode(rpc: string, storageAddress: string, options?: {
+    fetchImpl?: typeof fetch;
+}): Promise<{
+    txHash: string;
+    nonce: string;
+    owner: string;
+} | null>;
 /**
  * Fetch a previously anchored Storage Program by its address.
  *
