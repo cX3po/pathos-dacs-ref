@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  createLiveDependencies, DacsTestnetRefusal, OrganDeliverableError, organDeliverableFrom, parameterHash, requireOrganBridgeConfig, runDacsTestnetSession, runOrganBridge, supportedOrgans,
+  createLiveDependencies, DacsTestnetRefusal, OrganDeliverableError, liveDeliverableSpec, organDeliverableFrom, parameterHash, requireOrganBridgeConfig, runDacsTestnetSession, runOrganBridge, supportedOrgans,
   type CoreReceiptProvider, type DacsTestnetConfig, type LiveSettlementSeams,
 } from '../../src/live/dacs-testnet-run.mjs';
 import { createDryRunDependencies } from '../../src/live/testnet-run-fixtures.js';
@@ -233,4 +233,72 @@ test('at session level, a bridge failure in deliver is recorded as a delivery FA
   assert.deepEqual(result.phases.map((p) => [p.kind, p.outcome]), [['negotiate-fixed-price', 'PASS'], ['commit-agreement', 'PASS'], ['pay-dem', 'PASS'], ['deliver-storage-program', 'FAIL']]);
   assert.ok(result.anchors.paymentEvidence, 'payment evidence anchor is preserved');
   assert.ok(!('deliverable' in result.anchors));
+});
+
+test('the live listing deliverable spec carries the type and hash the agreement adapter requires, identically for listing and terms', () => {
+  const spec = liveDeliverableSpec({ organ: 'nws_alerts' });
+  assert.equal(spec.deliverableType, 'storage-program');
+  assert.match(spec.hash, /^[0-9a-f]{64}$/);
+  assert.deepEqual(liveDeliverableSpec({ organ: 'nws_alerts' }), spec);
+  assert.notEqual(liveDeliverableSpec({ organ: 'other' }).hash, spec.hash);
+});
+
+// The live listing and agreement must pass the receipt-enforcing adapters, not only the fixtures. A fake
+// receipt source fabricates finalized receipts from the anchors the fake wiring wrote, the way the dry-run
+// fixtures do, so listing publication, vetting and agreement emission are exercised through the real adapters.
+test('the live listing and agreement pass the agreement adapter with a fabricated finalized receipt source', async () => {
+  const { jcsCanonical } = await import('../../src/jcs.js');
+  const contents = new Map<string, unknown>();
+  const anchorsWritten: Array<{ logicalAddress: string; nativeAddress: string; transactionRef: { kind: string; value: string }; writer: string; nonce: string }> = [];
+  const claim = `cci:${'22'.repeat(32)}`;
+  const seams = fakeSeams([]);
+  const baseConnect = seams.connect!;
+  seams.connect = async (...args: Parameters<NonNullable<LiveSettlementSeams['connect']>>) => {
+    const wiring = await baseConnect(...args);
+    let ordinal = 0;
+    return {
+      ...wiring,
+      signers: { buyer: { claim: `cci:${'11'.repeat(32)}`, sign: async () => new Uint8Array(64) }, seller: { claim, sign: async () => new Uint8Array(64) }, orchestrator: { claim, sign: async () => new Uint8Array(64) } },
+      anchor: async (request: { logicalAddress: string; content: unknown; contentHash: string }) => {
+        const nativeAddress = `stor-${String(ordinal++).padStart(40, '0')}`;
+        contents.set(nativeAddress, request.content); contents.set(request.logicalAddress, request.content);
+        const result = { logicalAddress: request.logicalAddress, nativeAddress, transactionRef: { kind: 'demos', value: `tx-${nativeAddress}` }, writer: claim, nonce: String(ordinal) };
+        anchorsWritten.push(result);
+        return result;
+      },
+      fetchAnchored: async (address: string) => { if (!contents.has(address)) throw new Error('missing'); return structuredClone(contents.get(address)); },
+    };
+  };
+  const receipts: CoreReceiptProvider = {
+    describe: () => ({ kind: 'core-5.1-receipts', provesFinality: true, source: 'fabricated-for-test' }),
+    async fetch(request) {
+      const a = request.anchor ?? anchorsWritten.find((x) => x.logicalAddress === request.logicalAddress);
+      if (!a) return { outcome: 'indeterminate', detail: 'no anchor' };
+      const content = contents.get(a.nativeAddress);
+      return {
+        receiptVersion: '1', substrate: 'demos-fixture', finalityProfile: 'fixture-finalized', logicalAddress: request.logicalAddress, nativeAddress: a.nativeAddress,
+        contentHash: request.contentHash, transactionRef: a.transactionRef, writer: a.writer, nonce: a.nonce, state: 'finalized', observationDisposition: 'established',
+        observedAt: Date.now(), blockRef: { id: `block-${a.nativeAddress}`, height: '1', timestamp: Date.now() },
+        evidence: { kind: 'stored-bytes-base64url', value: Buffer.from(jcsCanonical(content)).toString('base64url') },
+      };
+    },
+  };
+  const dir = mkdtempSync(join(tmpdir(), 'organ-bridge-'));
+  try {
+    const script = join(dir, 'bridge.js'); writeFileSync(script, `process.stdout.write(JSON.stringify(${JSON.stringify(good)}));\n`);
+    const env = { GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(liveConfig), PATH: process.env.PATH, HOME: process.env.HOME, ORGAN_CLI: script, AXIOM_PY: process.execPath };
+    const deps = await createLiveDependencies(liveConfig, env, receipts, seams);
+    const published = await deps.publishListing(liveConfig);
+    assert.equal(published.anchor.writer, claim);
+    assert.deepEqual((published.listing.offering as Record<string, unknown>).deliverable, liveDeliverableSpec(liveConfig));
+    // The listing signature is a stand-in here, so the vet reports it without throwing.
+    const vet = await deps.vetListing(published, liveConfig);
+    assert.ok(['pass', 'fail'].includes(vet.outcome));
+    const agreement = await deps.emitAgreement(published, liveConfig);
+    assert.ok(agreement.committed.commitmentHash.length === 64);
+    assert.equal(anchorsWritten.length, 3, 'listing, agreement and commitment anchors');
+    assert.deepEqual((agreement.committed.agreement.terms as unknown as Record<string, unknown>).deliverable, liveDeliverableSpec(liveConfig));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
