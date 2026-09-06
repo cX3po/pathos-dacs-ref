@@ -38,6 +38,7 @@
  */
 
 import { sha256 } from '@noble/hashes/sha2';
+import { anchorNames } from './anchor-naming.js';
 import { generateKeypair, sign, verify } from '../lib/sign.js';
 import { DOMAIN_SEPARATORS, DACS_X_EXTENSION_SEPARATORS } from '../domain-sep.js';
 import { jcsCanonical, jcsHashHex } from '../jcs.js';
@@ -394,12 +395,37 @@ export interface VerifyMockAp2RecordResult extends Ap2SimulationDisposition {
  * AP2-specific checks before emission/signing and whenever a consumer evaluates this mock record.
  * It throws on any mismatch, including a buyer trying to re-sign semantically invalid AP2 content.
  */
+/**
+ * SB-1: the phase index is not an evidence field. The AP2 record binds to its phase through the anchor addresses
+ * the caller has authenticated: the payment evidence's `dacs4:payment:{jobId}:pay-ap2:{phaseIndex}` and the
+ * record's own `dacs4:ap2-receipt:{jobId}:{phaseIndex}`.
+ */
+export interface Ap2AnchorContext {
+  paymentEvidenceLogicalAddress: string;
+  recordLogicalAddress: string;
+}
+
+export function ap2RecordLogicalAddress(jobId: string, phaseIndex: number): string {
+  return `dacs4:ap2-receipt:${jobId}:${phaseIndex}`;
+}
+
 export function verifyMockAp2AttestedReceiptRecord(
   rec: Ap2AttestedReceiptRecord,
   paymentEvidence: SettlementEvidenceV1,
   verifiedAgreement: VerifiedAp2Agreement,
+  anchorContext: Ap2AnchorContext,
 ): VerifyMockAp2RecordResult {
   requireVerifiedAp2Agreement(verifiedAgreement);
+  if (!anchorContext || typeof anchorContext.paymentEvidenceLogicalAddress !== 'string' || typeof anchorContext.recordLogicalAddress !== 'string') {
+    throw new Error('AP2 extension: authenticated payment and record anchor addresses are required to bind the phase index (SB-1)');
+  }
+  if (!Number.isSafeInteger(rec.phaseIndex) || rec.phaseIndex < 0) throw new Error('AP2 extension: record phaseIndex must be a non-negative integer');
+  if (anchorContext.paymentEvidenceLogicalAddress !== anchorNames.paymentEvidence(rec.jobId, PAY_AP2_RAIL_ID, rec.phaseIndex)) {
+    throw new Error('AP2 extension: payment evidence anchor address does not bind the record phase index (SB-1)');
+  }
+  if (anchorContext.recordLogicalAddress !== ap2RecordLogicalAddress(rec.jobId, rec.phaseIndex)) {
+    throw new Error('AP2 extension: record anchor address does not bind the record phase index (SB-1)');
+  }
   if (rec.v !== 'dacs-x-ap2-attested-receipt-settlement-evidence:0.1'
     || rec.simulation !== true
     || rec.assurance !== AP2_SIMULATION_ASSURANCE) {
@@ -466,7 +492,11 @@ export function verifyMockAp2AttestedReceiptRecord(
     || pay.verdict !== AP2_SIMULATION_VERDICT) {
     throw new Error('AP2 extension: linked payment evidence lacks signed mock/simulation assurance');
   }
-  // SB-1: the evidence body carries no phaseIndex; the record's phaseIndex is bound by its anchor address (dacs4:ap2-receipt:{jobId}:{phaseIndex}).
+  // The evidence body carries no phaseIndex (SB-1); a legacy in-body value (anchored before 2026-09-06) must agree with the record.
+  const legacyBodyIndex = (pay as unknown as { phaseIndex?: unknown }).phaseIndex;
+  if (legacyBodyIndex !== undefined && legacyBodyIndex !== rec.phaseIndex) {
+    throw new Error('AP2 extension: legacy payment evidence phaseIndex disagrees with the record');
+  }
   if (pay.jobId !== rec.jobId || pay.phase !== rec.phase || pay.outcome !== 'success') {
     throw new Error('AP2 extension: record and payment evidence job/phase/outcome linkage mismatch');
   }
@@ -516,8 +546,9 @@ export function signAp2AttestedReceiptRecord(
   verifiedAgreement: VerifiedAp2Agreement,
   signer: string,
   privKey: Uint8Array,
+  anchorContext: Ap2AnchorContext,
 ): Ap2AttestedReceiptRecord {
-  verifyMockAp2AttestedReceiptRecord(rec, paymentEvidence, verifiedAgreement);
+  verifyMockAp2AttestedReceiptRecord(rec, paymentEvidence, verifiedAgreement, anchorContext);
   const hashBytes = new TextEncoder().encode(ap2RecordHashHex(rec));
   const value = Buffer.from(sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, hashBytes, privKey)).toString('base64');
   return { ...rec, signature: { algorithm: 'ed25519', signer, value } };

@@ -291,13 +291,22 @@ export interface SettlementFinalityRecordV1 {
 }
 
 /** §9.7 ChainTxRef arms, exactly as the pinned dacs-sdk validates them (isChainTxRef: exact keys per arm). */
+export interface TxRefAttestationRefV1 { anchor: { kind: 'storage-program' | 'ipfs' | 'https'; locator: string }; contentHash: string; signer?: string }
 export type ChainTxRefV1 =
   | { kind: 'demos'; txHash: string; blockNumber?: number }
   | { kind: 'storage-program'; address: string; writeTxHash: string }
   | { kind: 'evm'; chainId: number; txHash: string }
   | { kind: 'evm-event'; chainId: number; txHash: string; logIndex: number }
+  | { kind: 'solana'; cluster: 'mainnet' | 'devnet' | 'testnet'; signature: string }
+  | { kind: 'solana-instruction'; cluster: 'mainnet' | 'devnet' | 'testnet'; signature: string; instructionIndex: number }
   | { kind: 'x402'; httpResource: string; paymentReceiptHash: string; settlementTxHash?: string; chainId?: number; protocolVersion: string }
-  | { kind: 'ap2'; mandateId: string; providerRef: string; protocolVersion: string; receiptAttestation?: Record<string, unknown> };
+  | { kind: 'x402-event'; httpResource: string; paymentReceiptHash: string; settlementTxHash: string; chainId: number; logIndex: number; protocolVersion: string }
+  | { kind: 'ap2'; mandateId: string; providerRef: string; protocolVersion: string; receiptAttestation?: TxRefAttestationRefV1 }
+  | { kind: 'htlc-lock'; chainId: number; contractAddress: string; lockTxHash: string }
+  | { kind: 'htlc-reveal'; chainId: number; contractAddress: string; revealTxHash: string }
+  | { kind: 'htlc-claim'; chainId: number; contractAddress: string; claimTxHash: string }
+  | { kind: 'htlc-refund'; chainId: number; contractAddress: string; refundTxHash: string }
+  | { kind: 'liquidity-tank'; bridgeId: string; sourceChainId: number; destChainId: number; lockTxHash: string; releaseTxHash?: string; recoveryDeadline?: number };
 
 /**
  * The pre-spec reference form {rail, txHash, kind} that our AP2 extension still emits and that evidence
@@ -306,7 +315,7 @@ export type ChainTxRefV1 =
 export interface LegacyPaymentTxRefV1 {
   rail: string;
   txHash: string;
-  kind: string;
+  kind?: string;
 }
 
 export type PaymentTxRefV1 = ChainTxRefV1 | LegacyPaymentTxRefV1;

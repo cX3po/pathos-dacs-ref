@@ -171,15 +171,9 @@ export function paymentRailId(phase: { kind?: unknown; parameters?: unknown }): 
   const rail = typeof params.rail === 'string' && params.rail.length > 0 ? params.rail : String(phase.kind);
   return rail;
 }
-/**
- * DACS-4 §9.5.8 SB-1: the phase index is not an evidence field; it is recovered from the PC-2 anchor address
- * (`dacs4:payment:{jobId}:{railId}:{phaseIndex}` or `dacs4:delivery:{jobId}:{phaseIndex}`). Null when the
- * address is not one of those forms.
- */
-export function phaseIndexOfEvidenceAddress(logicalAddress: string | undefined): number | null {
-  if (!logicalAddress || !/^dacs4:(payment|delivery):/.test(logicalAddress)) return null;
-  const tail = logicalAddress.slice(logicalAddress.lastIndexOf(':') + 1);
-  return /^(0|[1-9][0-9]*)$/.test(tail) ? Number(tail) : null;
+/** DACS-4 §9.5.8 SB-1 / PC-2: delivery evidence is addressed `dacs4:delivery:{jobId}:{phaseIndex}`; the phase index lives in that address, not in the record. */
+export function deliveryLogicalAddress(jobId: string, phaseIndex: number): string {
+  return `dacs4:delivery:${jobId}:${phaseIndex}`;
 }
 
 export function paymentLogicalAddress(jobId: string, railId: string, phaseIndex: number): string {
@@ -254,10 +248,14 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     if (jcsHashHex(evidence) !== ref.contentHash.replace(/^sha256:/, '')) throw new BundleFinalizationError('evidence-hash', `evidence hash mismatch for phase ${phase.index}`);
     const structural = verifySettlementEvidenceV1(evidence);
     if (structural.decision !== 'pass') throw new BundleFinalizationError('evidence-shape', structural.reasons.join('; '));
-    // SB-1: the phase index binds through the anchor address; a legacy in-body phaseIndex (evidence anchored before 2026-09-06) must agree with it.
-    const addressIndex = phaseIndexOfEvidenceAddress(phase.evidenceLogicalAddress);
+    // PC-2: the rail comes from the effective pipeline entry (which carries the projected rail parameter for a
+    // pay-alternative phase), never from the executed phase result alone. SB-1: the phase index binds through the
+    // complete derived anchor address (payment or delivery); a legacy in-body phaseIndex (evidence anchored before
+    // 2026-09-06) must agree with it.
+    const railId = phase.kind.startsWith('pay-') ? paymentRailId(pipeline[phase.index] ?? phase) : undefined;
+    const logicalAddress = railId === undefined ? deliveryLogicalAddress(input.jobId, phase.index) : paymentLogicalAddress(input.jobId, railId, phase.index);
     const bodyIndex = evidence.phaseIndex;
-    const indexBound = addressIndex === phase.index && (bodyIndex === undefined || bodyIndex === phase.index);
+    const indexBound = phase.evidenceLogicalAddress === logicalAddress && (bodyIndex === undefined || bodyIndex === phase.index);
     if (evidence.jobId !== input.jobId || evidence.phase !== phase.kind || !indexBound) throw new BundleFinalizationError('seb-binding', `evidence does not bind phase (${phase.index},${phase.kind})`);
     if ((evidence.outcome === 'success') !== (phase.outcome === 'ok')) throw new BundleFinalizationError('seb-outcome', `evidence outcome contradicts phase ${phase.index}`);
     const signature = object(evidence.signature);
@@ -268,11 +266,6 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     if (!sameSigner) throw new BundleFinalizationError('seb-authorship', `evidence signer is not phase ${phase.index}'s authenticated orchestrator`);
     const unsigned = { ...evidence }; delete unsigned.signature;
     if (!await signatureValid(deps, DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, jcsHashHex(unsigned), signature)) throw new BundleFinalizationError('seb-signature', `evidence signature invalid for phase ${phase.index}`);
-    // PC-2: the rail comes from the effective pipeline entry (which carries the projected rail parameter for a
-    // pay-alternative phase), never from the executed phase result alone.
-    const railId = phase.kind.startsWith('pay-') ? paymentRailId(pipeline[phase.index] ?? phase) : undefined;
-    const logicalAddress = railId === undefined ? phase.evidenceLogicalAddress : paymentLogicalAddress(input.jobId, railId, phase.index);
-    if (!logicalAddress || (phase.evidenceLogicalAddress !== undefined && phase.evidenceLogicalAddress !== logicalAddress)) throw new BundleFinalizationError('receipt-binding', `caller evidence logical address contradicts PC-2 for phase ${phase.index}`);
     if (!phase.evidenceAnchor) throw new BundleFinalizationError('evidence-anchor', `evidence anchor metadata missing for phase ${phase.index}`);
     if (phase.evidenceAnchor.logicalAddress !== logicalAddress || phase.evidenceAnchor.nativeAddress !== ref.anchor.locator) throw new BundleFinalizationError('receipt-binding', `evidence anchor address mismatch for phase ${phase.index}`);
     let receipt: AnchorReceipt;

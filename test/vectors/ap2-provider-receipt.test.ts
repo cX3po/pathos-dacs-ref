@@ -46,6 +46,7 @@ import {
 } from '../../src/live/ap2-provider-receipt.js';
 
 const JOB = 'ap2-test-job-1';
+const ANCHORS = { paymentEvidenceLogicalAddress: `dacs4:payment:${JOB}:pay-ap2:3`, recordLogicalAddress: `dacs4:ap2-receipt:${JOB}:3` };
 const AMT = '1.5'; // CD-1 canonical (the verifier rejects "1.50")
 const CUR = 'USD';
 const ENDPOINT = 'https://api.stripe.invalid/v1/payment_intents';
@@ -236,11 +237,12 @@ test('buyer-signed AP2 attested-receipt record verifies under SETTLEMENT_EVIDENC
     VERIFIED_AGREEMENT,
     `cci:${buyerCci}`,
     buyer.privKey,
+    ANCHORS,
   );
   const sig = Uint8Array.from(Buffer.from(rec.signature!.value, 'base64'));
   const body = new TextEncoder().encode(ap2RecordHashHex(rec));
   assert.equal(verify(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, sig, body, buyer.pubKey), true);
-  const semantic = verifyMockAp2AttestedReceiptRecord(rec, evidence, VERIFIED_AGREEMENT);
+  const semantic = verifyMockAp2AttestedReceiptRecord(rec, evidence, VERIFIED_AGREEMENT, ANCHORS);
   assert.equal(semantic.simulation, true);
   assert.equal(semantic.assurance, 'mock');
   assert.equal(Object.values(semantic.checks).every(Boolean), true);
@@ -278,6 +280,7 @@ test('buyer cannot re-sign AP2 content with a failed agreement cross-check (fail
       VERIFIED_AGREEMENT,
       'cci:buyer',
       buyer.privKey,
+      ANCHORS,
     ),
     /provider agreement binding does not match verified agreement/,
   );
@@ -315,6 +318,7 @@ test('co-tampered agreement reference + AP2 content, validly re-signed, is rejec
       VERIFIED_AGREEMENT,
       'cci:buyer',
       buyer.privKey,
+      ANCHORS,
     ),
     /record agreementHash does not match verified agreement/,
   );
@@ -342,7 +346,25 @@ test('co-tampered agreement reference + AP2 content, validly re-signed, is rejec
       resignedBadRecord,
       evidence,
       VERIFIED_AGREEMENT,
+      ANCHORS,
     ),
     /record agreementHash does not match verified agreement/,
   );
+});
+
+test('SB-1: the AP2 record binds its phase through the authenticated anchor addresses; a record moved to another phase, or a context for another phase, is refused', () => {
+  const { receipt } = buildReceipt();
+  const att = attestAp2Receipt({ receipt, verifiedAgreement: VERIFIED_AGREEMENT, statusEndpoint: ENDPOINT, fetchedAt: 1 });
+  const { evidence } = buildMockPaymentEvidence(receipt);
+  const rec: Ap2AttestedReceiptRecord = {
+    v: 'dacs-x-ap2-attested-receipt-settlement-evidence:0.1', simulation: true, assurance: AP2_SIMULATION_ASSURANCE,
+    jobId: JOB, phase: PAY_AP2_RAIL_ID, phaseIndex: 3, agreementHash: AGREE, paymentEvidenceHash: evidenceHashV1(evidence),
+    finalityModel: 'provider-receipt', providerReceipt: receipt, receiptAttestation: att, observedAt: 5,
+  };
+  assert.equal(Object.values(verifyMockAp2AttestedReceiptRecord(rec, evidence, VERIFIED_AGREEMENT, ANCHORS).checks).every(Boolean), true, 'positive control');
+  assert.throws(() => verifyMockAp2AttestedReceiptRecord({ ...rec, phaseIndex: 999 }, evidence, VERIFIED_AGREEMENT, ANCHORS), /does not bind the record phase index/);
+  assert.throws(() => verifyMockAp2AttestedReceiptRecord(rec, evidence, VERIFIED_AGREEMENT, { ...ANCHORS, paymentEvidenceLogicalAddress: `dacs4:payment:${JOB}:pay-ap2:4` }), /payment evidence anchor address/);
+  assert.throws(() => verifyMockAp2AttestedReceiptRecord(rec, evidence, VERIFIED_AGREEMENT, { ...ANCHORS, recordLogicalAddress: `dacs4:ap2-receipt:${JOB}:4` }), /record anchor address/);
+  const legacy = { ...evidence, phaseIndex: 4 } as typeof evidence;
+  assert.throws(() => verifyMockAp2AttestedReceiptRecord(rec, legacy, VERIFIED_AGREEMENT, ANCHORS), /legacy payment evidence phaseIndex disagrees/);
 });

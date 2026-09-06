@@ -191,3 +191,44 @@ test('F1 verifier: observedAt not a safe integer → fail (SDK Number.isSafeInte
   fx.observedAt = 1.5;
   assert.equal(verifySettlementEvidenceV1(fx).decision, 'fail');
 });
+
+test('verifier: arm predicates mirror the pinned SDK (differential cases) and every SDK arm is read', () => {
+  const base = load('settlement-evidence-payment-success.json');
+  delete base.signature;
+  const withRefs = (refs: unknown[]) => verifySettlementEvidenceV1({ ...base, paymentTxRefs: refs }).decision;
+  const h = 'ab'.repeat(32);
+  // positives, one per remaining arm
+  assert.equal(withRefs([{ kind: 'evm-event', chainId: 1, txHash: h, logIndex: 0 }]), 'pass');
+  assert.equal(withRefs([{ kind: 'solana', cluster: 'devnet', signature: 'sig' }]), 'pass');
+  assert.equal(withRefs([{ kind: 'solana-instruction', cluster: 'mainnet', signature: 'sig', instructionIndex: 2 }]), 'pass');
+  assert.equal(withRefs([{ kind: 'x402', httpResource: 'https://x/r', paymentReceiptHash: h, protocolVersion: '1' }]), 'pass');
+  assert.equal(withRefs([{ kind: 'x402-event', httpResource: 'https://x/r', paymentReceiptHash: h, settlementTxHash: h, chainId: 1, logIndex: 0, protocolVersion: '1' }]), 'pass');
+  assert.equal(withRefs([{ kind: 'ap2', mandateId: 'm', providerRef: 'p', protocolVersion: '1', receiptAttestation: { anchor: { kind: 'storage-program', locator: 'stor-a' }, contentHash: h } }]), 'pass');
+  assert.equal(withRefs([{ kind: 'htlc-lock', chainId: 0, contractAddress: '0xc', lockTxHash: 't' }]), 'pass');
+  assert.equal(withRefs([{ kind: 'htlc-refund', chainId: 5, contractAddress: '0xc', refundTxHash: 't' }]), 'pass');
+  assert.equal(withRefs([{ kind: 'liquidity-tank', bridgeId: 'b', sourceChainId: 1, destChainId: 2, lockTxHash: 't' }]), 'pass');
+  // negatives the pinned SDK also refuses
+  assert.equal(withRefs([{ kind: 'evm-event', chainId: 0, txHash: h, logIndex: 0 }]), 'fail', 'evm-event chainId must be positive');
+  assert.equal(withRefs([{ kind: 'evm-event', chainId: 1, txHash: '0xabc', logIndex: 0 }]), 'fail', 'evm-event txHash must be canonical 64-hex');
+  assert.equal(withRefs([{ kind: 'evm-event', chainId: 1, txHash: h, logIndex: -0 }]), 'fail', 'negative zero logIndex');
+  assert.equal(withRefs([{ kind: 'x402', httpResource: 'https://x/r', paymentReceiptHash: 'nothex', protocolVersion: '1' }]), 'fail', 'x402 receipt hash must be sha256 hex');
+  assert.equal(withRefs([{ kind: 'x402-event', httpResource: 'https://x/r', paymentReceiptHash: h, settlementTxHash: h, chainId: 1, logIndex: 0, protocolVersion: '01' }]), 'fail', 'x402-event protocolVersion minimal decimal');
+  assert.equal(withRefs([{ kind: 'ap2', mandateId: 'm', providerRef: 'p', protocolVersion: '1', receiptAttestation: {} }]), 'fail', 'ap2 attestation must be an AttestationRef');
+  assert.equal(withRefs([{ kind: 'htlc-lock', chainId: 0, contractAddress: '0xc', revealTxHash: 't' }]), 'fail', 'htlc arm hash field must match the kind');
+  assert.equal(withRefs([{ kind: 'evm', rail: 'r', txHash: 'h', chainId: 'bad', extra: 1 }]), 'fail', 'a legacy entry with spec members is neither form');
+  assert.equal(withRefs([{ rail: 'r', txHash: 'h', chainId: 1 }]), 'fail', 'legacy form is exactly rail/txHash/kind');
+});
+
+test('emitter: a mixed legacy/spec entry is refused; the AP2 attestation is rebuilt from its whitelisted members only', () => {
+  const fx = load('settlement-evidence-payment-success.json');
+  assert.throws(() => emitPaymentFrom(fx, () => [{ rail: 'r', txHash: 'h', chainId: 1 }]), /mixes the legacy/);
+  const h = 'ab'.repeat(32);
+  const ap2 = emitPaymentFrom(fx, () => [{ kind: 'ap2', mandateId: 'm', providerRef: 'p', protocolVersion: '1',
+    receiptAttestation: { anchor: { kind: 'storage-program', locator: 'stor-x', extra: 1 }, contentHash: h, signer: 's', nested: { leak: true } } }]);
+  assert.deepEqual((ap2 as unknown as { paymentTxRefs: unknown[] }).paymentTxRefs,
+    [{ kind: 'ap2', mandateId: 'm', providerRef: 'p', protocolVersion: '1', receiptAttestation: { anchor: { kind: 'storage-program', locator: 'stor-x' }, contentHash: h, signer: 's' } }]);
+  for (const arm of [{ kind: 'solana', cluster: 'devnet', signature: 'sig', extra: 1 }, { kind: 'liquidity-tank', bridgeId: 'b', sourceChainId: 1, destChainId: 2, lockTxHash: 't', smuggled: true }]) {
+    const out = (emitPaymentFrom(fx, () => [arm]) as unknown as { paymentTxRefs: Array<Record<string, unknown>> }).paymentTxRefs[0]!;
+    assert.ok(!('extra' in out) && !('smuggled' in out), JSON.stringify(out));
+  }
+});

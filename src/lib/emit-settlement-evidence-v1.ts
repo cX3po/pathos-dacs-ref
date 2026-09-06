@@ -57,17 +57,36 @@ interface EmitBase {
 /** One payment tx reference: a §9.7 ChainTxRef arm, or the legacy {rail, txHash, kind} form. Rebuilt per arm from whitelisted scalars. */
 export type EmitPaymentTxRef = PaymentTxRefV1;
 
+const SPEC_ONLY_MEMBERS = new Set(['chainId', 'blockNumber', 'address', 'writeTxHash', 'logIndex', 'cluster', 'signature', 'instructionIndex', 'httpResource',
+  'paymentReceiptHash', 'settlementTxHash', 'protocolVersion', 'mandateId', 'providerRef', 'receiptAttestation', 'contractAddress', 'lockTxHash', 'revealTxHash',
+  'claimTxHash', 'refundTxHash', 'bridgeId', 'sourceChainId', 'destChainId', 'releaseTxHash', 'recoveryDeadline']);
+const opt = <T,>(k: string, v: T | undefined): Record<string, T> => (v !== undefined ? { [k]: v } : {});
 function rebuildTxRef(ref: EmitPaymentTxRef): PaymentTxRefV1 {
-  if ('rail' in ref) return { rail: ref.rail, txHash: ref.txHash, kind: ref.kind };
+  if ('rail' in ref) {
+    // The legacy form is exactly {rail, txHash, kind?}; a legacy entry that also carries a spec-arm member is neither form.
+    if (Object.keys(ref).some((k) => SPEC_ONLY_MEMBERS.has(k))) throw new Error('paymentTxRefs entry mixes the legacy {rail,txHash,kind} form with ChainTxRef members');
+    return { rail: ref.rail, txHash: ref.txHash, ...opt('kind', ref.kind) };
+  }
   switch (ref.kind) {
-    case 'demos': return { kind: 'demos', txHash: ref.txHash, ...(ref.blockNumber !== undefined ? { blockNumber: ref.blockNumber } : {}) };
+    case 'demos': return { kind: 'demos', txHash: ref.txHash, ...opt('blockNumber', ref.blockNumber) };
     case 'storage-program': return { kind: 'storage-program', address: ref.address, writeTxHash: ref.writeTxHash };
     case 'evm': return { kind: 'evm', chainId: ref.chainId, txHash: ref.txHash };
     case 'evm-event': return { kind: 'evm-event', chainId: ref.chainId, txHash: ref.txHash, logIndex: ref.logIndex };
+    case 'solana': return { kind: 'solana', cluster: ref.cluster, signature: ref.signature };
+    case 'solana-instruction': return { kind: 'solana-instruction', cluster: ref.cluster, signature: ref.signature, instructionIndex: ref.instructionIndex };
     case 'x402': return { kind: 'x402', httpResource: ref.httpResource, paymentReceiptHash: ref.paymentReceiptHash, protocolVersion: ref.protocolVersion,
-      ...(ref.settlementTxHash !== undefined ? { settlementTxHash: ref.settlementTxHash } : {}), ...(ref.chainId !== undefined ? { chainId: ref.chainId } : {}) };
+      ...opt('settlementTxHash', ref.settlementTxHash), ...opt('chainId', ref.chainId) };
+    case 'x402-event': return { kind: 'x402-event', httpResource: ref.httpResource, paymentReceiptHash: ref.paymentReceiptHash, settlementTxHash: ref.settlementTxHash,
+      chainId: ref.chainId, logIndex: ref.logIndex, protocolVersion: ref.protocolVersion };
     case 'ap2': return { kind: 'ap2', mandateId: ref.mandateId, providerRef: ref.providerRef, protocolVersion: ref.protocolVersion,
-      ...(ref.receiptAttestation !== undefined ? { receiptAttestation: ref.receiptAttestation } : {}) };
+      ...(ref.receiptAttestation !== undefined ? { receiptAttestation: { anchor: { kind: ref.receiptAttestation.anchor.kind, locator: ref.receiptAttestation.anchor.locator },
+        contentHash: ref.receiptAttestation.contentHash, ...opt('signer', ref.receiptAttestation.signer) } } : {}) };
+    case 'htlc-lock': return { kind: 'htlc-lock', chainId: ref.chainId, contractAddress: ref.contractAddress, lockTxHash: ref.lockTxHash };
+    case 'htlc-reveal': return { kind: 'htlc-reveal', chainId: ref.chainId, contractAddress: ref.contractAddress, revealTxHash: ref.revealTxHash };
+    case 'htlc-claim': return { kind: 'htlc-claim', chainId: ref.chainId, contractAddress: ref.contractAddress, claimTxHash: ref.claimTxHash };
+    case 'htlc-refund': return { kind: 'htlc-refund', chainId: ref.chainId, contractAddress: ref.contractAddress, refundTxHash: ref.refundTxHash };
+    case 'liquidity-tank': return { kind: 'liquidity-tank', bridgeId: ref.bridgeId, sourceChainId: ref.sourceChainId, destChainId: ref.destChainId, lockTxHash: ref.lockTxHash,
+      ...opt('releaseTxHash', ref.releaseTxHash), ...opt('recoveryDeadline', ref.recoveryDeadline) };
     default: throw new Error(`unknown ChainTxRef kind ${String((ref as { kind: unknown }).kind)}`);
   }
 }

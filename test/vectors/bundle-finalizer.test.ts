@@ -393,3 +393,12 @@ test('split references: the bundle cites the agreement document and the commitme
   assert.notEqual((await verifyFinalizedBundleCold({ jobId: split.jobId, ...result, session: split }, state.deps)).outcome, 'pass');
   assert.notEqual((await verifyFinalizedBundleCold({ jobId: substrate.jobId, ...substrateOk, session: substrate }, state.deps)).outcome, 'pass');
 });
+
+test('SB-1: delivery evidence binds only at the complete derived dacs4:delivery address; a payment-namespace or foreign-job address never binds', async () => {
+  const state = setup(); const input = await session(state);
+  const codeIs = (code: string) => (error: unknown) => error instanceof BundleFinalizationError && error.code === code;
+  for (const wrong of ['dacs4:payment:wrong-job:wrong-rail:3', 'dacs4:delivery:other-job:3', 'dacs4:delivery:bundle-job:2']) {
+    const phases = input.phaseResults.map((p) => p.index === 3 ? { ...p, evidenceLogicalAddress: wrong, evidenceAnchor: { ...p.evidenceAnchor!, logicalAddress: wrong } } : p);
+    await assert.rejects(finalizeBundle({ ...input, phaseResults: phases }, state.deps), codeIs('seb-binding'), wrong);
+  }
+});

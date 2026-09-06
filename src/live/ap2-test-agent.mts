@@ -69,8 +69,7 @@ import {
   AP2_SIMULATION_ASSURANCE,
   AP2_SIMULATION_VERDICT,
   type Ap2AttestedReceiptRecord,
-  type MockAp2PaymentEvidence,
-} from './ap2-provider-receipt.js';
+  type MockAp2PaymentEvidence, ap2RecordLogicalAddress } from './ap2-provider-receipt.js';
 
 const hex = (b: Uint8Array) => bytesToHex(b);
 const jcsString = (v: unknown) => new TextDecoder().decode(jcsCanonical(v));
@@ -235,12 +234,14 @@ let ap2Record: Ap2AttestedReceiptRecord = {
   finalityModel: 'provider-receipt',
   providerReceipt, receiptAttestation, observedAt: now(),
 };
+const ap2AnchorContext = { paymentEvidenceLogicalAddress: anchorNames.paymentEvidence(jobId, PAY_AP2_RAIL_ID, PAY_PHASE_INDEX), recordLogicalAddress: ap2RecordLogicalAddress(jobId, PAY_PHASE_INDEX) };
 ap2Record = signAp2AttestedReceiptRecord(
   ap2Record,
   payEvidence,
   verifiedAgreement,
   `cci:${buyerCci}`,
   buyerKeys.privKey,
+  ap2AnchorContext,
 );
 const ap2RecordStr = jcsString(ap2Record);
 const ap2RecordHash = jcsHashHex(ap2Record);
@@ -329,6 +330,7 @@ const ap2SemanticVerification = verifyMockAp2AttestedReceiptRecord(
   ap2Record,
   payEvidence,
   verifiedAgreement,
+  ap2AnchorContext,
 );
 const ap2SelfChecks = {
   ap2_1_binding_jobId: providerReceipt.metadata['dacs_job_id'] === jobId,
