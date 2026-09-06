@@ -225,7 +225,8 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
       ];
       const session: CompletedSessionEvidence = { jobId: input.config.jobId, listing: input.listing.listing, listingRef: input.listing.listingRef,
         agreementRef: input.agreement.commitmentRef, agreement: agreement.agreement as unknown as Record<string, unknown>, agreementHash: agreement.agreementHash,
-        parties, phaseResults, outcome: 'completed', faultedParty: 'none', recipeRegistryVersion: 1, railRegistryVersion: 1, finalisedAt: FIXTURE_NOW + 1000 };
+        parties, phaseResults, outcome: 'completed', faultedParty: 'none', recipeRegistryVersion: 1, railRegistryVersion: 1, finalisedAt: FIXTURE_NOW + 1000,
+        ...(input.config.bundleKind ? { kind: input.config.bundleKind } : {}) };
       const finalized = await finalizeBundle(session, { signers: { buyer: signer(buyer), seller: signer(seller), orchestrator: signer(orchestrator) },
         anchor, fetchAnchored, fetchReceipt, async fetchCommitment(ref) { const value = commitments.get(ref.anchor.locator); if (!value) throw new Error('fixture commitment missing'); return value; },
         async publishBundleBinding(binding) { bundleBindings.push(binding); }, verifySignature, projectPaymentRail: (rail) => String(rail.railId), now: () => FIXTURE_NOW + 1000 });

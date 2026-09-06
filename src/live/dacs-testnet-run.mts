@@ -47,6 +47,9 @@ export interface DacsTestnetConfig {
   /** CORE §5.1 receipt source for LIVE. `demos-node` proves finality from the node's confirmed
    *  block; the default observer only reads storage back and refuses LIVE at the capability check. */
   receiptProvider?: 'observer' | 'demos-node';
+  /** Which two-sided bundle form the session finalizes: this repository's additive evidence-bound form
+   *  (default) or the DACS-5 §10.4 FaultAttestationBundle that the pinned dacs-sdk also recognises. */
+  bundleKind?: 'ebfab' | 'fab';
 }
 
 export type ColdVerdict = { outcome: 'pass' | 'fail' | 'indeterminate'; detail: string };
@@ -579,7 +582,8 @@ export async function createLiveDependencies(
       ];
       const session: CompletedSessionEvidence = { jobId: input.config.jobId, listing: input.listing.listing, listingRef: input.listing.listingRef,
         agreementRef: input.agreement.commitmentRef, agreement: agreement.agreement as unknown as Record<string, unknown>, agreementHash: agreement.agreementHash,
-        parties, phaseResults, outcome: 'completed', faultedParty: 'none', recipeRegistryVersion: 1, railRegistryVersion: 1 };
+        parties, phaseResults, outcome: 'completed', faultedParty: 'none', recipeRegistryVersion: 1, railRegistryVersion: 1,
+        ...(input.config.bundleKind ? { kind: input.config.bundleKind } : {}) };
       const finalized = await finalizeBundle(session, { signers: wiring.signers, anchor: wiring.anchor, fetchAnchored: wiring.fetchAnchored, fetchReceipt,
         async fetchCommitment(ref) { const value = commitments.get(ref.anchor.locator); if (!value) throw new Error('commitment unavailable'); return value; },
         verifySignature, projectPaymentRail: (rail) => String(rail.railId) });
@@ -594,14 +598,21 @@ export async function createLiveDependencies(
   return deps;
 }
 
-export function parameterHash(config: Pick<DacsTestnetConfig, 'organ' | 'query' | 'priceDem' | 'spendCapDem' | 'receiptProvider'>): string {
+/** The bundle form is a session parameter: anything but the two known forms is a configuration refusal. */
+export function parseBundleKind(raw: string): 'ebfab' | 'fab' {
+  if (raw === 'ebfab' || raw === 'fab') return raw;
+  throw new DacsTestnetRefusal('config', `DACS_BUNDLE_KIND must be "ebfab" or "fab", got "${raw}"`);
+}
+
+export function parameterHash(config: Pick<DacsTestnetConfig, 'organ' | 'query' | 'priceDem' | 'spendCapDem' | 'receiptProvider' | 'bundleKind'>): string {
   return jcsHashHex({
-    version: 'dacs-testnet-coordinator-params:2',
+    version: 'dacs-testnet-coordinator-params:3',
     organ: config.organ,
     query: config.query,
     price: config.priceDem,
     cap: config.spendCapDem,
     receipts: config.receiptProvider ?? 'observer',
+    bundle: config.bundleKind ?? 'ebfab',
     pipeline: COORDINATOR_PIPELINE,
   });
 }
@@ -804,6 +815,7 @@ export async function main(
       priceDem: '1', spendCapDem: Number(env.GATEWAY_SPEND_CAP_DEM ?? '50'),
       rpc: env.DEMOS_RPC ?? 'https://demosnode.discus.sh/', ...(cli.fixtureSeedHex ? { fixtureSeedHex: cli.fixtureSeedHex } : {}),
       ...(cli.receiptProvider ? { receiptProvider: cli.receiptProvider } : {}),
+      ...(env.DACS_BUNDLE_KIND !== undefined ? { bundleKind: parseBundleKind(env.DACS_BUNDLE_KIND) } : {}),
     };
     if (!Number.isFinite(config.spendCapDem) || config.spendCapDem < 0) throw new DacsTestnetRefusal('config', 'invalid spend cap configuration');
     const deps = dependencyFactory !== undefined
