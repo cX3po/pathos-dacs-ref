@@ -94,3 +94,33 @@ test('every reference a finalized copy cites is the DACS-2 §7.5.2 wire form, in
     assert.ok(seen >= 4, `cited references seen: ${seen}`);
   }
 });
+
+// DACS-5: the bundle's agreementRef cites the anchored DACS-3 AgreementDocument (the pinned dacs-sdk reads it as
+// dacs-3-agreement and checks its parties against the bundle). The finality commitment our ST-11 refetch verifies
+// travels on the session as commitmentRef and is not what the bundle cites.
+test('a finalized copy cites the anchored agreement document, not the finality commitment', async () => {
+  const { jcsHashHex } = await import('../../src/jcs.js');
+  let store: Map<string, unknown> | undefined;
+  const out = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (() => true) as typeof process.stdout.write;
+  try {
+    const exit = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (run) => { const deps = createDryRunDependencies(run); store = deps.fixtureState.byNative; return deps; });
+    assert.equal(exit, 0);
+  } finally { process.stdout.write = out; }
+  const entries = [...(store ?? new Map()).values()].filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null);
+  const bundles = entries.filter((v) => 'anchoredByRole' in v);
+  assert.ok(bundles.length >= 2);
+  const commitments = entries.filter((v) => typeof v.agreementHash === 'string' && !('anchoredByRole' in v));
+  assert.equal(commitments.length, 1, 'one finality commitment record is anchored');
+  for (const bundle of bundles) {
+    const ref = bundle.agreementRef as { anchor: { kind: string; locator: string }; contentHash: string };
+    assert.equal(ref.anchor.kind, 'storage-program');
+    const cited = store!.get(ref.anchor.locator) as Record<string, unknown> | undefined;
+    assert.ok(cited, 'the cited locator resolves in the store');
+    assert.equal(cited!.agreementVersion, '1', 'the cited artifact is the DACS-3 AgreementDocument');
+    assert.equal(cited!.jobId, bundle.jobId);
+    assert.equal((cited!.signatures as unknown[]).length, 2, 'both parties signed the cited document');
+    assert.equal(ref.contentHash, jcsHashHex(cited), 'contentHash covers the signed document as anchored');
+    assert.notEqual(cited, commitments[0], 'the commitment is not the cited artifact');
+  }
+});

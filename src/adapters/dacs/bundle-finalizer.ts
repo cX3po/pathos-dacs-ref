@@ -58,7 +58,11 @@ export interface CompletedSessionEvidence {
   jobId: string;
   listing: JsonObject;
   listingRef: { listingId: string; version: number; contentHash: string };
+  /** Cited by the bundle: the anchored DACS-3 AgreementDocument (DACS-5 `agreementRef`). */
   agreementRef?: AttestationRef;
+  /** Our ST-11 refetch target: the anchored FinalityCommitmentRecord. Not cited by the bundle. Legacy sessions
+   *  that carried the commitment in `agreementRef` resolve it from there when this is absent. */
+  commitmentRef?: AttestationRef;
   agreement?: JsonObject;
   agreementHash?: string;
   parties: BundleParty[];
@@ -279,13 +283,14 @@ export async function verifyBundleListing(listing: JsonObject, deps: Pick<Bundle
 
 async function resolveCommitment(input: CompletedSessionEvidence, deps: Pick<BundleFinalizerDependencies, 'fetchCommitment' | 'fetchReceipt' | 'verifySignature'>): Promise<ResolvedCommitment | undefined> {
   if (input.outcome !== 'completed' && input.outcome !== 'failed-counterparty') return undefined;
-  if (!input.agreementRef) throw new BundleFinalizationError('commitment-unresolved', 'completed or failed-counterparty bundle requires a commitment reference (ST-11)');
+  const commitmentRef = input.commitmentRef ?? input.agreementRef;
+  if (!commitmentRef) throw new BundleFinalizationError('commitment-unresolved', 'completed or failed-counterparty bundle requires a commitment reference (ST-11)');
   if (!deps.fetchCommitment) throw new BundleFinalizationError('commitment-not-refetched', 'commitment was not independently refetched (ST-11)');
   let resolved: ResolvedCommitment;
-  try { resolved = await deps.fetchCommitment(input.agreementRef); }
+  try { resolved = await deps.fetchCommitment(commitmentRef); }
   catch { throw new BundleFinalizationError('commitment-transport', 'agreement commitment could not be resolved (ST-11)'); }
   const commitmentHash = jcsHashHex(resolved.commitment);
-  if (commitmentHash !== input.agreementRef.contentHash.replace(/^sha256:/, '') || resolved.commitment.jobId !== input.jobId) throw new BundleFinalizationError('commitment-binding', 'agreement commitment hash/job mismatch (ST-11)');
+  if (commitmentHash !== commitmentRef.contentHash.replace(/^sha256:/, '') || resolved.commitment.jobId !== input.jobId) throw new BundleFinalizationError('commitment-binding', 'agreement commitment hash/job mismatch (ST-11)');
   const agreementScope = { ...resolved.agreement } as JsonObject; delete agreementScope.signatures;
   const agreementHash = jcsHashHex(agreementScope);
   if (agreementHash !== resolved.commitment.agreementHash) throw new BundleFinalizationError('commitment-binding', 'commitment agreementHash mismatch (ST-11)');
@@ -300,7 +305,7 @@ async function resolveCommitment(input: CompletedSessionEvidence, deps: Pick<Bun
   const commitmentScope = { ...resolved.commitment } as JsonObject; delete commitmentScope.signature;
   if (!await signatureValid(deps, ADDITIVE_DOMAIN_SEPARATORS.FINALITY_COMMITMENT, jcsHashHex(commitmentScope), object(resolved.commitment.signature))) throw new BundleFinalizationError('commitment-signature', 'commitment signature invalid (ST-11)');
   const logicalAddress = `dacs3:commit:${input.jobId}`;
-  if (!resolved.anchor || resolved.anchor.logicalAddress !== logicalAddress || resolved.anchor.nativeAddress !== input.agreementRef.anchor.locator) {
+  if (!resolved.anchor || resolved.anchor.logicalAddress !== logicalAddress || resolved.anchor.nativeAddress !== commitmentRef.anchor.locator) {
     throw new BundleFinalizationError('commitment-binding', 'commitment anchor metadata is missing or mismatched (ST-11)');
   }
   let receipt: AnchorReceipt;
@@ -459,6 +464,7 @@ export async function verifyFinalizedBundleCold(expected: FinalizedBundleExpecta
       ...expected.session,
       outcome: authorityBundle.outcome as BundleOutcome,
       agreementRef: authorityBundle.agreementRef as AttestationRef | undefined,
+      ...(expected.session.commitmentRef ? { commitmentRef: expected.session.commitmentRef } : {}),
       phaseResults: expected.session.phaseResults.map((phase) => ({ ...phase, evidenceRef: settlementByIndex.get(phase.index) ?? phase.evidenceRef })),
     };
     const resolved = await resolveCommitment(replayInput, { ...deps, fetchReceipt });
