@@ -1,6 +1,7 @@
 /** Deterministic, public test material and in-memory DACS coordinator dependencies. */
 
 import * as ed25519 from '@noble/ed25519';
+import { dacs1Listing, presentSellerIdentity, signDacs1Listing, listingDeliverableRef } from './listing-wire.js';
 import { signatureExcludedHash } from '../lib/content-hash.js';
 import { sha256, sha512 } from '@noble/hashes/sha2';
 import { DOMAIN_SEPARATORS, type DomainSeparator } from '../domain-sep.js';
@@ -53,10 +54,11 @@ export const coordinatorConfigFixture = Object.freeze({
   pipeline: [
     { kind: 'negotiate-fixed-price' },
     { kind: 'commit-agreement' },
-    { kind: 'pay-dem' },
+    { kind: 'pay-dem', parameters: { rail: 'pay-dem' } },
     { kind: 'deliver-storage-program' },
   ],
-  deliverable: { deliverableType: 'storage-program', hash: jcsHashHex({ organ: 'nws_alerts', output: 'severity-band' }) },
+  // DACS-4 DeliverableRef derived from the listing's DeliverableSpec (agreement-commitment expectedDeliverable): deliverableType = kind, hash = JCS hash of the spec.
+  deliverable: { deliverableType: 'storage-program', hash: jcsHashHex({ kind: 'storage-program' }) },
 });
 
 interface FixtureKey { privateKey: Uint8Array; publicKey: Uint8Array; claim: string }
@@ -151,22 +153,18 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
     async capabilityPreflight() {},
     async publishListing(run): Promise<PublishedListing> {
       const listingId = `${run.jobId}-listing`;
-      const listingPublisherClaim = `key:${Buffer.from(seller.publicKey).toString('hex')}`;
-      const logicalAddress = listingLogicalAddress(listingPublisherClaim, listingId, 1);
-      const unsigned: Record<string, unknown> = {
-        listingId, listingVersion: 1, logical_address: logicalAddress,
-        seller: { primaryClaim: seller.claim, displayName: 'PATH-OS proof organ' },
-        item: 'proof-organ:nws_alerts severity band near a committed point',
-        offering: { title: 'Weather severity band', category: 'proof-organ', tags: ['weather'], deliverable: coordinatorConfigFixture.deliverable },
-        pricing: { kind: 'fixed', price: { amount: run.priceDem, currency: 'DEM' } },
-        acceptedRails: [{ railId: 'pay-dem' }], pipeline: coordinatorConfigFixture.pipeline,
-        terms: { deadlineSecAfterCommit: 3600 }, validity: { notAfter: FIXTURE_NOW + 7_200_000 },
-      };
-      const contentHash = jcsHashHex(unsigned);
-      const listing = { ...unsigned, contentHash, signature: { algorithm: 'ed25519', signer: seller.claim, value: Buffer.from(sign(DOMAIN_SEPARATORS.LISTING, new TextEncoder().encode(contentHash), seller.privateKey)).toString('base64url') } };
-      const listingAnchor = await anchor({ logicalAddress, content: listing, contentHash: jcsHashHex(listing) });
+      const logicalAddress = listingLogicalAddress(seller.claim, listingId, 1);
+      const identity = await presentSellerIdentity(signer(seller), FIXTURE_NOW);
+      const unsigned = dacs1Listing({
+        listingId, listingVersion: 1, seller: { identity, displayName: 'PATH-OS proof organ' },
+        offering: { title: 'Weather severity band', description: 'Proof organ nws_alerts: severity band near a committed point, delivered as a storage program.', category: 'proof-organ', tags: ['weather'], deliverable: { kind: 'storage-program' } },
+        pricing: { kind: 'fixed', price: { amount: run.priceDem, currency: 'DEM' } }, acceptedRails: [{ railId: 'pay-dem' }], pipeline: coordinatorConfigFixture.pipeline,
+        terms: { deadlineSecAfterCommit: 3600 }, validity: { notBefore: FIXTURE_NOW - 60_000, notAfter: FIXTURE_NOW + 7_200_000 },
+      });
+      const { listing, contentHash } = await signDacs1Listing(unsigned, signer(seller));
+      const listingAnchor = await anchor({ logicalAddress: anchorNames.listing(logicalAddress), content: listing, contentHash: jcsHashHex(listing) });
       const origin = 'https://fixture.path-os.invalid';
-      const discovery = buildDiscoveryArtifacts({ listing, sellerPrimaryClaim: listingPublisherClaim, nativeAddress: listingAnchor.nativeAddress, publisherOrigin: origin, generatedAt: FIXTURE_NOW });
+      const discovery = buildDiscoveryArtifacts({ listing, sellerPrimaryClaim: seller.claim, nativeAddress: listingAnchor.nativeAddress, publisherOrigin: origin, generatedAt: FIXTURE_NOW });
       const resources = new Map([[`${origin}/.well-known/agent.json`, discovery.agentCardBytes], [`${origin}/.well-known/dacs/listings.json`, discovery.indexBytes]]);
       const resolved = await resolveListingFromPublishedBinding(`${origin}/.well-known/agent.json`, logicalAddress,
         async (url) => { const value = resources.get(url); if (!value) throw new Error('fixture discovery resource missing'); return value; },
@@ -185,7 +183,7 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
         { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: seller.claim }), primaryClaim: seller.claim, vetRecordRef: vetRef },
       ];
       const committed = await commitAgreement({ jobId: run.jobId, listing: published.listing, listingRef: published.listingRef, parties,
-        terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: coordinatorConfigFixture.deliverable, deadline: FIXTURE_NOW + 3_600_000 } },
+        terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: listingDeliverableRef(published.listing), deadline: FIXTURE_NOW + 3_600_000 } },
       { signers: { buyer: signer(buyer), seller: signer(seller), orchestrator: signer(orchestrator) }, anchor, fetchAnchored, receiptProvider: fetchReceipt, now: () => FIXTURE_NOW });
       const commitmentRef: AttestationRef = { anchor: { kind: 'storage-program', locator: committed.addresses.commitment.native }, contentHash: signatureExcludedHash(committed.commitment), signer: orchestrator.claim };
       const commitmentReceipt = receipts.get(committed.addresses.commitment.logical)!;

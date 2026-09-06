@@ -158,3 +158,51 @@ test('a finalized copy\'s payment phase entry carries txRefs equal to the eviden
     assert.equal(deliver.txRefs, undefined);
   }
 });
+
+// DACS-1 §6.3.4: the published listing is the Standard's Listing (the pinned dacs-sdk's isListing shape), with the seller's own
+// identity bundle presented per-claim (§6.3.2) and the program named in the SDK's form so its Agent resolves it by (owner, name).
+test('the dry-run listing is a DACS-1 Listing: Standard members only, a per-claim seller presentation that verifies, the pay step bound to its rail, and the SDK-form program name', async () => {
+  const { verifyDomainHashAgentSignature } = await import('../../src/adapters/demos/identity.js');
+  const { DOMAIN_SEPARATORS } = await import('../../src/domain-sep.js');
+  const { listingLogicalAddress } = await import('../../src/dacs1/addressing.js');
+  const { sdkListingProgramName } = await import('../../src/live/listing-wire.js');
+  const { jcsHashHex } = await import('../../src/jcs.js');
+  let state: { byNative: Map<string, unknown>; byLogical: Map<string, unknown> } | undefined;
+  const out = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (() => true) as typeof process.stdout.write;
+  try {
+    const exit = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (run) => { const deps = createDryRunDependencies(run); state = deps.fixtureState; return deps; });
+    assert.equal(exit, 0);
+  } finally { process.stdout.write = out; }
+  const entries = [...state!.byNative.values()].filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null);
+  const listing = entries.find((v) => v.dacsVersion === '1' && typeof v.listingId === 'string')!;
+  assert.ok(listing, 'a DACS-1 listing is anchored');
+  assert.deepEqual(Object.keys(listing).sort(), ['acceptedRails', 'buyerRequirement', 'dacsVersion', 'listingId', 'listingVersion', 'offering', 'pipeline', 'pricing', 'seller', 'signature', 'terms', 'validity']);
+  const seller = listing.seller as { identity: Record<string, unknown>; displayName: string };
+  const identity = seller.identity as { bundleVersion: string; presentedBy: string; presentedAt: number; claims: Array<{ ref: string }>; presentation: { kind: string; signatures: Array<{ ref: string; signature: string }> } };
+  const signature = listing.signature as { signer: string; algorithm: string; value: string };
+  assert.equal(identity.bundleVersion, '1');
+  assert.equal(identity.presentedBy, signature.signer, 'the listing signer is the presented primary claim');
+  assert.deepEqual(identity.claims, [{ ref: identity.presentedBy }]);
+  assert.equal(identity.presentation.kind, 'per-claim');
+  const { presentation: _p, ...bundleScope } = identity; void _p;
+  const entry = identity.presentation.signatures[0]!;
+  assert.equal(entry.ref, identity.presentedBy);
+  assert.equal(verifyDomainHashAgentSignature(identity.presentedBy as `${string}:${string}`, DOMAIN_SEPARATORS.BUNDLE_PRESENTATION, jcsHashHex(bundleScope), Buffer.from(entry.signature, 'base64url')), true, 'the wallet signed dacs-bundle-presentation:v1: || bundle_hash');
+  const { signature: _s, ...unsignedListing } = listing; void _s;
+  assert.equal(verifyDomainHashAgentSignature(signature.signer as `${string}:${string}`, DOMAIN_SEPARATORS.LISTING, jcsHashHex(unsignedListing), Buffer.from(signature.value, 'base64url')), true);
+  const pipeline = listing.pipeline as Array<{ kind: string; parameters?: { rail?: string } }>;
+  const pay = pipeline.find((p) => p.kind === 'pay-dem')!;
+  assert.equal(pay.parameters?.rail, 'pay-dem');
+  assert.ok((listing.acceptedRails as Array<{ railId: string }>).some((r) => r.railId === pay.parameters!.rail), 'LRR-1: the pay step names an accepted rail');
+  assert.equal((listing.offering as { deliverable: { kind: string } }).deliverable.kind, 'storage-program');
+  assert.equal((listing.buyerRequirement as { requirementVersion: string }).requirementVersion, '1');
+  const validity = listing.validity as { notBefore: number; notAfter?: number };
+  assert.ok(Number.isSafeInteger(validity.notBefore) && (validity.notAfter === undefined || validity.notAfter >= validity.notBefore));
+  // The bundle's ListingPin hashes the signature-excluded listing, and the program is named as the SDK derives it from the seller claim.
+  const bundles = entries.filter((v) => 'anchoredByRole' in v);
+  for (const bundle of bundles) assert.equal((bundle.listingRef as { contentHash: string }).contentHash, jcsHashHex(unsignedListing));
+  const logical = listingLogicalAddress(identity.presentedBy, listing.listingId as string, listing.listingVersion as number);
+  assert.ok(state!.byLogical.has(sdkListingProgramName(logical)), `anchored under ${sdkListingProgramName(logical)}`);
+  assert.ok(!sdkListingProgramName(logical).includes(':'), 'colon-free program name');
+});

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { jcsHashHex } from '../../src/jcs.js';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -147,7 +148,7 @@ test('a real bridge script runs through the default executor and yields the deli
 // construction is a delivery-phase failure and anchors nothing.
 const liveConfig: DacsTestnetConfig = { jobId: 'organ-live', mode: 'live', organ: 'nws_alerts', query: 'q', priceDem: '1', spendCapDem: 10, rpc: 'https://example.invalid', receiptProvider: 'demos-node' };
 function fakeSeams(anchors: string[]): Partial<LiveSettlementSeams> {
-  const claim = `cci:${'11'.repeat(32)}`;
+  const claim = `did:demos:agent:${'11'.repeat(32)}`;
   const anchor = { logicalAddress: 'x', nativeAddress: 'stor-x', transactionRef: { kind: 'demos', value: 'tx' }, writer: claim, nonce: '1' };
   const handle = { address: 'wallet', rpc: liveConfig.rpc, demos: {} } as never;
   const gate = { authorize: async () => ({ verdict: 'PROCEED' as const, nowIso: new Date().toISOString() }), journalOutcome: async () => {}, beforeBroadcast: async () => {} };
@@ -204,7 +205,7 @@ test('with a working bridge, deliver anchors the projected deliverable and its e
     const baseConnect = seams.connect!;
     seams.connect = async (...args: Parameters<NonNullable<LiveSettlementSeams['connect']>>) => {
       const wiring = await baseConnect(...args);
-      return { ...wiring, anchor: async (request: { logicalAddress: string; content: unknown }) => { anchored.push(request); return { logicalAddress: request.logicalAddress, nativeAddress: 'stor-x', transactionRef: { kind: 'demos', value: 'tx' }, writer: `cci:${'11'.repeat(32)}`, nonce: '1' }; } };
+      return { ...wiring, anchor: async (request: { logicalAddress: string; content: unknown }) => { anchored.push(request); return { logicalAddress: request.logicalAddress, nativeAddress: 'stor-x', transactionRef: { kind: 'demos', value: 'tx' }, writer: `did:demos:agent:${'11'.repeat(32)}`, nonce: '1' }; } };
     };
     const env = { GATEWAY_LIVE_APPROVED: '1', GATEWAY_DRYRUN_HASH: parameterHash(liveConfig), PATH: process.env.PATH, HOME: process.env.HOME, ORGAN_CLI: script, AXIOM_PY: process.execPath };
     const deps = await createLiveDependencies(liveConfig, env, provider, seams);
@@ -250,7 +251,7 @@ test('the live listing and agreement pass the agreement adapter with a fabricate
   const { jcsCanonical } = await import('../../src/jcs.js');
   const contents = new Map<string, unknown>();
   const anchorsWritten: Array<{ logicalAddress: string; nativeAddress: string; transactionRef: { kind: string; value: string }; writer: string; nonce: string }> = [];
-  const claim = `cci:${'22'.repeat(32)}`;
+  const claim = `did:demos:agent:${'22'.repeat(32)}`;
   const seams = fakeSeams([]);
   const baseConnect = seams.connect!;
   seams.connect = async (...args: Parameters<NonNullable<LiveSettlementSeams['connect']>>) => {
@@ -258,7 +259,7 @@ test('the live listing and agreement pass the agreement adapter with a fabricate
     let ordinal = 0;
     return {
       ...wiring,
-      signers: { buyer: { claim: `cci:${'11'.repeat(32)}`, sign: async () => new Uint8Array(64) }, seller: { claim, sign: async () => new Uint8Array(64) }, orchestrator: { claim, sign: async () => new Uint8Array(64) } },
+      signers: { buyer: { claim: `did:demos:agent:${'11'.repeat(32)}`, sign: async () => new Uint8Array(64) }, seller: { claim, sign: async () => new Uint8Array(64) }, orchestrator: { claim, sign: async () => new Uint8Array(64) } },
       anchor: async (request: { logicalAddress: string; content: unknown; contentHash: string }) => {
         const nativeAddress = `stor-${String(ordinal++).padStart(40, '0')}`;
         contents.set(nativeAddress, request.content); contents.set(request.logicalAddress, request.content);
@@ -290,14 +291,14 @@ test('the live listing and agreement pass the agreement adapter with a fabricate
     const deps = await createLiveDependencies(liveConfig, env, receipts, seams);
     const published = await deps.publishListing(liveConfig);
     assert.equal(published.anchor.writer, claim);
-    assert.deepEqual((published.listing.offering as Record<string, unknown>).deliverable, liveDeliverableSpec(liveConfig));
+    assert.deepEqual((published.listing.offering as Record<string, unknown>).deliverable, { kind: 'storage-program' }, 'DACS-1 listing carries a DeliverableSpec');
     // The listing signature is a stand-in here, so the vet reports it without throwing.
     const vet = await deps.vetListing(published, liveConfig);
     assert.ok(['pass', 'fail'].includes(vet.outcome));
     const agreement = await deps.emitAgreement(published, liveConfig);
     assert.ok(agreement.committed.commitmentHash.length === 64);
     assert.equal(anchorsWritten.length, 3, 'listing, agreement and commitment anchors');
-    assert.deepEqual((agreement.committed.agreement.terms as unknown as Record<string, unknown>).deliverable, liveDeliverableSpec(liveConfig));
+    assert.deepEqual((agreement.committed.agreement.terms as unknown as Record<string, unknown>).deliverable, { deliverableType: 'storage-program', hash: jcsHashHex({ kind: 'storage-program' }) }, 'the agreement carries the DeliverableRef derived from the listing DeliverableSpec');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

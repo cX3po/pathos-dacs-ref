@@ -420,3 +420,24 @@ test('a successful payment phase carries txRefs equal to the evidence record\'s 
   const legacySession = { ...input, phaseResults: input.phaseResults.map((p) => p.index === 2 ? { ...p, evidenceRef: legacyStored.ref, evidenceAnchor: legacyStored.anchor, txRefs: undefined } : p) };
   await assert.rejects(finalizeBundle(legacySession, state.deps), codeIs('seb-binding'), 'legacy-only evidence');
 });
+
+test('verifyBundleListing reads the DACS-1 Listing: the seller identity presentation must verify and present the listing signer; legacy listings with a self contentHash still verify', async () => {
+  const { dacs1Listing, presentSellerIdentity, signDacs1Listing } = await import('../../src/live/listing-wire.js');
+  const identity = await presentSellerIdentity(signer(seller), 1_780_000_000_000);
+  const unsigned = dacs1Listing({ listingId: 'lst-dacs1', listingVersion: 1, seller: { identity, displayName: 'seller' },
+    offering: { title: 'echo', description: 'echo service', category: 'proof-organ', tags: ['echo'], deliverable: { kind: 'storage-program' } },
+    pricing: { kind: 'fixed', price: { amount: '10', currency: 'USDC' } }, acceptedRails: [{ railId: 'pay-x402' }],
+    pipeline: [{ kind: 'negotiate-fixed-price' }, { kind: 'commit-agreement' }, { kind: 'pay-x402', parameters: { rail: 'pay-x402' } }, { kind: 'deliver-storage-program' }],
+    terms: { deadlineSecAfterCommit: 3600 }, validity: { notBefore: 1_780_000_000_000 } });
+  const { listing } = await signDacs1Listing(unsigned, signer(seller));
+  await assert.doesNotReject(verifyBundleListing(listing, {}), 'the default resolver reads the DID signer and the presentation');
+  const codeIs = (code: string) => (error: unknown) => error instanceof BundleFinalizationError && error.code === code;
+  // Each variant is re-signed by the seller so the listing signature holds and the identity rule is what refuses.
+  const withIdentity = async (identityVariant: unknown) => (await signDacs1Listing({ ...unsigned, seller: { identity: identityVariant, displayName: 'seller' } }, signer(seller))).listing;
+  const badPresentation = await withIdentity({ ...identity, presentation: { kind: 'per-claim', signatures: [{ ref: identity.presentedBy, signature: Buffer.alloc(64).toString('base64url') }] } });
+  await assert.rejects(verifyBundleListing(badPresentation, {}), codeIs('listing-identity'));
+  const otherPresenter = await withIdentity({ ...identity, presentedBy: buyer.claim, claims: [{ ref: buyer.claim }] });
+  await assert.rejects(verifyBundleListing(otherPresenter, {}), codeIs('listing-signer'));
+  const tampered = { ...listing, offering: { ...(listing.offering as object), title: 'changed' } };
+  await assert.rejects(verifyBundleListing(tampered as never, {}), codeIs('listing-signature'));
+});
