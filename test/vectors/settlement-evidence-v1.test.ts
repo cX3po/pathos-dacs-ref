@@ -232,3 +232,17 @@ test('emitter: a mixed legacy/spec entry is refused; the AP2 attestation is rebu
     assert.ok(!('extra' in out) && !('smuggled' in out), JSON.stringify(out));
   }
 });
+
+test('verifier: enum members must be strings (no coercion) and an AP2 attestation signer must be a canonical claim reference, as the pinned SDK checks', () => {
+  const base = load('settlement-evidence-payment-success.json');
+  delete base.signature;
+  const withRefs = (refs: unknown[]) => verifySettlementEvidenceV1({ ...base, paymentTxRefs: refs }).decision;
+  const h = 'ab'.repeat(32);
+  assert.equal(withRefs([{ kind: 'solana', cluster: ['devnet'], signature: 'sig' }]), 'fail', 'cluster must be a string');
+  assert.equal(withRefs([{ kind: 'solana-instruction', cluster: ['mainnet'], signature: 'sig', instructionIndex: 0 }]), 'fail');
+  assert.equal(withRefs([{ kind: 'ap2', mandateId: 'm', providerRef: 'p', protocolVersion: '1', receiptAttestation: { anchor: { kind: ['https'], locator: 'x' }, contentHash: h } }]), 'fail', 'anchor.kind must be a string');
+  assert.equal(withRefs([{ kind: 'ap2', mandateId: 'm', providerRef: 'p', protocolVersion: '1', receiptAttestation: { anchor: { kind: 'https', locator: 'x' }, contentHash: h, signer: 's' } }]), 'fail', 'signer must be <scheme>:<identifier>');
+  assert.equal(withRefs([{ kind: 'ap2', mandateId: 'm', providerRef: 'p', protocolVersion: '1', receiptAttestation: { anchor: { kind: 'https', locator: 'x' }, contentHash: h, signer: 'cci:abc?b=1&a=2' } }]), 'fail', 'query keys must be sorted');
+  assert.equal(withRefs([{ kind: 'ap2', mandateId: 'm', providerRef: 'p', protocolVersion: '1', receiptAttestation: { anchor: { kind: 'https', locator: 'x' }, contentHash: h, signer: `did:demos:agent:${'0'.repeat(64)}` } }]), 'pass');
+  assert.equal(withRefs([{ kind: 'ap2', mandateId: 'm', providerRef: 'p', protocolVersion: '1', receiptAttestation: { anchor: { kind: 'https', locator: 'x' }, contentHash: h, signer: 'cci:abc?a=1&b=2' } }]), 'pass');
+});
