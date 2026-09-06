@@ -223,7 +223,7 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
         { index: 3, kind: 'deliver-storage-program', outcome: 'ok' as const, orchestrator: orchestrator.claim, evidenceRef: input.delivery.evidenceRef, evidenceLogicalAddress: input.delivery.evidenceLogicalAddress, evidenceAnchor: input.delivery.evidenceAnchor },
       ];
       const session: CompletedSessionEvidence = { jobId: input.config.jobId, listing: input.listing.listing, listingRef: input.listing.listingRef,
-        agreementRef: input.agreement.commitmentRef, agreement: agreement.agreement as unknown as Record<string, unknown>, agreementHash: agreement.agreementHash,
+        agreementRef: input.agreement.committed.agreementRef, commitmentRef: input.agreement.commitmentRef, agreement: agreement.agreement as unknown as Record<string, unknown>, agreementHash: agreement.agreementHash,
         parties, phaseResults, outcome: 'completed', faultedParty: 'none', recipeRegistryVersion: 1, railRegistryVersion: 1, finalisedAt: FIXTURE_NOW + 1000,
         ...(input.config.bundleKind ? { kind: input.config.bundleKind } : {}) };
       const finalized = await finalizeBundle(session, { signers: { buyer: signer(buyer), seller: signer(seller), orchestrator: signer(orchestrator) },

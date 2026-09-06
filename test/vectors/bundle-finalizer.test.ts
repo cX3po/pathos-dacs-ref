@@ -359,3 +359,36 @@ test('cold SEB replay: an evidence fetch transport error is indeterminate, an ab
   assert.equal(a.outcome, 'indeterminate', a.detail);
   assert.equal(b.outcome, 'fail', b.detail);
 });
+
+test('split references: the bundle cites the agreement document and the commitment travels on the session; a missing, absent, mismatched or foreign document never finalizes', async () => {
+  const state = setup(); const input = await session(state);
+  const commitmentRef = input.agreementRef!;
+  const resolved = state.commitments.get(commitmentRef.anchor.locator)!;
+  const agreementHash = jcsHashHex(resolved.agreement);
+  const agreementNative = [...state.memory.entries()].find(([, v]) => { try { return jcsHashHex(v) === agreementHash; } catch { return false; } })?.[0];
+  assert.ok(agreementNative, 'the signed agreement document is anchored');
+  const agreementRef: AttestationRef = { anchor: { kind: 'storage-program', locator: agreementNative! }, contentHash: agreementHash };
+  const split: CompletedSessionEvidence = { ...input, commitmentRef, agreementRef };
+  const result = await finalizeBundle(split, state.deps);
+  assert.deepEqual(result.bundles.buyer!.bundle.agreementRef, agreementRef, 'the copy cites the agreement document');
+  assert.equal((await verifyFinalizedBundleCold({ jobId: split.jobId, ...result, session: split }, state.deps)).outcome, 'pass');
+  const codeIs = (code: string) => (error: unknown) => error instanceof BundleFinalizationError && error.code === code;
+  await assert.rejects(finalizeBundle({ ...split, agreementRef: undefined }, state.deps), codeIs('agreement-unresolved'));
+  await assert.rejects(finalizeBundle({ ...split, agreementRef: { ...agreementRef, anchor: { kind: 'storage-program', locator: 'stor-nowhere' } } }, state.deps), codeIs('agreement-transport'));
+  await assert.rejects(finalizeBundle({ ...split, agreementRef: { ...agreementRef, contentHash: 'ff'.repeat(32) } }, state.deps), codeIs('agreement-binding'));
+  // Another anchored document (the commitment record itself), hash-bound to its reference but not the agreement the commitment binds.
+  const commitmentDoc = state.memory.get(commitmentRef.anchor.locator);
+  assert.ok(commitmentDoc);
+  await assert.rejects(finalizeBundle({ ...split, agreementRef: { anchor: { kind: 'storage-program', locator: commitmentRef.anchor.locator }, contentHash: jcsHashHex(commitmentDoc) } }, state.deps), codeIs('agreement-binding'));
+  // Every outcome: a no-fault substrate failure that cites a nonexistent agreement neither finalizes nor cold-passes.
+  const substrateTrace = [split.phaseResults[0]!, { index: 1, kind: 'commit-agreement', outcome: 'fail' as const, errorClass: 'substrate' as const, orchestrator: orchestrator.claim }];
+  const substrate: CompletedSessionEvidence = { ...split, outcome: 'failed-substrate', faultedParty: 'none', phaseResults: substrateTrace, agreementRef: { ...agreementRef, anchor: { kind: 'storage-program', locator: 'stor-nowhere' } } };
+  await assert.rejects(finalizeBundle(substrate, state.deps), codeIs('agreement-transport'));
+  const substrateOk = await finalizeBundle({ ...split, outcome: 'failed-substrate', faultedParty: 'none', phaseResults: substrateTrace }, state.deps);
+  // Cold replay checks the anchored copy's own citation (not the session's): the intact document passes for every outcome.
+  assert.equal((await verifyFinalizedBundleCold({ jobId: substrate.jobId, ...substrateOk, session: substrate }, state.deps)).outcome, 'pass');
+  // Cold replay after the agreement document is gone: never a pass, for either outcome.
+  state.memory.delete(agreementNative!);
+  assert.notEqual((await verifyFinalizedBundleCold({ jobId: split.jobId, ...result, session: split }, state.deps)).outcome, 'pass');
+  assert.notEqual((await verifyFinalizedBundleCold({ jobId: substrate.jobId, ...substrateOk, session: substrate }, state.deps)).outcome, 'pass');
+});

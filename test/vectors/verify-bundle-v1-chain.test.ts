@@ -642,3 +642,39 @@ test('a lone single-signing abort party cannot pin itself as the commitment auth
   const ok = await verifyBundleV1Full(both, { ...offline, fetchAnchoredImpl: mockFetch(bothMap) });
   assert.equal(ok.attestationsVerified, 1, JSON.stringify(ok.attestationSteps));
 });
+
+test('agreement referenced artifact: this job\'s document naming the bundle\'s buyer and seller, signed by both → verified; another job, another party or a missing party signature never pass', async () => {
+  const jobId = 'v1-agreement-ref';
+  const buyer = mk(0x21), seller = mk(0x22), stranger = mk(0x33);
+  const signAgreement = (unsigned: Record<string, unknown>, signers: Array<{ priv: Uint8Array; pubHex: string }>) => {
+    const scope = hexOf(sha256(jcsCanonical(unsigned)));
+    return { ...unsigned, signatures: signers.map((k) => ({ party: `cci:${k.pubHex}`, algorithm: 'ed25519', value: Buffer.from(sign(DOMAIN_SEPARATORS.AGREEMENT, enc.encode(scope), k.priv)).toString('base64') })) };
+  };
+  const agreementFor = (job: string, parties: Array<{ role: string; key: { pubHex: string } }>, signers: Array<{ priv: Uint8Array; pubHex: string }>) =>
+    signAgreement({ agreementVersion: '1', jobId: job, listingRef: { listingId: 'lst-x', version: 1, contentHash: 'cd'.repeat(32) },
+      parties: parties.map((p) => ({ role: p.role, bundleHash: 'aa'.repeat(32), primaryClaim: `cci:${p.key.pubHex}`, vetRecordRef: { anchor: { kind: 'storage-program', locator: 'vet' }, contentHash: 'ef'.repeat(32) } })),
+      terms: { price: { amount: '1', currency: 'DEM' }, deliverable: { deliverableType: 'storage-program', hash: 'de'.repeat(32) }, deadline: 1735689600000 },
+      derivedFromPattern: 'fixed-price', generatedAt: 1735689600000 }, signers);
+  const refFor = (artifact: object, locator: string, signer?: string) => ({ anchor: { kind: 'storage-program' as const, locator }, contentHash: hexOf(sha256(jcsCanonical(artifact))), ...(signer ? { signer } : {}) });
+  const run = async (artifact: object, signer?: string) => {
+    const locator = 'stor-' + sha256Hex(JSON.stringify(artifact) + String(signer));
+    const c = twoSidedMap({ jobId, settlementEvidence: [refFor(artifact, locator, signer)] });
+    const m = new Map<string, unknown>(c.map); m.set(locator, artifact);
+    return verifyBundleV1Full(c.buyerCopy, { ...offline, fetchAnchoredImpl: mockFetch(m) });
+  };
+  const pair = [{ role: 'buyer', key: buyer }, { role: 'seller', key: seller }];
+  const v = await run(agreementFor(jobId, pair, [buyer, seller]));
+  assert.equal(v.attestationsVerified, 1, JSON.stringify(v.attestationSteps)); assert.equal(v.rollup, 'pass');
+  const o = await run(agreementFor('some-other-job', pair, [buyer, seller]));
+  assert.equal(o.attestationsFailed, 1, JSON.stringify(o.attestationSteps)); assert.match(o.attestationSteps[0]!.detail, /for job some-other-job/);
+  const s = await run(agreementFor(jobId, [{ role: 'buyer', key: stranger }, { role: 'seller', key: seller }], [stranger, seller]));
+  assert.equal(s.attestationsFailed, 1, JSON.stringify(s.attestationSteps)); assert.match(s.attestationSteps[0]!.detail, /buyer and seller/);
+  const h = await run(agreementFor(jobId, pair, [seller]));
+  assert.equal(h.attestationsFailed, 1, JSON.stringify(h.attestationSteps)); assert.match(h.attestationSteps[0]!.detail, /missing authorized party signature/);
+  // A pin never replaces the parties' authority: a document naming the right job and parties but signed only by a pinned stranger fails.
+  const p = await run(agreementFor(jobId, pair, [stranger]), `cci:${stranger.pubHex}`);
+  assert.equal(p.attestationsFailed, 1, JSON.stringify(p.attestationSteps)); assert.match(p.attestationSteps[0]!.detail, /not authorized/);
+  // A pin naming a party does not excuse the other party's signature.
+  const q = await run(agreementFor(jobId, pair, [seller]), `cci:${seller.pubHex}`);
+  assert.equal(q.attestationsFailed, 1, JSON.stringify(q.attestationSteps)); assert.match(q.attestationSteps[0]!.detail, /missing authorized party signature/);
+});
