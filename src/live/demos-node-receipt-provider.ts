@@ -197,7 +197,7 @@ export function createDemosNodeReceiptProvider(config: { rpc: string }, options:
       }
       // statusState is 'included' here; finalized needs the block confirmed and the record to agree.
       const lifecycle: Lifecycle = blockSettled && txSettled ? 'finalized' : 'included';
-      const { claimRefFor } = await import('../adapters/demos/identity.js');
+      const { cciClaimForAddress } = await import('../adapters/demos/identity.js');
       return {
         receiptVersion: '1',
         substrate: `demos-node:${host}`,
@@ -206,7 +206,7 @@ export function createDemosNodeReceiptProvider(config: { rpc: string }, options:
         nativeAddress,
         contentHash,
         transactionRef: { kind: 'demos', value: createdByTx },
-        writer: claimRefFor(owner),
+        writer: cciClaimForAddress(owner),
         nonce,
         state: lifecycle,
         observationDisposition: 'established',

@@ -290,13 +290,17 @@ export async function createLiveAdapterWiring(
   const { config: loadEnvFile } = await import('dotenv');
   loadEnvFile({ path: env.DACS_ENV_PATH ?? '.env', processEnv: env as Record<string, string> });
   const { connectDemos, mnemonicFromEnv } = await import('../demos/connection.js');
-  const { claimRefFor, signDomainHashAsAgent } = await import('../adapters/demos/identity.js');
+  const { claimRefFor, cciClaimForAddress, keyClaimForPubkeyClaim, signDomainHashAsAgent } = await import('../adapters/demos/identity.js');
   const storage = await import('../demos/storage.js');
   const buyerHandle = await connectDemos(mnemonicFromEnv('DEMOS_MNEMONIC', env), config.rpc);
   const sellerHandle = await connectDemos(mnemonicFromEnv('DEMOS_SELLER_MNEMONIC', env), config.rpc);
-  const buyer = { ...buyerHandle, name: 'buyer', role: 'buyer-reviewer' as const, mnemonicEnv: 'DEMOS_MNEMONIC', claim: claimRefFor(buyerHandle.address) };
-  const seller = { ...sellerHandle, name: 'seller', role: 'seller' as const, mnemonicEnv: 'DEMOS_SELLER_MNEMONIC', claim: claimRefFor(sellerHandle.address) };
-  const asSigner = (handle: typeof buyer | typeof seller): AdapterSigner => ({ claim: handle.claim, sign: (domain, hash) => signDomainHashAsAgent(handle, domain, hash) });
+  // DACS artifacts present the `cci:<pubkey>` claim, the form this repository's verifiers, the bundle finalizer
+  // and the dry-run fixtures resolve to a public key; the DACS-1 listing address takes the registered `key:`
+  // form of the same key; the wallet signs through its `demos:` claim (same ed25519 key: the address is the
+  // public key). Anchor writers and the node receipt provider both use the `cci:` form so authorship binds.
+  const buyer = { ...buyerHandle, name: 'buyer', role: 'buyer-reviewer' as const, mnemonicEnv: 'DEMOS_MNEMONIC', claim: claimRefFor(buyerHandle.address), dacsClaim: cciClaimForAddress(buyerHandle.address) };
+  const seller = { ...sellerHandle, name: 'seller', role: 'seller' as const, mnemonicEnv: 'DEMOS_SELLER_MNEMONIC', claim: claimRefFor(sellerHandle.address), dacsClaim: cciClaimForAddress(sellerHandle.address) };
+  const asSigner = (handle: typeof buyer | typeof seller): AdapterSigner => ({ claim: handle.dacsClaim, sign: (domain, hash) => signDomainHashAsAgent(handle, domain, hash) });
   const anchorsByLogical = new Map<string, AgreementAnchorResult>();
   return {
     handles: { buyer: buyerHandle, seller: sellerHandle },
@@ -306,7 +310,7 @@ export async function createLiveAdapterWiring(
       const result = await storage.anchor(handle, request.logicalAddress, request.content as Record<string, unknown> | string);
       if (result.nonce === undefined) throw new DacsTestnetRefusal('capability', 'SR-2 anchor result did not bind a nonce');
       const anchored: AgreementAnchorResult = { logicalAddress: request.logicalAddress, nativeAddress: result.storageAddress,
-        transactionRef: { kind: 'demos', value: result.txHash }, writer: handle === buyerHandle ? buyer.claim : seller.claim, nonce: result.nonce };
+        transactionRef: { kind: 'demos', value: result.txHash }, writer: handle === buyerHandle ? buyer.dacsClaim : seller.dacsClaim, nonce: result.nonce };
       anchorsByLogical.set(request.logicalAddress, anchored);
       return anchored;
     },
@@ -464,7 +468,7 @@ export async function createLiveDependencies(
   const { finalizeBundle, verifyBundleListing, verifyFinalizedBundleCold } = await import('../adapters/dacs/bundle-finalizer.js');
   const { anchorNames } = await import('./anchor-naming.js');
   const { emitSettlementEvidenceV1, evidenceHashV1 } = await import('../lib/emit-settlement-evidence-v1.js');
-  const { verifyDomainHashAgentSignature } = await import('../adapters/demos/identity.js');
+  const { verifyDomainHashAgentSignature, keyClaimForPubkeyClaim } = await import('../adapters/demos/identity.js');
   const commitments = new Map<string, import('../adapters/dacs/bundle-finalizer.js').ResolvedCommitment>();
   const fetchReceipt = async (request: { logicalAddress: string; contentHash: string; anchor?: AgreementAnchorResult }): Promise<AnchorReceipt> => {
     // A cold read names only the logical address; the anchor this session wrote under that name
@@ -493,7 +497,8 @@ export async function createLiveDependencies(
     },
     async publishListing(run) {
       const listingId = `${run.jobId}-listing`;
-      const logicalAddress = listingLogicalAddress(String(wiring.signers.seller.claim), listingId, 1);
+      // The listing address needs a DACS-1-registered scheme; `key:` is, `cci:` is not (the fixtures do the same).
+      const logicalAddress = listingLogicalAddress(String(keyClaimForPubkeyClaim(String(wiring.signers.seller.claim))), listingId, 1);
       const unsigned = {
         listingId, listingVersion: 1, logical_address: logicalAddress,
         seller: { primaryClaim: wiring.signers.seller.claim, displayName: 'PATH-OS proof organ' },
