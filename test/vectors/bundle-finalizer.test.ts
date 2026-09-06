@@ -381,12 +381,14 @@ test('split references: the bundle cites the agreement document and the commitme
   assert.ok(commitmentDoc);
   await assert.rejects(finalizeBundle({ ...split, agreementRef: { anchor: { kind: 'storage-program', locator: commitmentRef.anchor.locator }, contentHash: jcsHashHex(commitmentDoc) } }, state.deps), codeIs('agreement-binding'));
   // Every outcome: a no-fault substrate failure that cites a nonexistent agreement neither finalizes nor cold-passes.
-  const substrateTrace = [...split.phaseResults.slice(0, 2), { index: 2, kind: 'pay-x402', outcome: 'fail' as const, errorClass: 'substrate' as const, orchestrator: orchestrator.claim }];
+  const substrateTrace = [split.phaseResults[0]!, { index: 1, kind: 'commit-agreement', outcome: 'fail' as const, errorClass: 'substrate' as const, orchestrator: orchestrator.claim }];
   const substrate: CompletedSessionEvidence = { ...split, outcome: 'failed-substrate', faultedParty: 'none', phaseResults: substrateTrace, agreementRef: { ...agreementRef, anchor: { kind: 'storage-program', locator: 'stor-nowhere' } } };
   await assert.rejects(finalizeBundle(substrate, state.deps), codeIs('agreement-transport'));
   const substrateOk = await finalizeBundle({ ...split, outcome: 'failed-substrate', faultedParty: 'none', phaseResults: substrateTrace }, state.deps);
-  assert.notEqual((await verifyFinalizedBundleCold({ jobId: substrate.jobId, ...substrateOk, session: substrate }, state.deps)).outcome, 'pass');
-  // Cold replay after the agreement document is gone: never a pass.
+  // Cold replay checks the anchored copy's own citation (not the session's): the intact document passes for every outcome.
+  assert.equal((await verifyFinalizedBundleCold({ jobId: substrate.jobId, ...substrateOk, session: substrate }, state.deps)).outcome, 'pass');
+  // Cold replay after the agreement document is gone: never a pass, for either outcome.
   state.memory.delete(agreementNative!);
   assert.notEqual((await verifyFinalizedBundleCold({ jobId: split.jobId, ...result, session: split }, state.deps)).outcome, 'pass');
+  assert.notEqual((await verifyFinalizedBundleCold({ jobId: substrate.jobId, ...substrateOk, session: substrate }, state.deps)).outcome, 'pass');
 });
