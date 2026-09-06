@@ -3,7 +3,7 @@ import { DOMAIN_SEPARATORS, ADDITIVE_DOMAIN_SEPARATORS } from '../domain-sep.js'
 import { jcsCanonical } from '../jcs.js';
 import { bundleSignedScopeHashV1 } from './bundle-signed-scope-v1.js';
 import { sha256 } from '@noble/hashes/sha2';
-import { fetchAnchored, unwrapTextAnchor } from '../demos/storage.js';
+import { fetchAnchored, resolveByOwnerListing, unwrapTextAnchor } from '../demos/storage.js';
 const enc = new TextEncoder();
 const bytesToHexLocal = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 /**
@@ -361,8 +361,30 @@ function collectV1Refs(b) {
 function asRecord(value) {
     return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
-function authorizedArtifactSigners(artifact, ref, bundle, kind) {
+function authorizedArtifactSigners(artifact, ref, bundle, kind, verifiedSigners = new Set()) {
     const refSigner = claimKey(ref.signer);
+    if (kind === 'commitment') {
+        // The finality commitment is the orchestrator's record. The orchestrator is a distinct listed party
+        // when the bundle lists one; otherwise it is one of the deal parties and only the reference's
+        // pinned signer says which. A pin must agree with a listed distinct orchestrator, and must itself be
+        // a listed party; without either the authority cannot be established (indeterminate, never a pass).
+        const listed = new Map(bundle.parties.map((p) => [claimKey(p.primaryClaim), p.role]));
+        const distinct = bundle.parties.find((p) => p.role === 'orchestrator');
+        const distinctKey = distinct ? claimKey(distinct.primaryClaim) : null;
+        if (distinctKey)
+            return refSigner && refSigner !== distinctKey ? new Set() : new Set([distinctKey]);
+        if (refSigner) {
+            if (!listed.has(refSigner))
+                return new Set();
+            // The pin is only as good as the bundle that carries it: both deal parties must have signed the
+            // bundle (verified), or a lone abort signer could pin itself as the commitment's authority.
+            const pair = bundle.parties.filter((p) => p.role === 'buyer' || p.role === 'seller').map((p) => claimKey(p.primaryClaim));
+            if (pair.length !== 2 || pair.some((k) => k === null || !verifiedSigners.has(k)))
+                return null;
+            return new Set([refSigner]);
+        }
+        return null;
+    }
     if (refSigner)
         return new Set([refSigner]);
     if (kind === 'listing') {
@@ -386,6 +408,8 @@ function authorizedArtifactSigners(artifact, ref, bundle, kind) {
     return null;
 }
 function classifyArtifact(artifact) {
+    if (artifact.finalityCommitmentVersion !== undefined)
+        return 'commitment';
     if (artifact.listingVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('listing')))
         return 'listing';
     if (artifact.agreementVersion !== undefined || (typeof artifact.v === 'string' && artifact.v.includes('agreement')))
@@ -397,7 +421,7 @@ function classifyArtifact(artifact) {
     return null;
 }
 /** Hash binding is necessary but insufficient: authenticate the fetched artifact's author. */
-function verifyReferencedArtifact(data, ref, bundle) {
+function verifyReferencedArtifact(data, ref, bundle, verifiedSigners = new Set()) {
     let artifact;
     try {
         const obj = asRecord(JSON.parse(data));
@@ -413,16 +437,32 @@ function verifyReferencedArtifact(data, ref, bundle) {
         return { outcome: 'indeterminate', detail: 'referenced artifact kind is unknown; signer authorization cannot be established' };
     const separator = kind === 'listing' ? DOMAIN_SEPARATORS.LISTING
         : kind === 'agreement' ? DOMAIN_SEPARATORS.AGREEMENT
-            : kind === 'evidence' ? DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE : DOMAIN_SEPARATORS.COMPOSITE_VERIFY;
+            : kind === 'evidence' ? DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE
+                : kind === 'commitment' ? ADDITIVE_DOMAIN_SEPARATORS.FINALITY_COMMITMENT : DOMAIN_SEPARATORS.COMPOSITE_VERIFY;
+    if (kind === 'commitment') {
+        // The commitment must be this job's and must bind exactly the bundle's buyer and seller.
+        if (artifact.jobId !== bundle.jobId)
+            return { outcome: 'fail', detail: `commitment artifact is for job ${String(artifact.jobId)}, not ${bundle.jobId}` };
+        // Exactly the bundle's buyer and seller, each once: a repeated party is not a binding of both.
+        const expectedPair = bundle.parties.filter((p) => p.role === 'buyer' || p.role === 'seller').map((p) => claimKey(p.primaryClaim)).sort();
+        const committed = (Array.isArray(artifact.parties) ? artifact.parties.map((c) => claimKey(c)) : []).sort();
+        const bound = expectedPair.length === 2 && !expectedPair.includes(null) && committed.length === 2
+            && committed.every((k, i) => k !== null && k === expectedPair[i]);
+        if (!bound)
+            return { outcome: 'fail', detail: 'commitment artifact does not bind exactly the bundle\'s buyer and seller claims' };
+    }
     const rawSignatures = Array.isArray(artifact.signatures)
         ? artifact.signatures.map((s) => (asRecord(s) ?? {}))
         : artifact.signature !== undefined ? [(asRecord(artifact.signature) ?? {})] : [];
     if (rawSignatures.length === 0) {
         return { outcome: 'fail', detail: `${kind} artifact is unsigned — contentHash proves integrity, not authorship` };
     }
-    const authorized = authorizedArtifactSigners(artifact, ref, bundle, kind);
-    if (!authorized || authorized.size === 0) {
+    const authorized = authorizedArtifactSigners(artifact, ref, bundle, kind, verifiedSigners);
+    if (!authorized) {
         return { outcome: 'indeterminate', detail: `${kind} artifact signer authority is not resolvable/pinned` };
+    }
+    if (authorized.size === 0) {
+        return { outcome: 'fail', detail: `${kind} artifact pinned signer is not the authority the bundle lists` };
     }
     const { signature: _signature, signatures: _signatures, ...unsigned } = artifact;
     void _signature;
@@ -469,7 +509,7 @@ function verifyReferencedArtifact(data, ref, bundle) {
  *
  * Mirrors the legacy walkAttestationRefs contract (string-anchored only; object-anchored → v0.3).
  */
-async function walkV1AttestationRefs(bundle, rpc, fetchImpl) {
+async function walkV1AttestationRefs(bundle, rpc, fetchImpl, verifiedSigners = new Set()) {
     const refs = collectV1Refs(bundle);
     const steps = [];
     let verified = 0;
@@ -508,19 +548,31 @@ async function walkV1AttestationRefs(bundle, rpc, fetchImpl) {
             continue;
         }
         const fetchedData = unwrapTextAnchor(fetched.data) ?? fetched.data;
-        if (typeof fetchedData !== 'string') {
-            steps.push({ ref: label, outcome: 'indeterminate',
-                detail: `anchored data is not a string (type=${typeof fetchedData}); v0.2 walks string-anchored refs only` });
+        if (fetchedData === null || fetchedData === undefined) {
+            steps.push({ ref: label, outcome: 'indeterminate', detail: `anchored record at ${anchor.locator} carries no data` });
             continue;
         }
-        const actualHash = bytesToHexLocal(sha256(enc.encode(fetchedData)));
+        // String anchors hash their bytes; object anchors (the live coordinator writes JSON objects, since the
+        // node did not include string-encoded programs) hash their JCS canonical form, which is how the
+        // emitting side computed AttestationRef.contentHash.
+        let actualHash;
+        try {
+            actualHash = typeof fetchedData === 'string'
+                ? bytesToHexLocal(sha256(enc.encode(fetchedData)))
+                : bytesToHexLocal(sha256(jcsCanonical(fetchedData)));
+        }
+        catch (e) {
+            steps.push({ ref: label, outcome: 'fail', detail: `anchored object at ${anchor.locator} is not canonicalizable: ${e.message} — cited content cannot be hash-bound (§7.5.2)` });
+            failed++;
+            continue;
+        }
         if (actualHash !== wantHash) {
             steps.push({ ref: label, outcome: 'fail',
                 detail: `content-hash mismatch at ${anchor.locator}: want ${wantHash.slice(0, 16)}…, got ${actualHash.slice(0, 16)}… — §7.5.2 MUST reject` });
             failed++;
             continue;
         }
-        const authorship = verifyReferencedArtifact(fetchedData, ref, bundle);
+        const authorship = verifyReferencedArtifact(typeof fetchedData === 'string' ? fetchedData : JSON.stringify(fetchedData), ref, bundle, verifiedSigners);
         if (authorship.outcome === 'pass') {
             steps.push({ ref: label, outcome: 'pass', detail: `content-hash matches (${actualHash.slice(0, 16)}…); ${authorship.detail}; anchor=${anchor.locator}` });
             verified++;
@@ -574,6 +626,40 @@ async function fetchV1WithStatus(rpc, addr, fetchImpl) {
         return { status: 'error', error: e.message };
     }
 }
+/** The substrate owner address behind a party's claim: a cci key is the ed25519 public key, which is the Demos address. */
+export function partyOwnerAddress(bundle, role) {
+    const party = (bundle.parties ?? []).find((p) => p.role === role);
+    const key = party ? claimKey(party.primaryClaim) : null;
+    const m = key ? /^obj:cci:([0-9a-f]{64})$/.exec(key) : null;
+    return m ? `0x${m[1]}` : null;
+}
+/**
+ * A party copy lives at its derived §10.4.2 address when the substrate lets the writer choose the
+ * address; on Demos the node assigns the native address and the derived address is the program
+ * NAME, so an absent address read falls back to (party owner, derived name). A wrong-owner name
+ * match is absent for this party. RPC failures on either read stay errors, never absence.
+ */
+async function fetchPartyCopy(bundle, role, derived, rpc, fetchImpl, resolveImpl) {
+    const byAddress = await fetchV1WithStatus(rpc, derived, fetchImpl);
+    if (byAddress.status !== 'absent')
+        return byAddress;
+    const owner = partyOwnerAddress(bundle, role);
+    if (!owner)
+        return byAddress;
+    try {
+        const r = await resolveImpl(rpc, owner, derived);
+        if (!r)
+            return { status: 'absent' };
+        // Whatever path resolved it, the record must be the party's own: another owner's record is absent for this party.
+        const norm = (a) => a.replace(/^0x/i, '').toLowerCase();
+        if (norm(String(r.owner ?? '')) !== norm(owner))
+            return { status: 'absent' };
+        return { status: 'present', data: unwrapTextAnchor(r.data) ?? r.data };
+    }
+    catch (e) {
+        return { status: 'error', error: `name resolution for ${role} (${owner.slice(0, 10)}…, ${derived.slice(0, 16)}…): ${e.message}` };
+    }
+}
 /**
  * §10.4.2 + §10.4.3 — two-sided anchoring for a v0.1 bundle. Compute buyer + seller anchors from
  * jobId, fetch BOTH, and:
@@ -603,10 +689,10 @@ async function fetchV1WithStatus(rpc, addr, fetchImpl) {
  *   - both present, divergent (§10.4.3(d) outcome/phaseSummary contradiction) → fail (dispute)
  *   - both present + consistent + local bound to one side → pass
  */
-async function verifyV1TwoSided(bundle, rpc, fetchImpl, requireSignatures) {
+async function verifyV1TwoSided(bundle, rpc, fetchImpl, requireSignatures, resolveImpl) {
     const pair = computeAnchorPairV1(bundle.jobId);
-    const buyer = await fetchV1WithStatus(rpc, pair.buyer, fetchImpl);
-    const seller = await fetchV1WithStatus(rpc, pair.seller, fetchImpl);
+    const buyer = await fetchPartyCopy(bundle, 'buyer', pair.buyer, rpc, fetchImpl, resolveImpl);
+    const seller = await fetchPartyCopy(bundle, 'seller', pair.seller, rpc, fetchImpl, resolveImpl);
     if (buyer.status === 'error' || seller.status === 'error') {
         const parts = [];
         if (buyer.status === 'error')
@@ -619,7 +705,7 @@ async function verifyV1TwoSided(bundle, rpc, fetchImpl, requireSignatures) {
     const sellerPresent = seller.status === 'present';
     if (!buyerPresent && !sellerPresent) {
         return { outcome: 'indeterminate',
-            detail: `neither party anchor present at ${rpc} (buyer=${pair.buyer}, seller=${pair.seller}); bundle may not have been anchored — unanchored local v1 bundle is indeterminate, not a pass` };
+            detail: `neither party anchor present at ${rpc} (buyer=${pair.buyer}, seller=${pair.seller}, by address or by owner-bound name); bundle may not have been anchored — unanchored local v1 bundle is indeterminate, not a pass` };
     }
     // §10.4.3(b) — exactly one copy present: classify by the present copy's signature set.
     // (Replaces the earlier blanket "unilateral ⇒ aborted-by-self ⇒ fail" reading, which predates
@@ -759,9 +845,15 @@ export async function verifyBundleV1Full(bundle, options = {}) {
             detail: 'skipTwoSidedLookup=true — offline verification; §10.4.3 unilateral/divergence detection not enforced (caller-accepted scope limit)' };
     }
     else {
-        twoSided = await verifyV1TwoSided(bundle, rpc, fetchImpl, requireSignatures);
+        // Owner-bound resolution: the owner's own program listing first (exact name), then the name index.
+        // The name index lives in the live layer, which depends on this module; load it on demand.
+        const resolveImpl = options.resolveByNameImpl
+            ?? (async (resolveRpc, expectedOwner, programName) => (await resolveByOwnerListing(resolveRpc, expectedOwner, programName, { fetchAnchoredImpl: fetchImpl }))
+                ?? (await import('../live/anchor-naming.js')).resolveByName(resolveRpc, expectedOwner, programName, { fetchAnchoredImpl: fetchImpl }));
+        twoSided = await verifyV1TwoSided(bundle, rpc, fetchImpl, requireSignatures, resolveImpl);
     }
-    const walk = await walkV1AttestationRefs(bundle, rpc, fetchImpl);
+    const verifiedSigners = new Set(base.signatureChecks.filter((c) => c.decision === 'pass').map((c) => claimKey(c.party) ?? c.party));
+    const walk = await walkV1AttestationRefs(bundle, rpc, fetchImpl, verifiedSigners);
     // §7.5.1 rollup. `skipped` two-sided is informational (does not block), exactly like legacy.
     const baseDecision = base.decision === 'accept' ? 'pass' : base.decision === 'indeterminate' ? 'indeterminate' : 'fail';
     const outcomes = [baseDecision];

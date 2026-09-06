@@ -537,8 +537,10 @@ export async function createLiveDependencies(
       const committed = await commitAgreement({ jobId: run.jobId, listing: published.listing, listingRef: published.listingRef, parties,
         terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: liveDeliverableSpec(run), deadline: Date.now() + 3_600_000 } },
       { signers: wiring.signers, anchor: wiring.anchor, fetchAnchored: wiring.fetchAnchored, receiptProvider: fetchReceipt });
+      // The reference pins the orchestrator that signed the commitment: a cold verifier has no other way to know
+      // which listed party orchestrated when no distinct orchestrator party is listed.
       const commitmentRef: AttestationRef = { anchor: { substrate: 'demos', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash,
-        type: 'finality-commitment', producedAt: new Date(committed.committedAt).toISOString() };
+        type: 'finality-commitment', producedAt: new Date(committed.committedAt).toISOString(), signer: wiring.signers.orchestrator.claim };
       commitments.set(committed.addresses.commitment.native, { commitment: committed.commitment, agreement: committed.agreement, receipt: committed.receipt,
         anchor: { logicalAddress: committed.addresses.commitment.logical, nativeAddress: committed.addresses.commitment.native,
           transactionRef: committed.receipt.transactionRef, writer: committed.receipt.writer, ...(committed.receipt.nonce === undefined ? {} : { nonce: committed.receipt.nonce }) } });

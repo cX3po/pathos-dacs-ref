@@ -186,7 +186,7 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
       const committed = await commitAgreement({ jobId: run.jobId, listing: published.listing, listingRef: published.listingRef, parties,
         terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: coordinatorConfigFixture.deliverable, deadline: FIXTURE_NOW + 3_600_000 } },
       { signers: { buyer: signer(buyer), seller: signer(seller), orchestrator: signer(orchestrator) }, anchor, fetchAnchored, receiptProvider: fetchReceipt, now: () => FIXTURE_NOW });
-      const commitmentRef: AttestationRef = { anchor: { substrate: 'demos', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash, type: 'finality-commitment', producedAt: new Date(committed.committedAt).toISOString() };
+      const commitmentRef: AttestationRef = { anchor: { substrate: 'demos', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash, type: 'finality-commitment', producedAt: new Date(committed.committedAt).toISOString(), signer: orchestrator.claim };
       const commitmentReceipt = receipts.get(committed.addresses.commitment.logical)!;
       commitments.set(committed.addresses.commitment.native, { commitment: committed.commitment, agreement: committed.agreement, receipt: commitmentReceipt,
         anchor: { logicalAddress: committed.addresses.commitment.logical, nativeAddress: committed.addresses.commitment.native, transactionRef: commitmentReceipt.transactionRef, writer: commitmentReceipt.writer, nonce: commitmentReceipt.nonce } });

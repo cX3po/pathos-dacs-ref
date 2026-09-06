@@ -58,11 +58,14 @@ type VerifyStepLite = VerifyVerdict['steps'][number];
 export function classifyBundle(raw: unknown): LoadedBundle | { error: string } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'bundle is not a JSON object' };
   const o = raw as Record<string, unknown>;
-  if (o.bundleVersion === '1') return { kind: 'v1', bundle: raw as AttestationBundleV1 };
+  // The v0.1 verifier owns all three current discriminators: the AttestationBundle, the DACS-5 §10.4
+  // FaultAttestationBundle and the additive evidence-bound form the live coordinator finalizes (LIVE
+  // attempt 6, 2026-09-06: the published CLI could not read its own two-sided bundles).
+  if (o.bundleVersion === '1' || o.faultBundleVersion === '1' || o.evidenceBoundFaultBundleVersion === '1') return { kind: 'v1', bundle: raw as AttestationBundleV1 };
   if (o.v === 'dacs-5-bundle:0.1') return { kind: 'legacy', bundle: raw as AttestationBundle };
   return {
-    error: `unrecognised bundle shape — expected a v0.1 AttestationBundle (bundleVersion:"1") ` +
-      `or a legacy bundle (v:"dacs-5-bundle:0.1"); got bundleVersion=${String(o.bundleVersion)} v=${String(o.v)}`,
+    error: `unrecognised bundle shape — expected a v0.1 bundle (bundleVersion, faultBundleVersion or evidenceBoundFaultBundleVersion equal to "1") ` +
+      `or a legacy bundle (v:"dacs-5-bundle:0.1"); got bundleVersion=${String(o.bundleVersion)} faultBundleVersion=${String(o.faultBundleVersion)} evidenceBoundFaultBundleVersion=${String(o.evidenceBoundFaultBundleVersion)} v=${String(o.v)}`,
   };
 }
 

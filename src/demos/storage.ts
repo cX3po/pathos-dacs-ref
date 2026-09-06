@@ -335,6 +335,66 @@ export async function anchorFactsFromNode(
  * @param storageAddress stor- prefixed address
  * @returns FetchResult, or null if not found
  */
+/** Programs listed for one owner beyond this count are not proven complete: a missing name is then an error, never absence. */
+export const OWNER_LISTING_COMPLETENESS_BOUND = 100;
+
+/**
+ * Resolve a party's program by listing the programs the owner has written (`getStorageProgramsByOwner`)
+ * and matching the exact program name, then reading the record at the node-assigned address. This is the
+ * owner-bound resolution the verifier uses for two-sided bundle copies: on Demos the node assigns the
+ * native address and the derived DACS-5 address is the program NAME (the name index has been observed
+ * not to list a fresh program while the owner listing did, 2026-09-06). Discipline: a malformed listing,
+ * two same-owner records of that name, or a listing at or beyond the completeness bound without the
+ * name all THROW (indeterminate for the caller); null means the owner has no program of that name.
+ */
+export async function resolveByOwnerListing(
+  rpc: string,
+  expectedOwner: string,
+  programName: string,
+  options: { fetchImpl?: typeof fetch; fetchAnchoredImpl?: typeof fetchAnchored } = {},
+): Promise<FetchResult | null> {
+  const listFetch = options.fetchImpl ?? fetch;
+  const addressFetch = options.fetchAnchoredImpl
+    ?? ((addressRpc: string, storageAddress: string) => fetchAnchored(addressRpc, storageAddress, { fetchImpl: options.fetchImpl }));
+  const httpRes = await listFetch(rpc, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method: 'nodeCall', params: [{ message: 'getStorageProgramsByOwner', data: { owner: expectedOwner }, muid: `dacs-owner-${programName.slice(0, 24)}` }] }),
+  });
+  if (!httpRes.ok) throw new Error(`getStorageProgramsByOwner HTTP ${httpRes.status} for ${expectedOwner.slice(0, 12)}…`);
+  const envelope = (await httpRes.json()) as { result?: number; response?: unknown };
+  if (envelope?.result !== 200) throw new Error(`getStorageProgramsByOwner RPC returned result=${String(envelope?.result)} for ${expectedOwner.slice(0, 12)}…`);
+  const results = envelope.response;
+  if (!Array.isArray(results)) throw new Error(`getStorageProgramsByOwner returned a malformed listing (${typeof results}) for ${expectedOwner.slice(0, 12)}…`);
+  const norm = (a: string) => a.replace(/^0x/i, '').toLowerCase();
+  const matches: string[] = [];
+  for (const r of results) {
+    // Every entry must be a plain object naming a program with a string address; anything else is a
+    // malformed listing (an error, never absence), because an entry we cannot read could be the copy.
+    if (!r || typeof r !== 'object' || Array.isArray(r)) throw new Error(`getStorageProgramsByOwner listing entry is malformed for ${expectedOwner.slice(0, 12)}…`);
+    const entry = r as Record<string, unknown>;
+    const name = entry['programName'] ?? entry['name'];
+    const storageAddress = entry['storageAddress'] ?? entry['address'];
+    const owner = entry['owner'] ?? expectedOwner;
+    if (typeof name !== 'string' || typeof storageAddress !== 'string' || !storageAddress || typeof owner !== 'string') {
+      throw new Error(`getStorageProgramsByOwner listing entry has malformed fields for ${expectedOwner.slice(0, 12)}…`);
+    }
+    if (name !== programName || norm(owner) !== norm(expectedOwner)) continue;
+    matches.push(storageAddress);
+  }
+  if (new Set(matches).size > 1) throw new Error(`ambiguous: ${matches.length} programs named "${programName.slice(0, 16)}…" under ${expectedOwner.slice(0, 12)}…`);
+  if (matches.length === 0) {
+    if (results.length >= OWNER_LISTING_COMPLETENESS_BOUND) {
+      throw new Error(`owner listing for ${expectedOwner.slice(0, 12)}… returned ${results.length} programs without "${programName.slice(0, 16)}…"; completeness not established`);
+    }
+    return null;
+  }
+  const record = await addressFetch(rpc, matches[0]!);
+  // The record itself must carry the expected owner: the listing is a hint, the record is the fact.
+  if (record && norm(String(record.owner ?? '')) !== norm(expectedOwner)) return null;
+  return record;
+}
+
 export async function fetchAnchored(
   rpc: string,
   storageAddress: string,
