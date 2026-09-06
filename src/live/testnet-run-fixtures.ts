@@ -157,12 +157,12 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
       const listingId = `${run.jobId}-listing`;
       const logicalAddress = listingLogicalAddress(seller.claim, listingId, 1);
       const identity = await presentSellerIdentity(signer(seller), FIXTURE_NOW);
-      const unsigned = dacs1Listing({
+      const unsigned = { ...dacs1Listing({
         listingId, listingVersion: 1, seller: { identity, displayName: 'PATH-OS proof organ' },
         offering: { title: 'Weather severity band', description: 'Proof organ nws_alerts: severity band near a committed point, delivered as a storage program.', category: 'proof-organ', tags: ['weather'], deliverable: { kind: 'storage-program' } },
         pricing: { kind: 'fixed', price: { amount: run.priceDem, currency: 'DEM' } }, acceptedRails: [{ railId: 'pay-dem' }], pipeline: coordinatorConfigFixture.pipeline,
         terms: { deadlineSecAfterCommit: 3600 }, validity: { notBefore: FIXTURE_NOW - 60_000, notAfter: FIXTURE_NOW + 7_200_000 },
-      });
+      }), logical_address: logicalAddress }; // DACS-1-IDENTIFY §6.3.4(b): the anchored record carries its CF-4 logical address inside the signed scope
       const { listing, contentHash } = await signDacs1Listing(unsigned, signer(seller));
       const listingAnchor = await anchor({ logicalAddress: anchorNames.listing(logicalAddress), content: listing, contentHash: jcsHashHex(listing) });
       const origin = 'https://fixture.path-os.invalid';
