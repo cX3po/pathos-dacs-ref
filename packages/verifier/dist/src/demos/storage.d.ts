@@ -74,7 +74,22 @@ export declare function anchor(handle: DemosHandle, programName: string, data: R
     acl?: 'public' | 'private';
     salt?: string;
     encoding?: 'binary';
+    fetchImpl?: typeof fetch;
+    readBackAttempts?: number;
+    readBackDelayMs?: number;
 }): Promise<AnchorResult>;
+/**
+ * The facts a receipt is checked against, read from the node after inclusion: the storage program's
+ * creating transaction and the nonce that transaction carries. Returns null when either cannot be
+ * established (missing record, missing or malformed transaction, signer not the program owner).
+ */
+export declare function anchorFactsFromNode(rpc: string, storageAddress: string, options?: {
+    fetchImpl?: typeof fetch;
+}): Promise<{
+    txHash: string;
+    nonce: string;
+    owner: string;
+} | null>;
 /**
  * Fetch a previously anchored Storage Program by its address.
  *

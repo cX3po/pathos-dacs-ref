@@ -124,7 +124,7 @@ export async function anchor(
   handle: DemosHandle,
   programName: string,
   data: Record<string, unknown> | string,
-  options: { acl?: 'public' | 'private'; salt?: string; encoding?: 'binary' } = {}
+  options: { acl?: 'public' | 'private'; salt?: string; encoding?: 'binary'; fetchImpl?: typeof fetch; readBackAttempts?: number; readBackDelayMs?: number } = {}
 ): Promise<AnchorResult> {
   const { demos, address } = handle;
 
@@ -180,6 +180,14 @@ export async function anchor(
     broadcastAndWait: (v: unknown, o?: { timeoutMs?: number }) => Promise<unknown>;
   };
   const tx = await demosAny.storagePrograms.sign(payload);
+  // The locally signed transaction is the authority for what this wallet sent: pin its hash, signer and nonce
+  // now, and require every fact read back from the node to match them.
+  const signed = tx as { hash?: unknown; content?: { from?: unknown; nonce?: unknown } };
+  const signedHash = typeof signed.hash === 'string' && /^[0-9a-f]{64}$/.test(signed.hash) ? signed.hash : undefined;
+  const signedFrom = typeof signed.content?.from === 'string' ? signed.content.from : undefined;
+  const signedNonce = typeof signed.content?.nonce === 'number' && Number.isSafeInteger(signed.content.nonce) ? String(signed.content.nonce)
+    : typeof signed.content?.nonce === 'string' && /^\d+$/.test(signed.content.nonce) ? signed.content.nonce : undefined;
+  if (signedFrom !== undefined && signedFrom !== address) throw new Error(`SR-2 anchor of "${programName}": signed transaction is from ${String(signedFrom).slice(0, 12)}, not this wallet`);
   const validity = await demosAny.confirm(tx);
   // Broadcast wait window. A slow devnet node can take >90s to CONFIRM a tx it already accepted for
   // propagation (the 2026-07-11 + 2026-07-23 BroadcastTimeoutError). Raise the default and make it tunable.
@@ -224,13 +232,37 @@ export async function anchor(
   }
 
   // Tx hash from the broadcast response (storage-program flow puts it under broadcast.response.hash).
-  const txHash = result.broadcast?.response?.hash
+  const broadcastHash = result.broadcast?.response?.hash
     ?? result.broadcast?.data?.tx_hash ?? result.broadcast?.data?.hash ?? '';
   // Require an explicit terminal `included` — a missing/other state is NOT success (matches the
   // receipt-anchor's positive check; never treat an unobserved anchor as confirmed).
   if (result.status?.state !== 'included') {
     throw new Error(`SR-2 anchor of "${programName}" not included (state=${result.status?.state ?? 'missing'})`);
   }
+  // The anchor result must state the facts a CORE §5.1 receipt will be checked against: the creating
+  // transaction and the nonce that transaction carries. The broadcast payload's hash field varies by SDK
+  // version (observed empty on 4.0.16) and the wallet nonce read before signing is not the nonce the SDK
+  // places in the transaction (observed off by one). The signed transaction is the authority; the node is
+  // read back (briefly retried while the record propagates) to confirm the write, and every fact must agree
+  // with what this wallet signed. Contradiction or an unreadable record fails closed: no result the receipt
+  // provider will contradict is ever returned.
+  const attempts = Math.max(1, Math.min(options.readBackAttempts ?? 5, 20));
+  const delayMs = Math.max(0, Math.min(options.readBackDelayMs ?? 3_000, 60_000));
+  let facts: Awaited<ReturnType<typeof anchorFactsFromNode>> = null;
+  for (let attempt = 0; attempt < attempts && !facts; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, delayMs));
+    facts = await anchorFactsFromNode(handle.rpc, storageAddress, { fetchImpl: options.fetchImpl });
+  }
+  if (!facts) {
+    throw new Error(`SR-2 anchor of "${programName}" was included but its creating transaction and nonce could not be read back from the node after ${attempts} attempt(s)`);
+  }
+  if (facts.owner !== address) throw new Error(`SR-2 anchor of "${programName}": node records owner ${facts.owner.slice(0, 12)}, not this wallet`);
+  if (signedHash !== undefined && facts.txHash !== signedHash) throw new Error(`SR-2 anchor of "${programName}": node's creating transaction ${facts.txHash.slice(0, 12)} is not the transaction this wallet signed ${signedHash.slice(0, 12)}`);
+  if (signedNonce !== undefined && facts.nonce !== signedNonce) throw new Error(`SR-2 anchor of "${programName}": node records nonce ${facts.nonce}, the signed transaction carried ${signedNonce}`);
+  if (broadcastHash && broadcastHash !== facts.txHash) {
+    throw new Error(`SR-2 anchor of "${programName}": broadcast hash ${broadcastHash.slice(0, 12)} differs from the node's creating transaction ${facts.txHash.slice(0, 12)}`);
+  }
+  const txHash = facts.txHash;
 
   const sizeBytes = StorageProgram.getDataSize(storedData, encoding);
   const contentBytes = typeof data === 'string'
@@ -243,8 +275,43 @@ export async function anchor(
     sizeBytes,
     contentBytes,
     anchoredAt: new Date().toISOString(),
-    nonce: String(nonce),
+    nonce: facts.nonce,
   };
+}
+
+/** One `nodeCall` POST; the node reports a missing record as HTTP 200 with envelope result 404. */
+async function nodeCallJson(rpc: string, message: string, data: Record<string, unknown>, fetchImpl: typeof fetch = fetch): Promise<unknown> {
+  const httpRes = await fetchImpl(rpc, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method: 'nodeCall', params: [{ message, data, muid: `dacs-anchor-facts-${message}-${String(Object.values(data)[0] ?? '').slice(0, 24)}` }] }),
+  });
+  if (!httpRes.ok) throw new Error(`${message} HTTP ${httpRes.status}`);
+  const envelope = (await httpRes.json()) as { result?: unknown; response?: unknown };
+  if (envelope?.result === 404) return null;
+  if (envelope?.result !== 200) throw new Error(`${message} RPC result=${String(envelope?.result)}`);
+  return envelope.response ?? null;
+}
+
+/**
+ * The facts a receipt is checked against, read from the node after inclusion: the storage program's
+ * creating transaction and the nonce that transaction carries. Returns null when either cannot be
+ * established (missing record, missing or malformed transaction, signer not the program owner).
+ */
+export async function anchorFactsFromNode(
+  rpc: string,
+  storageAddress: string,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<{ txHash: string; nonce: string; owner: string } | null> {
+  const program = await nodeCallJson(rpc, 'getStorageProgram', { storageAddress }, options.fetchImpl) as { storageAddress?: unknown; owner?: unknown; createdByTx?: unknown } | null;
+  if (!program || program.storageAddress !== storageAddress) return null;
+  const txHash = program.createdByTx;
+  if (typeof txHash !== 'string' || !/^[0-9a-f]{64}$/.test(txHash) || typeof program.owner !== 'string' || !program.owner) return null;
+  const tx = await nodeCallJson(rpc, 'getTxByHash', { hash: txHash }, options.fetchImpl) as { hash?: unknown; content?: { type?: unknown; from?: unknown; nonce?: unknown } } | null;
+  if (!tx || tx.hash !== txHash || !tx.content || tx.content.type !== 'storageProgram' || tx.content.from !== program.owner) return null;
+  const nonce = tx.content.nonce;
+  if (typeof nonce === 'number' && Number.isSafeInteger(nonce) && nonce >= 0) return { txHash, nonce: String(nonce), owner: program.owner };
+  if (typeof nonce === 'string' && /^\d+$/.test(nonce)) return { txHash, nonce, owner: program.owner };
+  return null;
 }
 
 /**
