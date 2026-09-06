@@ -1,6 +1,6 @@
 import { deepEqual, equal, match, notEqual, ok, rejects, throws } from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -224,17 +224,36 @@ test('discovery emitter writes host-ready well-known, index, catalog, and detail
   }
 });
 
-test('listing-pub dry-run wires CF-4 metadata and colon-free naming into the mint path', () => {
+test('listing-pub dry-run verifies the signed DACS-1 reference listing and derives the SDK-form program name', () => {
+  const fixture = JSON.parse(readFileSync('discovery/reference-dacs1-listing.json', 'utf8')) as Record<string, unknown>;
+  const seller = (fixture.seller as { identity: { presentedBy: string } }).identity.presentedBy;
+  match(seller, /^did:demos:agent:[0-9a-f]{64}$/);
   const stdout = execFileSync(
     'npx',
-    ['tsx', 'src/cli/listing-pub.ts', '--listing-file', 'discovery/reference-source-listing.json', '--dry-run'],
+    ['tsx', 'src/cli/listing-pub.ts', '--listing-file', 'discovery/reference-dacs1-listing.json', '--dry-run'],
     { cwd: process.cwd(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
   );
   const receipt = JSON.parse(stdout) as Record<string, unknown>;
-  equal(receipt['logical_address'], LOGICAL);
-  match(String(receipt['storageProgramName']), /^dacs1listing-[0-9a-f]{64}$/);
+  const logical = listingLogicalAddress(seller, 'weather-band', 1);
+  equal(receipt['logical_address'], logical);
+  equal(receipt['storageProgramName'], logical.replace(/:/g, '%3A'));
   equal(String(receipt['storageProgramName']).includes(':'), false);
-  equal(receipt['contentHash'], listingContentHash(listing()));
+  equal(receipt['contentHash'], listingContentHash(fixture));
+  equal(receipt['sellerClaim'], seller);
+  equal(receipt['signatureVerified'], true);
+  // A v0.1 body is no longer accepted, and a tampered DACS-1 record fails its signature check before any coordinate is derived.
+  const root = mkdtempSync(join(tmpdir(), 'listing-pub-'));
+  try {
+    const legacy = join(root, 'legacy.json'); writeFileSync(legacy, JSON.stringify(listing()));
+    const tampered = join(root, 'tampered.json'); writeFileSync(tampered, JSON.stringify({ ...fixture, pricing: { kind: 'fixed', price: { amount: '2', currency: 'DEM' } } }));
+    for (const [file, message] of [[legacy, /dacsVersion must be "1"/], [tampered, /listing signature is invalid/]] as const) {
+      const run = spawnSync('npx', ['tsx', 'src/cli/listing-pub.ts', '--listing-file', file, '--dry-run'], { cwd: process.cwd(), encoding: 'utf8' });
+      equal(run.status, 1);
+      match(run.stderr, message);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('§6.3.4: a DACS-1 listing binds to the seller it presents; publication under another seller\'s address and resolution of a substituted listing are refused', async () => {

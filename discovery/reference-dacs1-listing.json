@@ -1,0 +1,95 @@
+{
+  "dacsVersion": "1",
+  "listingVersion": 1,
+  "listingId": "weather-band",
+  "seller": {
+    "identity": {
+      "bundleVersion": "1",
+      "presentedBy": "did:demos:agent:95843dc3ee5db7c2a3a278dcabc990539ee753d84aca093f0a373c57b3f6734b",
+      "presentedAt": 1784006400000,
+      "claims": [
+        {
+          "ref": "did:demos:agent:95843dc3ee5db7c2a3a278dcabc990539ee753d84aca093f0a373c57b3f6734b"
+        }
+      ],
+      "presentation": {
+        "kind": "per-claim",
+        "signatures": [
+          {
+            "ref": "did:demos:agent:95843dc3ee5db7c2a3a278dcabc990539ee753d84aca093f0a373c57b3f6734b",
+            "signature": "qyM-0fYeCji3Q0eLYrs5Zvprbp2PLpZhnuQp8TCDlcFcGjvvzs3CQXo3KsXeatBiDsD1FgXqMjHFa63LJx_rCg"
+          }
+        ]
+      }
+    },
+    "displayName": "Neutral Test Seller"
+  },
+  "offering": {
+    "title": "Weather severity band",
+    "description": "Neutral conformance fixture: a severity band near a committed point, delivered as a storage program.",
+    "category": "proof-organ",
+    "tags": [
+      "weather"
+    ],
+    "deliverable": {
+      "kind": "storage-program",
+      "accessModel": "public"
+    }
+  },
+  "buyerRequirement": {
+    "requirementVersion": "1",
+    "required": [
+      {
+        "scheme": "did",
+        "verificationRequired": true,
+        "recipeVersion": 1,
+        "parameters": {
+          "verificationMethod": "self-signed"
+        }
+      }
+    ]
+  },
+  "pipeline": [
+    {
+      "kind": "vet-credentials"
+    },
+    {
+      "kind": "negotiate-fixed-price"
+    },
+    {
+      "kind": "commit-agreement"
+    },
+    {
+      "kind": "pay-dem",
+      "parameters": {
+        "rail": "pay-dem"
+      }
+    },
+    {
+      "kind": "deliver-storage-program"
+    }
+  ],
+  "pricing": {
+    "kind": "fixed",
+    "price": {
+      "amount": "1",
+      "currency": "DEM"
+    }
+  },
+  "acceptedRails": [
+    {
+      "railId": "pay-dem"
+    }
+  ],
+  "terms": {
+    "deadlineSecAfterCommit": 3600
+  },
+  "validity": {
+    "notBefore": 1784006400000
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "signer": "did:demos:agent:95843dc3ee5db7c2a3a278dcabc990539ee753d84aca093f0a373c57b3f6734b",
+    "value": "uxNdM5dsHYbsk6afRMXxrt8z_c8syuMbYwtDBrr8hcovwqlTBHl_J0BkxYJv9oDu1pwvMGyacoIff85heQ8RCA"
+  }
+}

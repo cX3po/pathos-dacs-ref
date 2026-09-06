@@ -7,8 +7,8 @@
  * the pay-ap2 rail and verifies the DACS-5 bundle checks pass under MOCK/SIMULATION assurance.
  *
  * Shape (modelled on organ-gateway.mts's self-deal, but rail='pay-ap2'):
- *   DACS-1  seller anchors a signed listing (acceptedRails: ['pay-ap2'])
- *   DACS-2  buyer verifies the seller's key: primary claim over the listing signature
+ *   DACS-1  seller anchors a signed §6.3.4 Listing presenting its identity bundle (acceptedRails: [pay-ap2]; named in the pinned dacs-sdk's form)
+ *   DACS-2  buyer verifies the listing as a counterparty would: signature, presented identity, presenter = signer
  *   DACS-3  fixed-price agreement (USD), signed by both parties, anchored
  *   DACS-4  pay-ap2 settlement:
  *             AP2-1  create provider payment session, binding dacs_job_id (MUST) +
@@ -39,7 +39,8 @@
  */
 
 import { generateKeypair, sign, verify } from '../lib/sign.js';
-import { opaqueListingProgramName } from '../dacs1/addressing.js';
+import { agentDidForPubkey, agentDidSignatureVerifier, publishProducerListing } from './producer-listing.js';
+import { verifyBundleListing } from '../adapters/dacs/bundle-finalizer.js';
 import { signatureExcludedHash } from '../lib/content-hash.js';
 import { bytesToHex } from '../lib/verify-bundle.js';
 import { canonicalPrice } from '../types/settle.js';
@@ -56,7 +57,6 @@ import type { AttestationBundleV1, BundlePhaseEntry } from '../types/bundle.js';
 import type { AttestationRef } from '../types/verify-result.js';
 import type { FetchResult } from '../demos/storage.js';
 import { anchorNames } from './anchor-naming.js';
-import { listingLogicalAddress } from '../dacs1/addressing.js';
 import {
   PAY_AP2_RAIL_ID,
   createMockFacilitator,
@@ -97,43 +97,44 @@ function anchorString(ownerLabel: string, programName: string, data: string): st
 
 const jobId = process.env.JOB_ID ?? `ap2-test-dry-${now()}`;
 
-// Per-run cci primary claims (ed25519) — recorded in every anchored artifact.
+// Per-run ed25519 keys. The listing presents the seller under its self-certifying agent DID (DACS-1 §6.3.1); the AP2
+// agreement and its attested-receipt verifier (ap2-provider-receipt.ts) still carry the parties in the cci object form.
 const sellerKeys = generateKeypair();
 const buyerKeys = generateKeypair();
 const sellerCci = hex(sellerKeys.pubKey);
 const buyerCci = hex(buyerKeys.pubKey);
+const sellerDid = agentDidForPubkey(sellerKeys.pubKey);
 const sellerOwner = 'dry-seller';
 const buyerOwner = 'dry-buyer';
 
 log('session', `jobId=${jobId} mode=dry-run rail=pay-ap2 (TEST agent — provider+attestation MOCKED)`);
 
-// ── DACS-1 — seller publishes a signed listing (acceptedRails: pay-ap2), anchored ─────────────
-const listingId = `${jobId}-listing`;
-const listingLogical = listingLogicalAddress(`key:${sellerCci}`, listingId, 1);
-const listingBody = {
-  v: 'dacs-listing:0.1',
-  listingId,
-  listingVersion: 1,
-  logical_address: listingLogical,
-  seller: { scheme: 'key', identifier: sellerCci },
-  sellerPaymentAddress: sellerOwner,
-  item: 'ap2-test-deliverable — a synthetic test payload settled over the pay-ap2 fiat rail',
-  deliverable: { deliverableType: 'storage-program', accessModel: 'public' },
-  price: { amount: PRICE_AP2, currency: CURRENCY },
-  acceptedRails: [PAY_AP2_RAIL_ID],
-};
-const listingCanonical = jcsCanonical(listingBody);
-const listingHash = jcsHashHex(listingBody);
-const listingSig = sign(DOMAIN_SEPARATORS.LISTING, listingCanonical, sellerKeys.privKey);
-const listingSigned = { ...listingBody, signature: Buffer.from(listingSig).toString('base64') };
-// Pre-DACS-1 listing body (ledger demo-producers-dacs1-listing): keeps the opaque program name that body was designed with.
-const listingLocator = anchorString(sellerOwner, opaqueListingProgramName(listingLogical), jcsString(listingSigned));
+// ── DACS-1 — the seller publishes a §6.3.4 Listing (acceptedRails: pay-ap2) presenting its identity bundle under its
+// agent DID, verified by the coordinator's own listing rules before it leaves the process, anchored under the pinned
+// dacs-sdk's program-name form ────────────────────────────────────────────────────────────────────────────────────
+const AP2_PIPELINE = [
+  { kind: 'vet-credentials' }, { kind: 'negotiate-fixed-price' }, { kind: 'commit-agreement' },
+  { kind: 'pay-ap2', parameters: { rail: PAY_AP2_RAIL_ID } }, { kind: 'deliver-storage-program' },
+] as const;
+const published = await publishProducerListing({
+  jobId, seller: sellerKeys, displayName: 'PATH-OS AP2 test seller',
+  offering: {
+    title: 'ap2-test-deliverable', category: 'test', tags: ['ap2', 'simulation'],
+    description: 'a synthetic test payload settled over the pay-ap2 fiat rail (mock provider, stub attestation)',
+    deliverable: { kind: 'storage-program', accessModel: 'public' },
+  },
+  price: { amount: PRICE_AP2, currency: CURRENCY }, railId: PAY_AP2_RAIL_ID, pipeline: AP2_PIPELINE, now: now(),
+  anchor: (programName, bytes) => anchorString(sellerOwner, programName, bytes),
+});
+const { listingId, listing: listingSigned, contentHash: listingHash, locator: listingLocator, programName: listingProgramName } = published;
 log('DACS-1', `listing ${listingHash.slice(0, 16)}… (acceptedRails=[pay-ap2]) anchored @ ${listingLocator}`);
 
-// ── DACS-2 — buyer verifies the seller's primary claim over the listing signature ──────────────
-const vetOk = verify(DOMAIN_SEPARATORS.LISTING, listingSig, listingCanonical, sellerKeys.pubKey);
-if (!vetOk) throw new Error('DACS-2 vet FAILED: listing signature does not verify under key: claim');
-log('DACS-2', `seller key:${sellerCci.slice(0, 12)}… verified over the listing ✓`);
+// ── DACS-2 — the buyer reads the anchored listing back through the coordinator's rules and pins the signer ──────
+const anchoredListing = JSON.parse(memoryAnchors.get(listingLocator)!.data) as Record<string, unknown>;
+try { await verifyBundleListing(anchoredListing, { verifySignature: agentDidSignatureVerifier as never }); }
+catch (e) { throw new Error(`DACS-2 vet FAILED: ${e instanceof Error ? e.message : String(e)}`); }
+if ((anchoredListing.signature as { signer?: unknown } | undefined)?.signer !== sellerDid) throw new Error('DACS-2 vet FAILED: listing signer is not the configured seller');
+log('DACS-2', `seller ${sellerDid.slice(0, 28)}… verified over the anchored listing ✓`);
 
 // ── DACS-3 — fixed-price agreement signed by BOTH parties, anchored (verifier recovers it) ─────
 const agreementBody = {
@@ -370,7 +371,7 @@ console.log(JSON.stringify({
   attestationsVerified: verdict.attestationsVerified, attestationsFailed: verdict.attestationsFailed,
   ap2SelfChecks, allSelfChecks,
   anchors: {
-    listing: listingLocator, agreement: agreementLocator,
+    listing: listingLocator, listingProgramName, agreement: agreementLocator,
     payEvidence: payEvidenceLocator, ap2Receipt: ap2RecordLocator,
     deliverable: deliverableLocator, deliveryEvidence: deliveryEvidenceLocator,
   },
