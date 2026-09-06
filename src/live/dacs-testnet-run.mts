@@ -10,6 +10,7 @@
  */
 
 import { pathToFileURL } from 'node:url';
+import { signatureExcludedHash } from '../lib/content-hash.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { execFile } from 'node:child_process';
@@ -270,7 +271,7 @@ export async function createLiveSettlementDependency(
     const evidenceAnchor = await wiring.anchor({ logicalAddress, content: evidence, contentHash });
     return {
       evidence,
-      evidenceRef: { anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash, signer: String(wiring.signers.orchestrator.claim) },
+      evidenceRef: { anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: signatureExcludedHash(evidence), signer: String(wiring.signers.orchestrator.claim) },
       evidenceLogicalAddress: logicalAddress, evidenceAnchor,
     };
   } };
@@ -563,7 +564,7 @@ export async function createLiveDependencies(
       const logicalAddress = anchorNames.deliveryEvidence(run.jobId, 3);
       const contentHash = jcsHashHex(evidence);
       const evidenceAnchor = await wiring.anchor({ logicalAddress, content: evidence, contentHash });
-      return { evidence, evidenceRef: { anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash, signer: String(wiring.signers.orchestrator.claim) },
+      return { evidence, evidenceRef: { anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: signatureExcludedHash(evidence), signer: String(wiring.signers.orchestrator.claim) },
         evidenceLogicalAddress: logicalAddress, evidenceAnchor, deliverableAnchor };
     },
     async finalize(input) {

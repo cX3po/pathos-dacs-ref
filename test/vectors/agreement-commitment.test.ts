@@ -75,17 +75,19 @@ function coldDeps(state: ReturnType<typeof fixture>) {
   };
 }
 
-test('commitAgreement emits signed AgreementDocument and stores the signed-document hash in agreementRef', async () => {
+test('commitAgreement emits signed AgreementDocument and stores the signature-excluded document hash in agreementRef (DACS-2 §7.5.2)', async () => {
   const { deps } = fixture();
   const result = await commitAgreement(input(), deps);
   assert.equal(result.committedAt, 1_780_000_000_000);
   assert.equal(result.addresses.commitment.logical, 'dacs3:commit:job-1');
-  assert.equal(result.agreementRef.contentHash, jcsHashHex(result.agreement));
+  const { signatures: _sigs, ...unsignedAgreement } = result.agreement as unknown as Record<string, unknown>; void _sigs;
+  assert.equal(result.agreementRef.contentHash, jcsHashHex(unsignedAgreement));
+  assert.notEqual(result.agreementRef.contentHash, jcsHashHex(result.agreement), 'the signed bytes hash differently; receipts bind those, references do not');
   // The reference is exactly the DACS-2 §7.5.2 wire form; the unsigned hash is its sibling, not a member.
   assert.deepEqual(Object.keys(result.agreementRef).sort(), ['anchor', 'contentHash']);
   assert.deepEqual(Object.keys(result.agreementRef.anchor).sort(), ['kind', 'locator']);
   assert.match(result.agreementHash, /^[0-9a-f]{64}$/);
-  assert.notEqual(result.agreementHash, result.agreementRef.contentHash, 'the reference hashes the signed document; agreementHash is the unsigned document');
+  assert.equal(result.agreementHash, result.agreementRef.contentHash, 'DACS-2 §7.5.2: the reference hashes the signature-excluded document, which is agreementHash');
   assert.ok(result.agreement.signatures.every((s) => !s.value.includes('=')));
 });
 

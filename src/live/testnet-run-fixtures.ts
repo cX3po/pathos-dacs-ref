@@ -1,6 +1,7 @@
 /** Deterministic, public test material and in-memory DACS coordinator dependencies. */
 
 import * as ed25519 from '@noble/ed25519';
+import { signatureExcludedHash } from '../lib/content-hash.js';
 import { sha256, sha512 } from '@noble/hashes/sha2';
 import { DOMAIN_SEPARATORS, type DomainSeparator } from '../domain-sep.js';
 import { jcsCanonical, jcsHashHex } from '../jcs.js';
@@ -138,7 +139,7 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
   const storeEvidence = async (logicalAddress: string, evidence: SettlementEvidenceV1): Promise<AnchoredEvidence> => {
     const evidenceAnchor = await anchor({ logicalAddress, content: evidence, contentHash: jcsHashHex(evidence) });
     const evidenceRef: AttestationRef = {
-      anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: jcsHashHex(evidence), signer: orchestrator.claim,
+      anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: signatureExcludedHash(evidence), signer: orchestrator.claim,
     };
     return { evidence, evidenceRef, evidenceLogicalAddress: logicalAddress, evidenceAnchor };
   };
