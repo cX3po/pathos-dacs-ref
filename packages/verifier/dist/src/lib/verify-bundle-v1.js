@@ -1,3 +1,4 @@
+import { signatureExcludedHash } from './content-hash.js';
 import { verify } from './sign.js';
 import { DOMAIN_SEPARATORS, ADDITIVE_DOMAIN_SEPARATORS } from '../domain-sep.js';
 import { jcsCanonical } from '../jcs.js';
@@ -595,9 +596,24 @@ async function walkV1AttestationRefs(bundle, rpc, fetchImpl, verifiedSigners = n
             failed++;
             continue;
         }
-        if (actualHash !== wantHash) {
+        // DACS-2 §7.5.2: contentHash covers the artifact's signature-excluded canonical form. Bundles anchored before this
+        // repository adopted that (2026-09-06) hashed the stored bytes; both bind the same anchored artifact.
+        let unsignedHash = null;
+        if (typeof fetchedData === 'string') {
+            // A canonical-JSON document anchored as text: the reference may carry its signature-excluded hash; raw-byte attestations keep the bytes hash.
+            try {
+                const parsed = JSON.parse(fetchedData);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+                    unsignedHash = signatureExcludedHash(parsed);
+            }
+            catch { /* not JSON: bytes only */ }
+        }
+        else {
+            unsignedHash = signatureExcludedHash(fetchedData);
+        }
+        if (actualHash !== wantHash && unsignedHash !== wantHash) {
             steps.push({ ref: label, outcome: 'fail',
-                detail: `content-hash mismatch at ${anchor.locator}: want ${wantHash.slice(0, 16)}…, got ${actualHash.slice(0, 16)}… — §7.5.2 MUST reject` });
+                detail: `content-hash mismatch at ${anchor.locator}: want ${wantHash.slice(0, 16)}…, got ${actualHash.slice(0, 16)}… (stored) / ${(unsignedHash ?? 'n/a').slice(0, 16)}… (signature-excluded) — §7.5.2 MUST reject` });
             failed++;
             continue;
         }

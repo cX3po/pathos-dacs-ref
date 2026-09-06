@@ -120,7 +120,18 @@ test('a finalized copy cites the anchored agreement document, not the finality c
     assert.equal(cited!.agreementVersion, '1', 'the cited artifact is the DACS-3 AgreementDocument');
     assert.equal(cited!.jobId, bundle.jobId);
     assert.equal((cited!.signatures as unknown[]).length, 2, 'both parties signed the cited document');
-    assert.equal(ref.contentHash, jcsHashHex(cited), 'contentHash covers the signed document as anchored');
+    const { signatures: _sigs, ...unsignedCited } = cited as Record<string, unknown>; void _sigs;
+    assert.equal(ref.contentHash, jcsHashHex(unsignedCited), 'DACS-2 §7.5.2: contentHash covers the signature-excluded document');
+    for (const party of cited!.parties as Array<{ vetRecordRef: { anchor: { locator: string }; contentHash: string } }>) {
+      const listing = store!.get(party.vetRecordRef.anchor.locator) as Record<string, unknown>;
+      const { signature: _ls, ...unsignedListing } = listing; void _ls;
+      assert.equal(party.vetRecordRef.contentHash, jcsHashHex(unsignedListing), 'the vet placeholder cites the anchored listing by its signature-excluded hash');
+    }
+    for (const ev of bundle.settlementEvidence as Array<{ anchor: { locator: string }; contentHash: string }>) {
+      const record = store!.get(ev.anchor.locator) as Record<string, unknown>;
+      const { signature: _sig, ...unsignedRecord } = record; void _sig;
+      assert.equal(ev.contentHash, jcsHashHex(unsignedRecord), 'evidence references hash the signature-excluded record');
+    }
     assert.notEqual(cited, commitments[0], 'the commitment is not the cited artifact');
   }
 });

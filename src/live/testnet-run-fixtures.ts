@@ -1,6 +1,7 @@
 /** Deterministic, public test material and in-memory DACS coordinator dependencies. */
 
 import * as ed25519 from '@noble/ed25519';
+import { signatureExcludedHash } from '../lib/content-hash.js';
 import { sha256, sha512 } from '@noble/hashes/sha2';
 import { DOMAIN_SEPARATORS, type DomainSeparator } from '../domain-sep.js';
 import { jcsCanonical, jcsHashHex } from '../jcs.js';
@@ -138,7 +139,7 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
   const storeEvidence = async (logicalAddress: string, evidence: SettlementEvidenceV1): Promise<AnchoredEvidence> => {
     const evidenceAnchor = await anchor({ logicalAddress, content: evidence, contentHash: jcsHashHex(evidence) });
     const evidenceRef: AttestationRef = {
-      anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: jcsHashHex(evidence), signer: orchestrator.claim,
+      anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: signatureExcludedHash(evidence), signer: orchestrator.claim,
     };
     return { evidence, evidenceRef, evidenceLogicalAddress: logicalAddress, evidenceAnchor };
   };
@@ -177,7 +178,7 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
       catch (error) { return { outcome: 'fail', detail: error instanceof Error ? error.message : 'listing vet failed' }; }
     },
     async emitAgreement(published, run): Promise<AgreementResult> {
-      const vetRef: AttestationRef = { anchor: { kind: 'storage-program', locator: published.anchor.nativeAddress }, contentHash: published.listingRef.contentHash };
+      const vetRef: AttestationRef = { anchor: { kind: 'storage-program', locator: published.anchor.nativeAddress }, contentHash: signatureExcludedHash(published.listing) };
       const parties: AgreementPartyV1[] = [
         { role: 'buyer', bundleHash: jcsHashHex({ role: 'buyer', claim: buyer.claim }), primaryClaim: buyer.claim, vetRecordRef: vetRef },
         { role: 'seller', bundleHash: jcsHashHex({ role: 'seller', claim: seller.claim }), primaryClaim: seller.claim, vetRecordRef: vetRef },
@@ -185,7 +186,7 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
       const committed = await commitAgreement({ jobId: run.jobId, listing: published.listing, listingRef: published.listingRef, parties,
         terms: { price: { amount: run.priceDem, currency: 'DEM' }, rail: { railId: 'pay-dem' }, deliverable: coordinatorConfigFixture.deliverable, deadline: FIXTURE_NOW + 3_600_000 } },
       { signers: { buyer: signer(buyer), seller: signer(seller), orchestrator: signer(orchestrator) }, anchor, fetchAnchored, receiptProvider: fetchReceipt, now: () => FIXTURE_NOW });
-      const commitmentRef: AttestationRef = { anchor: { kind: 'storage-program', locator: committed.addresses.commitment.native }, contentHash: committed.commitmentHash, signer: orchestrator.claim };
+      const commitmentRef: AttestationRef = { anchor: { kind: 'storage-program', locator: committed.addresses.commitment.native }, contentHash: signatureExcludedHash(committed.commitment), signer: orchestrator.claim };
       const commitmentReceipt = receipts.get(committed.addresses.commitment.logical)!;
       commitments.set(committed.addresses.commitment.native, { commitment: committed.commitment, agreement: committed.agreement, receipt: commitmentReceipt,
         anchor: { logicalAddress: committed.addresses.commitment.logical, nativeAddress: committed.addresses.commitment.native, transactionRef: commitmentReceipt.transactionRef, writer: commitmentReceipt.writer, nonce: commitmentReceipt.nonce } });

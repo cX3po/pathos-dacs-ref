@@ -14,6 +14,7 @@
  *   §10.4.3 — consumer queries BOTH party-specific addresses; unilateral ⇒ aborted-by-self
  */
 import { sha256 } from '@noble/hashes/sha2';
+import { signatureExcludedHash } from './content-hash.js';
 import { jcsCanonical, jcsHash } from '../jcs.js';
 import { verify as edVerify } from './sign.js';
 import { DOMAIN_SEPARATORS, LEGACY_READ_SEPARATORS } from '../domain-sep.js';
@@ -409,7 +410,15 @@ async function walkAttestationRefs(bundle, rpc, log, fetchImpl = fetchAnchored) 
         }
         const bytes = new TextEncoder().encode(fetchedData);
         const actualHash = bytesToHex(sha256(bytes));
-        if (actualHash !== ref.contentHash.toLowerCase()) {
+        // DACS-2 §7.5.2: a canonical-JSON artifact's reference hashes its signature-excluded form; raw responses keep the bytes hash.
+        let unsignedHash = null;
+        try {
+            const parsed = JSON.parse(fetchedData);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+                unsignedHash = signatureExcludedHash(parsed);
+        }
+        catch { /* raw bytes */ }
+        if (actualHash !== ref.contentHash.toLowerCase() && unsignedHash !== ref.contentHash.toLowerCase()) {
             log.add(label, 'fail', `content-hash mismatch at ${ref.anchor.locator}: expected ${ref.contentHash.slice(0, 16)}…, ` +
                 `got ${actualHash.slice(0, 16)}… — §7.5.2 normative MUST cause rejection`);
             failed++;

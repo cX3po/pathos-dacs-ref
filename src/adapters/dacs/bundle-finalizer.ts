@@ -1,5 +1,6 @@
 import { DOMAIN_SEPARATORS, ADDITIVE_DOMAIN_SEPARATORS, type DomainSeparator } from '../../domain-sep.js';
 import { jcsCanonical, jcsHashHex } from '../../jcs.js';
+import { signatureExcludedHash } from '../../lib/content-hash.js';
 import { deriveBundleLogicalAddress, type BundleBindingV1 } from '../../lib/bundle-binding-v1.js';
 import { bundleSignedScopeHashV1 } from '../../lib/bundle-signed-scope-v1.js';
 import { verify } from '../../lib/sign.js';
@@ -245,7 +246,9 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     catch { throw new BundleFinalizationError('evidence-transport', `evidence for phase ${phase.index} could not be fetched; a transport error is not absence`); }
     if (raw === null || raw === undefined) throw new BundleFinalizationError('evidence-unresolved', `evidence for phase ${phase.index} is absent at its anchor`);
     const evidence: JsonObject = parsed(raw);
-    if (jcsHashHex(evidence) !== ref.contentHash.replace(/^sha256:/, '')) throw new BundleFinalizationError('evidence-hash', `evidence hash mismatch for phase ${phase.index}`);
+    // DACS-2 §7.5.2: the reference hashes the signature-excluded scope; bundles anchored before 2026-09-06 hashed the stored bytes.
+    const wantHash = ref.contentHash.replace(/^sha256:/, ''), storedHash = jcsHashHex(evidence);
+    if (signatureExcludedHash(evidence) !== wantHash && storedHash !== wantHash) throw new BundleFinalizationError('evidence-hash', `evidence hash mismatch for phase ${phase.index}`);
     const structural = verifySettlementEvidenceV1(evidence);
     if (structural.decision !== 'pass') throw new BundleFinalizationError('evidence-shape', structural.reasons.join('; '));
     // PC-2: the rail comes from the effective pipeline entry (which carries the projected rail parameter for a
@@ -269,9 +272,9 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     if (!phase.evidenceAnchor) throw new BundleFinalizationError('evidence-anchor', `evidence anchor metadata missing for phase ${phase.index}`);
     if (phase.evidenceAnchor.logicalAddress !== logicalAddress || phase.evidenceAnchor.nativeAddress !== ref.anchor.locator) throw new BundleFinalizationError('receipt-binding', `evidence anchor address mismatch for phase ${phase.index}`);
     let receipt: AnchorReceipt;
-    try { receipt = await deps.fetchReceipt({ logicalAddress, contentHash: ref.contentHash.replace(/^sha256:/, ''), anchor: phase.evidenceAnchor }); }
+    try { receipt = await deps.fetchReceipt({ logicalAddress, contentHash: storedHash, anchor: phase.evidenceAnchor }); }
     catch { throw new BundleFinalizationError('evidence-transport', `evidence receipt for phase ${phase.index} could not be independently fetched`); }
-    validateReceipt(receipt, { logicalAddress, contentHash: ref.contentHash.replace(/^sha256:/, ''), anchor: phase.evidenceAnchor, storedContent: evidence }, input.outcome === 'completed');
+    validateReceipt(receipt, { logicalAddress, contentHash: storedHash, anchor: phase.evidenceAnchor, storedContent: evidence }, input.outcome === 'completed');
     const writerKey = claimKey(receipt.writer), orchestratorKey = claimKey(phase.orchestrator);
     const sameWriter = writerKey !== null && orchestratorKey !== null
       ? writerKey === orchestratorKey
@@ -305,7 +308,8 @@ async function resolveCitedAgreement(input: CompletedSessionEvidence, deps: Pick
   let cited: JsonObject;
   try { cited = parsed(raw); } catch { throw new BundleFinalizationError('agreement-binding', 'cited agreement document is not a JSON object'); }
   const citedHash = jcsHashHex(cited);
-  if (citedHash !== input.agreementRef.contentHash.replace(/^sha256:/, '')) throw new BundleFinalizationError('agreement-binding', 'cited agreement document does not match agreementRef.contentHash');
+  const wantHash = input.agreementRef.contentHash.replace(/^sha256:/, '');
+  if (signatureExcludedHash(cited) !== wantHash && citedHash !== wantHash) throw new BundleFinalizationError('agreement-binding', 'cited agreement document does not match agreementRef.contentHash');
   return citedHash;
 }
 
@@ -319,7 +323,9 @@ async function resolveCommitment(input: CompletedSessionEvidence, deps: Pick<Bun
   try { resolved = await deps.fetchCommitment(commitmentRef); }
   catch { throw new BundleFinalizationError('commitment-transport', 'agreement commitment could not be resolved (ST-11)'); }
   const commitmentHash = jcsHashHex(resolved.commitment);
-  if (commitmentHash !== commitmentRef.contentHash.replace(/^sha256:/, '') || resolved.commitment.jobId !== input.jobId) throw new BundleFinalizationError('commitment-binding', 'agreement commitment hash/job mismatch (ST-11)');
+  const wantCommitment = commitmentRef.contentHash.replace(/^sha256:/, '');
+  // DACS-2 §7.5.2: the reference hashes the signature-excluded record; sessions from before 2026-09-06 carried the stored-bytes hash. Receipts stay bound to the stored bytes.
+  if ((commitmentHash !== wantCommitment && signatureExcludedHash(resolved.commitment) !== wantCommitment) || resolved.commitment.jobId !== input.jobId) throw new BundleFinalizationError('commitment-binding', 'agreement commitment hash/job mismatch (ST-11)');
   const agreementScope = { ...resolved.agreement } as JsonObject; delete agreementScope.signatures;
   const agreementHash = jcsHashHex(agreementScope);
   if (agreementHash !== resolved.commitment.agreementHash) throw new BundleFinalizationError('commitment-binding', 'commitment agreementHash mismatch (ST-11)');

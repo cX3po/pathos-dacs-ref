@@ -1,5 +1,6 @@
 /** SR2-4: cold `pass` means the injected receipt provider attested finalization and every offline-checkable field agrees; it does not mean substrate-proven finality. */
 import { DOMAIN_SEPARATORS, ADDITIVE_DOMAIN_SEPARATORS, type DomainSeparator } from '../../domain-sep.js';
+import { signatureExcludedHash } from '../../lib/content-hash.js';
 import { sha256 } from '@noble/hashes/sha2';
 import { jcsCanonical, jcsHashHex } from '../../jcs.js';
 import { claimKey } from '../../lib/verify-bundle-v1.js';
@@ -358,7 +359,7 @@ export async function commitAgreement(input: AgreementCommitmentInput, deps: Agr
   validateAgreement(input.listing, unsigned, committedAt, false);
   return {
     agreement, agreementHash,
-    agreementRef: { anchor: { kind: 'storage-program', locator: agreementAnchor?.nativeAddress ?? agreementLogical }, contentHash: jcsHashHex(agreement) },
+    agreementRef: { anchor: { kind: 'storage-program', locator: agreementAnchor?.nativeAddress ?? agreementLogical }, contentHash: signatureExcludedHash(agreement) },
     commitment, commitmentHash, receipt, committedAt,
     addresses: { ...(agreementAnchor ? { agreement: { logical: agreementLogical, native: agreementAnchor.nativeAddress } } : {}), commitment: { logical: commitmentLogical, native: commitmentAnchor.nativeAddress } },
   };

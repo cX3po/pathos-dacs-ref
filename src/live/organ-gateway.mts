@@ -27,6 +27,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { signatureExcludedHash } from '../lib/content-hash.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -421,12 +422,12 @@ const unsignedBase = {
     { role: 'buyer' as const, bundleHash: agreementHash, primaryClaim: { scheme: 'cci' as const, identifier: buyerCci } },
     { role: 'seller' as const, bundleHash: agreementHash, primaryClaim: { scheme: 'cci' as const, identifier: sellerCci } },
   ],
-  agreementRef: refFor('dacs-3-agreement', agreementLocator, agreementAnchoredHash),
+  agreementRef: refFor('dacs-3-agreement', agreementLocator, signatureExcludedHash(agreementSignedObj)),
   phaseSummary,
   vetRecords: [] as AttestationRef[],
   settlementEvidence: [
-    refFor('dacs-4-evidence:pay-dem', payEvidenceLocator, payEvidenceHash),
-    refFor('dacs-4-evidence:deliver-storage-program', deliveryEvidenceLocator, deliveryEvidenceHash),
+    refFor('dacs-4-evidence:pay-dem', payEvidenceLocator, signatureExcludedHash(payEvidence)),
+    refFor('dacs-4-evidence:deliver-storage-program', deliveryEvidenceLocator, signatureExcludedHash(deliveryEvidence)),
   ],
   recipeRegistryVersion: 1, railRegistryVersion: 1, finalisedAt: now(),
 };
