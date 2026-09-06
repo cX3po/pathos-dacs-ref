@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sha256 } from '@noble/hashes/sha2';
+import { nodeBlockNumber as payDemBlockNumber } from '../../src/adapters/dacs/pay-dem-demosdk.js';
 import {
   consensusTimestampMs,
   createDefaultNodeCall,
   createDemosNodeReceiptProvider,
   DEMOS_NODE_FINALITY_PROFILE,
+  nodeBlockNumber,
   type NodeCall,
 } from '../../src/live/demos-node-receipt-provider.js';
 import { createLiveAdapterWiring, DacsTestnetRefusal, main, parameterHash, selectReceiptProvider, withSessionAnchor, type DacsTestnetConfig } from '../../src/live/dacs-testnet-run.mjs';
@@ -179,7 +181,8 @@ const indeterminateCases: Array<[string, (f: Node) => void, RegExp]> = [
   ['status unknown', (f) => { (f.status as Node).state = 'unknown'; }, /unknown/],
   ['status pending', (f) => { (f.status as Node).state = 'pending'; }, /not yet in a block/],
   ['status without block number', (f) => { delete (f.status as Node).blockNumber; }, /disagree/],
-  ['transaction record with a string block number', (f) => { (f.tx as Node).blockNumber = '216982'; }, /names no block/],
+  ['transaction record with a malformed block number string', (f) => { (f.tx as Node).blockNumber = '0x34f96'; }, /names no block/],
+  ['transaction record with a signed block number string', (f) => { (f.tx as Node).blockNumber = '-216982'; }, /names no block/],
   ['negative nonce', (f) => { ((f.tx as Node).content as Node).nonce = -1; }, /nonce/],
   ['fractional nonce', (f) => { ((f.tx as Node).content as Node).nonce = 1.5; }, /nonce/],
   ['unrecognised transaction disposition', (f) => { (f.tx as Node).status = 'bogus'; }, /no recognised disposition/],
@@ -296,5 +299,46 @@ test('CLI accepts --receipt-provider demos-node, rejects other values, and keeps
     assert.equal(await main(['--job-id', 'x', '--receipt-provider', 'demos-node', '--dry-run', '--json'], {}), 0);
   } finally {
     process.stderr.write = original;
+  }
+});
+
+test('block numbers reported as decimal strings (observed on the node 2026-09-06) are accepted and compared numerically', async () => {
+  const fixture = nodeFixture();
+  (fixture.tx as Node).blockNumber = '216982';
+  (fixture.status as Node).blockNumber = '216982';
+  (fixture.block as Node).number = '216982';
+  const receipt = await createDemosNodeReceiptProvider(config, { nodeCall: nodeCallFor(fixture) }).fetch(request) as AnchorReceipt;
+  assert.equal(receipt.state, 'finalized');
+  assert.equal(receipt.blockRef?.height, '216982');
+  // Mixed shapes still agree; a genuinely different block still disagrees.
+  const mixed = nodeFixture(); (mixed.status as Node).blockNumber = '216982';
+  assert.equal(((await createDemosNodeReceiptProvider(config, { nodeCall: nodeCallFor(mixed) }).fetch(request)) as AnchorReceipt).state, 'finalized');
+  const other = nodeFixture(); (other.status as Node).blockNumber = '216983';
+  assert.equal(asObservation(await createDemosNodeReceiptProvider(config, { nodeCall: nodeCallFor(other) }).fetch(request)).outcome, 'indeterminate');
+  // The block is requested by number whatever shape the node used to report it.
+  const seen: unknown[] = [];
+  const recording: NodeCall = async (message, data) => {
+    if (message === 'getBlockByNumber') seen.push(data);
+    return nodeCallFor(fixture)(message, data);
+  };
+  assert.equal(((await createDemosNodeReceiptProvider(config, { nodeCall: recording }).fetch(request)) as AnchorReceipt).state, 'finalized');
+  assert.equal(seen.length, 1);
+  assert.deepEqual(seen[0], { blockNumber: 216982 });
+  // A block whose own number disagrees, as a string, is still not the requested block.
+  const wrongBlock = nodeFixture(); (wrongBlock.block as Node).number = '216983';
+  const wrong = asObservation(await createDemosNodeReceiptProvider(config, { nodeCall: nodeCallFor(wrongBlock) }).fetch(request));
+  assert.equal(wrong.outcome, 'indeterminate');
+  assert.match(wrong.detail, /different block/);
+  // Both copies of the helper (provider and pay-dem parser) accept and reject the same inputs, including the safe-integer boundary.
+  const table: Array<[unknown, number | undefined]> = [
+    [244489, 244489], ['244489', 244489], ['0', 0], [0, 0],
+    [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER], [String(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER],
+    [Number.MAX_SAFE_INTEGER + 1, undefined], [String(Number.MAX_SAFE_INTEGER + 1), undefined],
+    ['007', undefined], ['-1', undefined], [-1, undefined], ['1.5', undefined], [1.5, undefined], ['0x2a', undefined], ['1e5', undefined],
+    ['', undefined], [' 42', undefined], [null, undefined], [undefined, undefined], [42n, undefined], ['99999999999999999999', undefined],
+  ];
+  for (const [raw, want] of table) {
+    assert.equal(nodeBlockNumber(raw), want, `provider ${String(raw)}`);
+    assert.equal(payDemBlockNumber(raw), want, `pay-dem ${String(raw)}`);
   }
 });

@@ -86,6 +86,13 @@ test('broadcast parser accepts only included status and its numeric block witnes
     parseBroadcastWaitResult({ status: { state: 'included', blockNumber: 42 } }, 'signed-hash'),
     { ok: true, hash: 'signed-hash', state: 'included', blockNumber: 42 },
   );
+  // The node has reported blockNumber as a decimal string (2026-09-06, LIVE attempt 4: tx included in block 244489, parser refused): same witness.
+  const stringBlock = parseBroadcastWaitResult({ status: { state: 'included', blockNumber: '244489' } }, 'signed-hash');
+  assert.equal(stringBlock.ok, true);
+  assert.equal(stringBlock.blockNumber, 244489);
+  const junkBlock = parseBroadcastWaitResult({ status: { state: 'included', blockNumber: '007' } }, 'signed-hash');
+  assert.equal(junkBlock.ok, true);
+  assert.equal(junkBlock.blockNumber, undefined);
   const missingStatus = parseBroadcastWaitResult({}, 'signed-hash');
   assert.equal(missingStatus.ok, false);
   assert.equal(missingStatus.state, undefined);
@@ -97,11 +104,11 @@ test('broadcast parser accepts only included status and its numeric block witnes
   assert.equal(failed.state, 'failed');
 });
 
-test('broadcast parser ignores block numbers outside status and non-number status values', () => {
+test('broadcast parser ignores block numbers outside status and non-numeric status values', () => {
   const misleading = {
     blockNumber: 99,
     broadcast: { data: { blockNumber: 98 }, response: { blockNumber: 97 } },
-    status: { state: 'included', blockNumber: '42' },
+    status: { state: 'included', blockNumber: '0x2a' },
   };
   const parsed = parseBroadcastWaitResult(misleading, 'signed-hash');
   assert.equal(parsed.ok, true);
