@@ -15,7 +15,7 @@
  *     never as the expected OWNER.
  *
  * Canonical program names (mirroring the spec's address schemes):
- *   listing            dacs1listing-{sha256(logical_address)}           (§6.3.4 opaque/colon-free)
+ *   listing            logical address with ':' → '%3A'                 (§6.3.4 leaves the name implementation-defined; this is the pinned dacs-sdk's form, so its Agent resolves it)
  *   agreement          dacs3:agreement:{jobId}                        (signed both-party terms)
  *   payment evidence   dacs4:payment:{jobId}:{railId}:{phaseIndex}   (PC-2; railId %-encoded)
  *   deliverable        dacs4:deliverable:{jobId}                      (§9.6.1)

@@ -15,7 +15,7 @@
  *     never as the expected OWNER.
  *
  * Canonical program names (mirroring the spec's address schemes):
- *   listing            dacs1listing-{sha256(logical_address)}           (§6.3.4 opaque/colon-free)
+ *   listing            logical address with ':' → '%3A'                 (§6.3.4 leaves the name implementation-defined; this is the pinned dacs-sdk's form, so its Agent resolves it)
  *   agreement          dacs3:agreement:{jobId}                        (signed both-party terms)
  *   payment evidence   dacs4:payment:{jobId}:{railId}:{phaseIndex}   (PC-2; railId %-encoded)
  *   deliverable        dacs4:deliverable:{jobId}                      (§9.6.1)
@@ -23,7 +23,7 @@
  *   bundle copies      dacs5:bundle:{jobId}:buyer | :seller           (§10.4.2 equivalent)
  */
 import { fetchAnchored } from '../demos/storage.js';
-import { opaqueListingProgramName } from '../dacs1/addressing.js';
+import { sdkListingProgramName } from './listing-wire.js';
 import { deriveBundleLogicalAddress } from '../lib/bundle-binding-v1.js';
 /** PC-2: railId is a CF-4 variable segment — percent-encode internal colons. */
 export function encodeRailSegment(railId) {
@@ -43,7 +43,7 @@ export function anchorWriterRole(jobId, logicalAddress) {
     return 'orchestrator';
 }
 export const anchorNames = {
-    listing: (logicalAddress) => opaqueListingProgramName(logicalAddress),
+    listing: (logicalAddress) => sdkListingProgramName(logicalAddress),
     agreement: (jobId) => `dacs3:agreement:${jobId}`,
     paymentEvidence: (jobId, railId, phaseIndex) => `dacs4:payment:${jobId}:${encodeRailSegment(railId)}:${phaseIndex}`,
     deliverable: (jobId) => `dacs4:deliverable:${jobId}`,
