@@ -133,6 +133,23 @@ test('the logical address must be the node-recorded program name; a relabelled r
   assert.equal(tampered.outcome, 'indeterminate');
 });
 
+test('a program named in the SDK form for the logical address is accepted; its recorded logical address must agree', async () => {
+  const { sdkProgramName } = await import('../../src/lib/locator-form.js');
+  const logical = 'dacs3:agreement:01TESTJOB';
+  const sdkNamed = nodeFixture(); (sdkNamed.program as Node).programName = sdkProgramName(logical); (sdkNamed.program as Node & { metadata?: unknown }).metadata = { logicalAddress: logical };
+  assert.notEqual(sdkProgramName(logical), logical, 'the SDK form differs from the logical address');
+  const provider = createDemosNodeReceiptProvider(config, { nodeCall: nodeCallFor(sdkNamed) });
+  const bound = await provider.fetch({ ...request, logicalAddress: logical, anchor: { ...request.anchor, logicalAddress: logical } });
+  assert.ok('receiptVersion' in bound, JSON.stringify(bound));
+  // The same record asked for under another logical address is indeterminate, as before.
+  const relabelled = asObservation(await provider.fetch({ ...request, logicalAddress: 'dacs3:agreement:01OTHERJOB', anchor: { ...request.anchor, logicalAddress: 'dacs3:agreement:01OTHERJOB' } }));
+  assert.equal(relabelled.outcome, 'indeterminate'); assert.match(relabelled.detail, /not named by the requested logical address/);
+  // A record whose name matches but whose recorded logical address names another anchor is indeterminate.
+  const crossed = nodeFixture(); (crossed.program as Node).programName = sdkProgramName(logical); (crossed.program as Node & { metadata?: unknown }).metadata = { logicalAddress: 'dacs3:agreement:01OTHERJOB' };
+  const crossedResult = asObservation(await createDemosNodeReceiptProvider(config, { nodeCall: nodeCallFor(crossed) }).fetch({ ...request, logicalAddress: logical, anchor: { ...request.anchor, logicalAddress: logical } }));
+  assert.equal(crossedResult.outcome, 'indeterminate'); assert.match(crossedResult.detail, /binds a different logical address/);
+});
+
 test('a cold read with only a logical name and no anchor is indeterminate, not a guess', async () => {
   const calls: string[] = [];
   const provider = createDemosNodeReceiptProvider(config, { nodeCall: nodeCallFor(nodeFixture(), calls) });
