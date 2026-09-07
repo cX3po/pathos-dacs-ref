@@ -70,6 +70,30 @@ export declare function getStorageProgram(rpc: string, storageAddress: string, o
  *
  * Throws on broadcast failure, insufficient DEM balance, or RPC error.
  */
+/** The SR-2 anchor path's failure classes. Finite by construction; the run record may name them. */
+export type Sr2AnchorFailureClass = 'anchor-nonce-unavailable' | 'anchor-size-limit' | 'anchor-unsigned' | 'anchor-wrong-wallet' | 'anchor-failed-on-chain' | 'anchor-not-confirmed' | 'anchor-not-included' | 'anchor-readback-missing' | 'anchor-facts-mismatch';
+export declare const SR2_ANCHOR_STATES: Set<string>;
+export interface Sr2AnchorDiagnostics {
+    class: Sr2AnchorFailureClass;
+    /** The signed or broadcast transaction hash, when the failure has one (64 lowercase hex). */
+    txHash?: string;
+    /** The confirmation window that elapsed, in milliseconds. */
+    waitMs?: number;
+    /** The node's reported transaction state, allowlisted; anything else becomes 'unknown'. */
+    state?: 'pending' | 'included' | 'failed' | 'missing' | 'unknown';
+}
+/**
+ * An anchor failure that carries its diagnostics as typed fields. The live coordinator's run record reports
+ * ONLY these fields (never the message): provenance is the class, not a pattern found in text.
+ */
+export declare class Sr2AnchorError extends Error {
+    readonly diagnostics: Sr2AnchorDiagnostics;
+    constructor(failureClass: Sr2AnchorFailureClass, fields: {
+        txHash?: unknown;
+        waitMs?: unknown;
+        state?: unknown;
+    }, message: string);
+}
 export declare function anchor(handle: DemosHandle, programName: string, data: Record<string, unknown> | string, options?: {
     acl?: 'public' | 'private';
     salt?: string;

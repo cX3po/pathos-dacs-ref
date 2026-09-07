@@ -35,7 +35,7 @@
     },
     {
       "sourcePath": "src/demos/storage.ts",
-      "sha256": "1d8bd1dd325b15b17a6b12523719ea9bee7115bd0cdd2a9def5435936ab8bf98"
+      "sha256": "475389775ee3de940c58a251a6b5c3f2f0f8d5fc863cfaf1501fe8da0ecebd67"
     },
     {
       "sourcePath": "src/domain-sep.ts",
@@ -106,7 +106,7 @@
       "sha256": "165d2f3a872c1300c34ff98482948fc0c2a9ea7e7c8b98902ccc97cfcd5708c0"
     }
   ],
-  "sourceManifestSha256": "c5867c8621227ddcb251b9ec55d23c6a923884d1392dcd84ffecce28c0b141a4",
+  "sourceManifestSha256": "bfd1859cd7219687154fb4331a0deb9ff0b3042f3ea12dd74108a36d45df1347",
   "emitted": [
     {
       "path": "packages/verifier/src/cli.d.ts",
@@ -158,11 +158,11 @@
     },
     {
       "path": "src/demos/storage.d.ts",
-      "sha256": "f2b3f0c3105c3e4acfd641b66e4f0eac3eeb527cb999c759e4ee740b5a142a01"
+      "sha256": "d33f81d8b114c1652e5a7bece11ed4dc538658592b19fcc8dd3a789b7f3daead"
     },
     {
       "path": "src/demos/storage.js",
-      "sha256": "759e16f10cbfc018edcebadefe3305feac90cb1dacec5195bb77ebff2327fb8f"
+      "sha256": "cddd786facf09892d1a8bfd4acb493870911cf4954834e0ab08fb4402f67cb41"
     },
     {
       "path": "src/domain-sep.d.ts",
@@ -301,5 +301,5 @@
       "sha256": "cc4e23422ec114b49a43bb29d442339934e2d38ca79d41ebd4d9d253a7a122cf"
     }
   ],
-  "emittedSha256": "6d00bdef724fa084aba5423042f4de5d0d8efdb6f5300ea40f25af86a6086740"
+  "emittedSha256": "d1c8327656038465116d321c47fdef6e69ce838688652dad03da2a5eecc6ca8f"
 }
