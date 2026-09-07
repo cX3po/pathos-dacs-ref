@@ -76,6 +76,41 @@ export function bindPaymentPayee<T extends { content?: { to?: unknown } }>(payme
   return payment;
 }
 
+/** The node-facing wallet surface a settlement needs: the same sign -> confirm -> broadcastAndWait path storage.ts anchors with. */
+export interface NodeBroadcaster {
+  sign(tx: unknown): Promise<unknown>;
+  confirm(signed: unknown): Promise<unknown>;
+  broadcastAndWait(validity: unknown, options: { timeoutMs: number }): Promise<unknown>;
+}
+
+/**
+ * Settle a d402 payment through the node. The pinned SDK's D402Client.settle posts `broadcastNativeTransaction`, which the
+ * 0.9.9 testnet node answers "Unknown message" (pilot run 2026-09-07), so the pilot signs and broadcasts the way every other
+ * transaction of ours reaches the chain. Outcomes: an `included` terminal state is a success with its block; a `failed`
+ * state or a confirm failure is a failed settlement (nothing moved); a BroadcastTimeoutError naming this hash, or any
+ * error after the broadcast started, is an uncertain broadcast reported as success without a block so the caller's own
+ * inclusion poll decides and the payment stays on record rather than being sent twice.
+ */
+export async function settleThroughNode(node: NodeBroadcaster, payment: unknown, timeoutMs: number): Promise<{ success: boolean; hash: string; blockNumber?: number; message?: string }> {
+  const signed = await node.sign(payment) as { hash?: unknown } | null;
+  const hash = signed && typeof signed.hash === 'string' && /^[0-9a-f]{64}$/.test(signed.hash) ? signed.hash : '';
+  if (!hash) return { success: false, hash: '', message: 'signed transaction carries no hash; nothing broadcast' };
+  let validity: unknown;
+  try { validity = await node.confirm(signed); }
+  catch (error) { return { success: false, hash, message: `confirm failed before broadcast: ${error instanceof Error ? error.message : String(error)}` }; }
+  let result: { status?: { state?: unknown; blockNumber?: unknown } } | null;
+  try { result = await node.broadcastAndWait(validity, { timeoutMs }) as { status?: { state?: unknown; blockNumber?: unknown } } | null; }
+  catch (error) {
+    const e = error as { name?: unknown; txHash?: unknown; message?: unknown };
+    const detail = e?.name === 'BroadcastTimeoutError' && e.txHash === hash ? 'broadcast accepted; inclusion not observed within the wait window' : `broadcast outcome unknown: ${typeof e?.message === 'string' ? e.message : String(error)}`;
+    return { success: true, hash, message: detail };
+  }
+  const state = result?.status?.state;
+  const block = result?.status?.blockNumber;
+  if (state === 'included') return { success: true, hash, ...(typeof block === 'number' && Number.isSafeInteger(block) ? { blockNumber: block } : {}) };
+  return { success: false, hash, message: `terminal state ${String(state)}` };
+}
+
 export function requirementAmountOs(amount: unknown): bigint | null {
   try {
     if (typeof amount === 'string') return /^[0-9]{1,30}$/.test(amount) ? amountToOs(amount) : null;

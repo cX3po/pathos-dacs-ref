@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { bindPaymentPayee, capOs, requirementAmountOs, runBuyerPilot, type BuyerPilotDeps } from '../../src/live/buyer-pilot-core.js';
+import { bindPaymentPayee, capOs, requirementAmountOs, runBuyerPilot, settleThroughNode, type BuyerPilotDeps } from '../../src/live/buyer-pilot-core.js';
 
 const SELLER_HEX = '11'.repeat(32);
 const SELLER_DID = `did:demos:agent:${SELLER_HEX}`;
@@ -120,4 +120,24 @@ test('buyer pilot core: the d402 payment binds its top-level payee to the bound 
   same.content.to = PAYEE.toUpperCase();
   assert.equal(bindPaymentPayee(same, PAYEE.toUpperCase()), same);
   assert.equal(same.content.to, PAYEE.toLowerCase());
+});
+
+test('buyer pilot core: settlement goes sign -> confirm -> broadcastAndWait; included succeeds with its block, failed and unconfirmed pay nothing, a timeout or broadcast error is an uncertain success without a block', async () => {
+  const HASH = 'ab'.repeat(32);
+  const node = (over: { sign?: () => Promise<unknown>; confirm?: () => Promise<unknown>; wait?: () => Promise<unknown> } = {}) => ({
+    sign: over.sign ?? (async () => ({ hash: HASH })),
+    confirm: over.confirm ?? (async () => ({ valid: true })),
+    broadcastAndWait: over.wait ?? (async () => ({ status: { state: 'included', blockNumber: 250000 } })),
+  });
+  assert.deepEqual(await settleThroughNode(node(), {}, 1000), { success: true, hash: HASH, blockNumber: 250000 });
+  const failed = await settleThroughNode(node({ wait: async () => ({ status: { state: 'failed' } }) }), {}, 1000);
+  assert.equal(failed.success, false); assert.equal(failed.hash, HASH);
+  const unconfirmed = await settleThroughNode(node({ confirm: async () => { throw new Error('rejected'); } }), {}, 1000);
+  assert.equal(unconfirmed.success, false); assert.match(unconfirmed.message ?? '', /before broadcast/);
+  const timeout = await settleThroughNode(node({ wait: async () => { throw Object.assign(new Error('timeout'), { name: 'BroadcastTimeoutError', txHash: HASH }); } }), {}, 1000);
+  assert.equal(timeout.success, true); assert.equal(timeout.hash, HASH); assert.equal(timeout.blockNumber, undefined); assert.match(timeout.message ?? '', /inclusion not observed/);
+  const unknown = await settleThroughNode(node({ wait: async () => { throw new Error('socket closed'); } }), {}, 1000);
+  assert.equal(unknown.success, true); assert.equal(unknown.blockNumber, undefined); assert.match(unknown.message ?? '', /outcome unknown/);
+  const unsigned = await settleThroughNode(node({ sign: async () => ({}) }), {}, 1000);
+  assert.equal(unsigned.success, false); assert.equal(unsigned.hash, '');
 });
