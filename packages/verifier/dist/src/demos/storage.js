@@ -143,7 +143,7 @@ export async function anchor(handle, programName, data, options = {}) {
         const demosPoll = demos;
         const graceMs = clampMs(Number(process.env.GATEWAY_BROADCAST_GRACE_MS), 180_000, 600_000);
         // poll step for the grace window; tunable (clamped 100 ms..60 s) so an offline replay corpus can exercise the loop in seconds
-        const stepMs = clampMs(Number(process.env.GATEWAY_BROADCAST_POLL_MS), 15_000, 60_000) < 100 ? 100 : clampMs(Number(process.env.GATEWAY_BROADCAST_POLL_MS), 15_000, 60_000);
+        const stepMs = Math.max(100, clampMs(Number(process.env.GATEWAY_BROADCAST_POLL_MS), 15_000, 60_000));
         const deadline = Date.now() + graceMs;
         let landed = false;
         while (Date.now() < deadline) {

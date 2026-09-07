@@ -1,13 +1,14 @@
 /**
  * rpc-replay-fixture — the SR-2 anchor path under scripted node behaviour, offline.
  *
- * The corpus is derived from the sanitized node shape probe (PATH-OS memory/reports/demos-node-shape-probe.json:
- * getStorageProgram {owner, programName, createdByTx, data}, getTxByHash {status, blockNumber, hash, content},
- * getTransactionStatus {state, blockNumber}). A fake Demos handle replays one scripted sequence per scenario into the
- * REAL anchor() (src/demos/storage.ts): delayed indexing, permanent pending after broadcast (tonight's testnet stall),
- * timeout after broadcast then included, failed on chain, and a conflicting writer on read-back. Each scenario proves
- * bounded termination (the anchor returns or throws within the configured windows), honest uncertainty (a typed
- * Sr2AnchorError carrying the transaction hash), and no duplicate transfer (exactly one broadcast per anchor).
+ * This synthetic corpus uses top-level field types from the sanitized node shape probe (PATH-OS
+ * memory/reports/demos-node-shape-probe.json: getStorageProgram {owner, programName, createdByTx, data}, getTxByHash
+ * {status, blockNumber, hash, content}, getTransactionStatus {state, blockNumber}). It additionally supplies storageAddress
+ * and transaction content.type/from/nonce required by anchorFactsFromNode; those fields are not established by that probe.
+ * Pending, failed, and delayed-indexing sequences are scripted. A fake Demos handle replays one sequence per scenario into
+ * the REAL anchor() (src/demos/storage.ts). Each scenario checks its expected outcome and elapsed-time bound with settling
+ * fake RPCs, typed failure diagnostics carrying the transaction hash, and exactly one broadcastAndWait invocation per
+ * anchor. SDK-internal broadcasts and timeout enforcement are outside this corpus.
  * No node, no credential, no DEM. Run: GATEWAY_BROADCAST_TIMEOUT_MS=150 GATEWAY_BROADCAST_GRACE_MS=400 GATEWAY_BROADCAST_POLL_MS=100 node --import tsx src/live/rpc-replay-fixture.mts --json
  */
 import { createHash } from 'node:crypto';
@@ -71,13 +72,15 @@ function fakeHandle(script: Script) {
   return { handle: { demos: demos as never, address: ADDRESS, rpc: 'https://replay.invalid/' }, counters, txHash, fetchImpl };
 }
 
-async function scenario(name: string, script: Script, expect: { ok: boolean; cls?: string; state?: string }, boundMs: number) {
+async function scenario(name: string, script: Script, expect: { ok: boolean; cls?: string; state?: string; polls: number; readbacks: number; minElapsedMs?: number }, boundMs: number) {
   const { handle, counters, txHash, fetchImpl } = fakeHandle(script);
   const started = Date.now();
   let outcome: { ok: true; locator: string } | { ok: false; cls: string; txHash?: string; state?: string; waitMs?: number } | { ok: false; cls: 'untyped'; message: string };
   try {
     const result = await anchor(handle, `replay:${name}`, { v: 'replay-corpus:1', scenario: name }, { fetchImpl, readBackAttempts: 4, readBackDelayMs: 10 });
-    outcome = { ok: true, locator: String((result as { nativeAddress?: unknown }).nativeAddress ?? 'anchored') };
+    const r = result as { storageAddress?: unknown; txHash?: unknown };
+    if (typeof r.storageAddress !== 'string' || !r.storageAddress.startsWith('stor-') || r.txHash !== txHash) throw new Error('anchor result lacks storageAddress/txHash');
+    outcome = { ok: true, locator: r.storageAddress };
   } catch (error) {
     if (error instanceof Sr2AnchorError) outcome = { ok: false, cls: error.diagnostics.class, txHash: error.diagnostics.txHash, state: error.diagnostics.state, waitMs: error.diagnostics.waitMs };
     else outcome = { ok: false, cls: 'untyped', message: error instanceof Error ? error.message.slice(0, 80) : String(error) };
@@ -85,21 +88,28 @@ async function scenario(name: string, script: Script, expect: { ok: boolean; cls
   const elapsed = Date.now() - started;
   const bounded = elapsed <= boundMs;
   const typed = !outcome.ok && outcome.cls !== 'untyped' ? outcome as { ok: false; cls: string; txHash?: string; state?: string; waitMs?: number } : null;
-  const honest = outcome.ok ? expect.ok : (expect.ok === false && typed !== null && typed.cls === expect.cls && (expect.cls === 'anchor-facts-mismatch' || typed.txHash === txHash) && (expect.state === undefined || typed.state === expect.state));
+  const honest = outcome.ok ? expect.ok : (expect.ok === false && typed !== null && typed.cls === expect.cls && typed.txHash === txHash && (expect.state === undefined || typed.state === expect.state));
   const single = counters.broadcasts === 1;
+  const paths = counters.pollCount === expect.polls && counters.readbacks === expect.readbacks && elapsed >= (expect.minElapsedMs ?? 0);
   const label = outcome.ok ? 'anchored' : typed ? `${typed.cls}${typed.txHash ? ' tx=' + typed.txHash.slice(0, 8) : ''}${typed.state ? ' state=' + typed.state : ''}` : `untyped: ${(outcome as { message: string }).message}`;
-  step(name, honest && bounded && single, `${label} broadcasts=${counters.broadcasts} polls=${counters.pollCount} readbacks=${counters.readbacks} elapsed=${elapsed}ms bound=${boundMs}ms`);
+  step(name, honest && bounded && single && paths, `${label} broadcasts=${counters.broadcasts} polls=${counters.pollCount} readbacks=${counters.readbacks} elapsed=${elapsed}ms bound=${boundMs}ms`);
 }
 
 async function main(): Promise<number> {
   const json = process.argv.includes('--json');
-  const timeout = Number(process.env.GATEWAY_BROADCAST_TIMEOUT_MS ?? '150'); const grace = Number(process.env.GATEWAY_BROADCAST_GRACE_MS ?? '400'); const poll = Number(process.env.GATEWAY_BROADCAST_POLL_MS ?? '100');
-  const bound = timeout + grace + poll + 4 * 10 + 1500; // windows + read-back attempts + scheduling slack
-  await scenario('delayed-indexing', { broadcast: 'included', readbackAbsent: 2 }, { ok: true }, bound);
-  await scenario('missing-finality-pending-forever', { broadcast: 'timeout', nodeAnswers: ['pending'] }, { ok: false, cls: 'anchor-not-confirmed' }, bound);
-  await scenario('timeout-after-broadcast-then-included', { broadcast: 'timeout', nodeAnswers: ['pending', 'included'] }, { ok: true }, bound);
-  await scenario('failed-on-chain', { broadcast: 'timeout', nodeAnswers: ['failed'] }, { ok: false, cls: 'anchor-failed-on-chain' }, bound);
-  await scenario('conflicting-writer', { broadcast: 'included', owner: OTHER }, { ok: false, cls: 'anchor-facts-mismatch' }, bound);
+  process.env.GATEWAY_BROADCAST_TIMEOUT_MS ??= '150';
+  process.env.GATEWAY_BROADCAST_GRACE_MS ??= '400';
+  process.env.GATEWAY_BROADCAST_POLL_MS ??= '100';
+  const eff = (raw: string | undefined, def: number, max: number, min = 1) => { const n = Number(raw); return Number.isFinite(n) && n > 0 ? Math.max(min, Math.min(n, max)) : def; };
+  const timeout = eff(process.env.GATEWAY_BROADCAST_TIMEOUT_MS, 240_000, 600_000);
+  const grace = eff(process.env.GATEWAY_BROADCAST_GRACE_MS, 180_000, 600_000);
+  const poll = eff(process.env.GATEWAY_BROADCAST_POLL_MS, 15_000, 60_000, 100);
+  const bound = timeout + grace + poll + 4 * 10 + 1500; // effective windows + read-back attempts + scheduling slack
+  await scenario('delayed-indexing', { broadcast: 'included', readbackAbsent: 2 }, { ok: true, polls: 0, readbacks: 3 }, bound);
+  await scenario('missing-finality-pending-forever', { broadcast: 'timeout', nodeAnswers: ['pending'] }, { ok: false, cls: 'anchor-not-confirmed', polls: Math.ceil(grace / poll), readbacks: 0, minElapsedMs: grace }, bound);
+  await scenario('timeout-after-broadcast-then-included', { broadcast: 'timeout', nodeAnswers: ['pending', 'included'] }, { ok: true, polls: 2, readbacks: 1 }, bound);
+  await scenario('failed-on-chain', { broadcast: 'timeout', nodeAnswers: ['failed'] }, { ok: false, cls: 'anchor-failed-on-chain', polls: 1, readbacks: 0 }, bound);
+  await scenario('conflicting-writer', { broadcast: 'included', owner: OTHER }, { ok: false, cls: 'anchor-facts-mismatch', polls: 0, readbacks: 1 }, bound);
   const rollup = steps.every((s) => s.outcome === 'pass') ? 'PASS' : 'FAIL';
   const out = { harness: 'rpc-replay-fixture:0.1', mode: 'offline-corpus', corpus: 'demos-node-shape-probe (sanitized shapes)', windows_ms: { timeout, grace, poll }, rollup, steps };
   process.stdout.write((json ? '' : `${rollup} rpc-replay-fixture\n`) + JSON.stringify(out) + '\n');
