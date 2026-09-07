@@ -34,7 +34,7 @@ export const ORGAN_PROFILES: Readonly<Record<string, OrganProfile>> = {
   },
   drug_info: {
     title: 'proof-organ:drug_info label safety flags', tags: ['drug_info', 'medication', 'label'],
-    description: 'derived label safety flags for a committed medication (boxed warning, interactions and pregnancy sections present, prescription required; name + label record committed, never disclosed)',
+    description: 'derived label flags for a committed medication: whether boxed-warning, interactions and pregnancy sections are present, plus prescription-required status (true, false or unknown); based on a supplied, unattested label record (medication name + label record committed, never disclosed)',
     defaultQuery: 'ibuprofen', queryKind: 'medication name',
   },
 };
