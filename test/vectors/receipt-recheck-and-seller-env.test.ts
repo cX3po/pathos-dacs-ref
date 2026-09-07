@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as ed25519 from '@noble/ed25519';
@@ -27,7 +27,8 @@ function signedRecord(sellerSeed: Uint8Array): string {
   const receipt = signDeliveryReceipt(body, sellerSeed);
   const dir = mkdtempSync(join(tmpdir(), 'recheck-'));
   const file = join(dir, 'verify-pilot-test.json');
-  writeFileSync(file, JSON.stringify({ buyer: { deliveryReceipt: receipt }, deliveryReceipt: receipt }));
+  // The pilot run record's shape: the receipt lives only under `buyer` (tools/demos_verify_pilot.py), never at the top level.
+  writeFileSync(file, JSON.stringify({ schema: 1, buyer: { deliveryReceipt: receipt } }));
   return file;
 }
 
@@ -39,6 +40,22 @@ function recheck(args: string[]): { status: number | null; out: string } {
 test('receipt-recheck: verifies only under the independently supplied seller key; a missing or malformed key is a usage error, a foreign key fails', () => {
   const seed = new Uint8Array(32).fill(0x21); const pubHex = hexOf(ed25519.getPublicKey(seed));
   const file = signedRecord(seed);
+  const original = readFileSync(file, 'utf8');
+  const receipt = JSON.parse(original).buyer.deliveryReceipt;
+  for (const [doc, status] of [
+    [{ deliveryReceipt: receipt }, 0],
+    [{ delivery: { deliveryReceipt: receipt } }, 0],
+    [{ buyer: { deliveryReceipt: receipt }, deliveryReceipt: {} }, 0],
+    [{ buyer: { deliveryReceipt: {} }, deliveryReceipt: receipt }, 1],
+    [{ buyer: {}, deliveryReceipt: receipt }, 1],
+    [{ buyer: { deliveryReceipt: null },
+       delivery: { deliveryReceipt: receipt } }, 1],
+  ] as const) {
+    writeFileSync(file, JSON.stringify(doc));
+    const result = recheck(['--file', file, '--seller-pubkey', pubHex]);
+    assert.equal(result.status, status, result.out);
+  }
+  writeFileSync(file, original);
   const ok = recheck(['--file', file, '--seller-pubkey', pubHex]);
   assert.equal(ok.status, 0, ok.out); assert.match(ok.out, /"ok":true/);
   const foreign = recheck(['--file', file, '--seller-pubkey', hexOf(ed25519.getPublicKey(new Uint8Array(32).fill(0x22)))]);
