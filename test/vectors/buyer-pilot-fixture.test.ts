@@ -8,7 +8,11 @@ test('the buyer pilot harness passes every step offline in a fresh process with 
   const out = JSON.parse(r.stdout.trim().split('\n').at(-1)!);
   assert.equal(out.rollup, 'PASS');
   assert.equal(out.payments, 1);
-  assert.equal(typeof out.self_purchase, 'boolean');
+  assert.equal(out.self_purchase, true);
+  assert.equal(out.mode, 'offline-fixture');
+  assert.equal(out.settlement, 'fake-ledger');
+  assert.equal(out.revenue_eligible, false);
+  assert.match(out.seller, /^did:demos:agent:[0-9a-f]{64}$/);
   const expected = ['discover', 'bind', 'substitution-refused', 'challenge-402', 'pay-capped', 'deliver', 'retry-without-payment', 'self-purchase-labelled'];
   assert.deepEqual(out.steps.map((s: { step: string }) => s.step), expected);
   assert.ok(out.steps.every((s: { outcome: string }) => s.outcome === 'pass'), JSON.stringify(out.steps));

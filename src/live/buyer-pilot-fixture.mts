@@ -20,15 +20,18 @@ import { amountToOs, createD402Service, type D402PaymentRequirement, type D402Ve
 import { createD402ProofStore } from './d402-organ.mjs';
 import { createVerifyEndpointHandler, resourceForBody } from './verify-endpoint.mjs';
 import { verifyBundleListing } from '../adapters/dacs/bundle-finalizer.js';
-import { agentDidSignatureVerifier, assertDacs1Listing } from './producer-listing.js';
+import { agentDidForPubkey, agentDidSignatureVerifier, assertDacs1Listing, keypairSigner } from './producer-listing.js';
+import { dacs1Listing, presentSellerIdentity, signDacs1Listing } from './listing-wire.js';
+import { listingLogicalAddress } from '../dacs1/addressing.js';
 import { verifyDeliveryReceipt } from '../lib/delivery-receipt.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
-const LISTING_PATH = join(REPO, 'discovery', 'reference-dacs1-listing.json');
 const BUNDLE_PATH = join(REPO, 'test', 'vectors', 'dacs-x-fixtures', 'attestation-bundle-0004.json');
 const BUYER_CAP_DEM = 1;              // the buyer's own policy cap per purchase (operator caps stay above it)
-const RECIPIENT = '0x' + 'ab'.repeat(32);   // the seller's payee address the buyer intends to pay
+// Fixture payee mapping: the seller identity below is paid at this address. A DACS-1 listing names the seller's DID, not a
+// payee address; the address comes from the rail's payment requirement, and the buyer accepts it only for a bound seller.
+const RECIPIENT = '0x' + 'ab'.repeat(32);
 const AMOUNT_OS = '100000000';        // 0.1 DEM verification price
 const hexOf = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 
@@ -72,30 +75,45 @@ function call(port: number, method: string, path: string, body?: string, headers
 
 async function main(): Promise<number> {
   const json = process.argv.includes('--json');
-  // 1. discover: the signed listing fixture, validated the way a counterparty would.
+  // 0. the seller this fixture sells as: one ed25519 key signs the listing and the delivery receipts.
+  const sellerKey = new Uint8Array(32).fill(0x42);
+  const sellerPub = ed25519.getPublicKey(sellerKey);
+  const seller = { name: 'PATH-OS buyer-pilot seller', privKey: sellerKey, pubKeyHex: hexOf(sellerPub), networkId: 'demos:testnet', networkMode: 'rehearsal' as const };
+  const sellerSigner = keypairSigner({ privKey: sellerKey, pubKey: sellerPub });
+  // 1. discover: a signed DACS-1 verification listing by that seller, validated the way a counterparty would.
   let listing: Record<string, unknown> | undefined; let sellerDid = '';
   try {
-    listing = JSON.parse(readFileSync(LISTING_PATH, 'utf8'));
+    const identity = await presentSellerIdentity(sellerSigner, Date.now());
+    const listingId = 'buyer-pilot-verify-bundle';
+    const unsigned = { ...dacs1Listing({
+      listingId, listingVersion: 1, seller: { identity, displayName: seller.name },
+      offering: { title: 'verify-bundle: DACS attestation-bundle verification', description: 'cold verification of an attestation bundle, delivered with a signed receipt', category: 'verification', tags: ['verify-bundle'], deliverable: { kind: 'storage-program' } },
+      pricing: { kind: 'fixed', price: { amount: '0.1', currency: 'DEM' } }, acceptedRails: [{ railId: 'pay-dem' }],
+      pipeline: [{ kind: 'vet-credentials' }, { kind: 'negotiate-fixed-price' }, { kind: 'commit-agreement' }, { kind: 'pay-dem', parameters: { rail: 'pay-dem' } }, { kind: 'deliver-storage-program' }],
+      terms: { deadlineSecAfterCommit: 3600 }, validity: { notBefore: Date.now() - 60_000, notAfter: Date.now() + 7_200_000 },
+    }), logical_address: listingLogicalAddress(String(identity.presentedBy), listingId, 1) };
+    const signed = await signDacs1Listing(unsigned, sellerSigner);
+    listing = signed.listing;
     assertDacs1Listing(listing);
     await verifyBundleListing(listing as never, { verifySignature: agentDidSignatureVerifier as never });
     sellerDid = String((listing.seller as { identity: { presentedBy: string } }).identity.presentedBy);
-    step('discover', Boolean(sellerDid), `listing ${String(listing.listingId)} by ${sellerDid.slice(0, 32)}…`);
+    step('discover', Boolean(sellerDid), `listing ${listingId} by ${sellerDid.slice(0, 32)}… verified`);
   } catch (error) { step('discover', false, error instanceof Error ? error.message : String(error)); }
-  // 2. bind: the seller the buyer intends to pay is the seller the listing presents; a substituted seller is refused.
-  const intendedSeller = sellerDid;
-  step('bind', Boolean(listing) && sellerDid === intendedSeller, 'presentedBy equals the intended seller');
+  // 2. bind: the verified listing's seller must equal the seller the buyer configured independently (the delivery signer).
+  const intendedSeller = agentDidForPubkey(sellerPub);
+  const sellerBound = sellerDid !== '' && sellerDid === intendedSeller;
+  step('bind', sellerBound, 'verified listing seller equals the configured fixture delivery signer');
+  const expectedSellerPubKeyHex = sellerDid.slice('did:demos:agent:'.length);
   const substituted = listing ? { ...listing, seller: { ...(listing.seller as object), identity: { ...((listing.seller as { identity: object }).identity), presentedBy: 'did:demos:agent:' + '00'.repeat(32) } } } : undefined;
   let substitutionRefused = false;
   if (substituted) {
     try { await verifyBundleListing(substituted as never, { verifySignature: agentDidSignatureVerifier as never }); substitutionRefused = false; }
     catch { substitutionRefused = true; }
   }
-  step('substitution-refused', substitutionRefused, 'a listing whose presented seller changed fails signature verification and is not bought');
+  step('substitution-refused', substitutionRefused, 'a listing whose presented seller changed fails verification and is not bought');
   // 3. the seller's verify endpoint, in-process, gated by d402 with the buyer's own ledger as the settlement witness.
   const ledger = new BuyerLedgerVerifier();
   const committed = new Set<string>(); const reserved = new Set<string>(); const delivered = new Map<string, string>();
-  const sellerKey = new Uint8Array(32).fill(0x42);
-  const seller = { name: 'PATH-OS buyer-pilot seller', privKey: sellerKey, pubKeyHex: hexOf(ed25519.getPublicKey(sellerKey)), networkId: 'demos:testnet', networkMode: 'rehearsal' as const };
   const service = createD402Service({ recipient: RECIPIENT, rpcUrl: 'https://unused.invalid', verifier: ledger, usedProofs: createD402ProofStore(committed, reserved) });
   const handler = createVerifyEndpointHandler({ seller, service, amountOs: AMOUNT_OS, priceDem: '0.1', recipient: RECIPIENT, committed, reserved, delivered, offline: true });
   const server = createServer((req, res) => { void handler(req, res).catch(() => { if (!res.headersSent) { res.writeHead(500); res.end(); } }); });
@@ -111,22 +129,30 @@ async function main(): Promise<number> {
     const underCap = priceDem <= BUYER_CAP_DEM;
     const payee = String(requirement.recipient);
     let proof = '';
-    if (underCap && payee === RECIPIENT) proof = ledger.pay(payee, String(requirement.amount), `resourceId:${requirement.resourceId} - DACS attestation-bundle verification`);
-    step('pay-capped', Boolean(proof) && ledger.payments.length === 1, `paid ${priceDem} DEM (cap ${BUYER_CAP_DEM}) once`);
+    if (sellerBound && underCap && payee === RECIPIENT) proof = ledger.pay(payee, String(requirement.amount), `resourceId:${requirement.resourceId} - DACS attestation-bundle verification`);
+    step('pay-capped', Boolean(proof) && ledger.payments.length === 1, `paid ${priceDem} DEM (cap ${BUYER_CAP_DEM}) once to the bound seller's payee`);
     // 5. deliver: the paid request returns the verdict and a seller-signed receipt over these exact bytes.
     const paid = await call(port, 'POST', '/verify', body, { 'X-Payment-Proof': proof });
-    const receiptCheck = paid.body?.deliveryReceipt ? verifyDeliveryReceipt(paid.body.deliveryReceipt, seller.pubKeyHex) : { ok: false, problems: ['no deliveryReceipt'] } as { ok: boolean; problems?: string[] };
-    step('deliver', paid.status === 200 && typeof paid.body?.verdict?.decision === 'string' && (receiptCheck as { ok: boolean }).ok === true, `${paid.status} verdict ${paid.body?.verdict?.decision} receipt ${(receiptCheck as { ok: boolean }).ok ? 'verified' : 'invalid'}`);
+    const receipt = paid.body?.deliveryReceipt;
+    const receiptCheck = receipt ? verifyDeliveryReceipt(receipt, expectedSellerPubKeyHex) : { ok: false } as { ok: boolean };
+    // the receipt must be about THIS transaction: these request bytes, the delivered verdict bytes, this payment.
+    const { receipt: _r, deliveryReceipt: _d, ...deliveredVerdict } = paid.body ?? {};
+    const rb = receipt?.body ?? receipt ?? {};
+    const inputBound = rb.inputHash === createHash('sha256').update(body).digest('hex');
+    const resultBound = rb.resultHash === createHash('sha256').update(JSON.stringify(deliveredVerdict)).digest('hex');
+    const paymentBound = rb.payment?.txHash === proof && rb.payment?.amountOs === String(requirement.amount) && rb.quoteRef === requirement.resourceId;
+    step('deliver', paid.status === 200 && typeof paid.body?.verdict?.decision === 'string' && receiptCheck.ok === true && inputBound && resultBound && paymentBound,
+      `${paid.status} verdict ${paid.body?.verdict?.decision} receipt ${receiptCheck.ok ? 'verified' : 'invalid'} input=${inputBound} result=${resultBound} payment=${paymentBound}`);
     // 6. retry without paying again: the same proof is redelivered, the buyer's ledger shows one payment.
     const again = await call(port, 'POST', '/verify', body, { 'X-Payment-Proof': proof });
     step('retry-without-payment', again.status === 200 && again.body?.receipt?.redelivered === true && ledger.payments.length === 1, `redelivered=${again.body?.receipt?.redelivered} payments=${ledger.payments.length}`);
   } finally { server.close(); }
-  // 7. self-purchase: when the buyer's payee is our own seller, the purchase is labelled and never revenue.
+  // 7. self-purchase: the observed payment's payee is one of our own configured sellers; such a purchase is never revenue.
   const ourSellers = new Set([RECIPIENT]);
-  const selfPurchase = ourSellers.has(RECIPIENT);
-  step('self-purchase-labelled', true, selfPurchase ? 'self purchase: excluded from revenue' : 'external seller');
+  const selfPurchase = ledger.payments.length === 1 && ourSellers.has(ledger.payments[0]!.to);
+  step('self-purchase-labelled', selfPurchase, 'observed fixture payment targets our configured seller; revenue_eligible=false');
   const rollup = steps.every((s) => s.outcome === 'pass') ? 'PASS' : 'FAIL';
-  const out = { harness: 'buyer-pilot-fixture:0.1', rollup, payments: ledger.payments.length, self_purchase: selfPurchase, buyer_cap_dem: BUYER_CAP_DEM, steps };
+  const out = { harness: 'buyer-pilot-fixture:0.1', mode: 'offline-fixture', settlement: 'fake-ledger', rollup, payments: ledger.payments.length, self_purchase: selfPurchase, revenue_eligible: !selfPurchase, buyer_cap_dem: BUYER_CAP_DEM, seller: intendedSeller, steps };
   process.stdout.write((json ? '' : `${rollup} buyer-pilot-fixture\n`) + JSON.stringify(out) + '\n');
   return rollup === 'PASS' ? 0 : 1;
 }
