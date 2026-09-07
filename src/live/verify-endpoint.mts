@@ -24,6 +24,10 @@
  *
  * Environment: VERIFY_RECIPIENT (required), D402_RPC (default https://demosnode.discus.sh/),
  * VERIFY_PRICE_DEM (default 0.1), VERIFY_PORT (default 8403), VERIFY_HOST (default 127.0.0.1).
+ * Delivery receipts are signed when a seller key is configured: VERIFY_SELLER_KEY_FILE (a 32-byte ed25519
+ * private key as 64 hex in a file) or VERIFY_SELLER_MNEMONIC_ENV (the NAME of the variable in the DACS_ENV_PATH
+ * dotenv holding the seller wallet's mnemonic; the wallet is unlocked in-process and its seed signs, so the
+ * receipt verifies under the seller's own DACS identity). The mnemonic value is never read from argv or printed.
  * `--dry-run` prints a sample challenge and exits. `--offline` makes the endpoint skip the
  * two-sided anchor lookup for every request (receipt-archive audit deployments only).
  */
@@ -347,9 +351,42 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): { recipient: s
   return { recipient, rpcUrl, port, host, priceDem, amountOs, seller };
 }
 
+/** The seller signing key from the seller wallet named by VERIFY_SELLER_MNEMONIC_ENV in the DACS_ENV_PATH dotenv. */
+export async function sellerFromMnemonicEnv(env: NodeJS.ProcessEnv = process.env, connect?: (mnemonic: string, rpc: string) => Promise<{ demos: unknown; address: string }>): Promise<VerifyEndpointSeller | { error: string } | null> {
+  const name = env.VERIFY_SELLER_MNEMONIC_ENV;
+  if (!name) return null;
+  if (!/^[A-Z][A-Z0-9_]*$/.test(name)) return { error: 'VERIFY_SELLER_MNEMONIC_ENV must name an environment variable' };
+  const { config: loadDotenv } = await import('dotenv');
+  loadDotenv({ path: env.DACS_ENV_PATH ?? '.env' });
+  const mnemonic = process.env[name];
+  if (!mnemonic || mnemonic.trim().split(/\s+/).length < 12) return { error: `${name} does not hold a 12-word mnemonic` };
+  const rpcUrl = env.D402_RPC ?? 'https://demosnode.discus.sh/';
+  const { sellerKeyFromWallet } = await import('./seller-key.js');
+  const unlock = connect ?? (await import('../demos/connection.js')).connectDemos;
+  let handle;
+  // The SDK's exception text may echo wallet material; it never reaches the output.
+  try { handle = await unlock(mnemonic, rpcUrl); } catch { return { error: 'seller wallet could not be unlocked' }; }
+  let key;
+  try { key = sellerKeyFromWallet((handle.demos as unknown as { keypair: { publicKey: ArrayLike<number>; privateKey: ArrayLike<number> } }).keypair, handle.address); }
+  catch (error) { return { error: `seller wallet key is not usable for receipts: ${error instanceof Error ? error.message : String(error)}` }; }
+  const networkMode = env.VERIFY_NETWORK_MODE || 'rehearsal';
+  if (networkMode !== 'rehearsal' && networkMode !== 'live') return { error: 'VERIFY_NETWORK_MODE must be rehearsal or live' };
+  return { name: env.VERIFY_SELLER_NAME || 'PATH-OS', privKey: key.privKey, pubKeyHex: key.pubKeyHex, networkId: env.VERIFY_NETWORK_ID || 'demos:testnet', networkMode };
+}
+
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   const config = readConfig();
   if ('error' in config) { console.error(config.error); return 2; }
+  if (!config.seller) {
+    const fromWallet = await sellerFromMnemonicEnv();
+    if (fromWallet && 'error' in fromWallet) { console.error(fromWallet.error); return 2; }
+    if (fromWallet) {
+      // The receipt signer is the seller wallet's own key: the recipient the gate names must be that wallet, or the
+      // buyer's binding (listing seller = receipt signer = payee) could not hold.
+      if (config.recipient.replace(/^0x/i, '').toLowerCase() !== fromWallet.pubKeyHex) { console.error('VERIFY_RECIPIENT is not the seller wallet named by VERIFY_SELLER_MNEMONIC_ENV'); return 2; }
+      config.seller = fromWallet;
+    }
+  }
   const committed = new Set<string>();
   const reserved = new Set<string>();
   const proofStore: D402UsedProofs = createD402ProofStore(committed, reserved);
