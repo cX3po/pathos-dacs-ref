@@ -109,5 +109,15 @@ test('buyer pilot core: the d402 payment binds its top-level payee to the bound 
   assert.equal(bindPaymentPayee(preset, PAYEE).content.to, PAYEE);
   const other = skeleton(); other.content.to = '0x' + '33'.repeat(32);
   assert.throws(() => bindPaymentPayee(other, PAYEE), /differs from the bound recipient/);
-  assert.throws(() => bindPaymentPayee({} as { content?: { to?: unknown } }, PAYEE), /no content/);
+  assert.throws(() => bindPaymentPayee({}, PAYEE), /no content/);
+  const mismatch = skeleton();
+  mismatch.content.data[1] = {
+    to: '0x' + '33'.repeat(32), amount: '100000000',
+    memo: 'resourceId:x'
+  };
+  assert.throws(() => bindPaymentPayee(mismatch, PAYEE), /data payee/);
+  const same = skeleton();
+  same.content.to = PAYEE.toUpperCase();
+  assert.equal(bindPaymentPayee(same, PAYEE.toUpperCase()), same);
+  assert.equal(same.content.to, PAYEE.toLowerCase());
 });

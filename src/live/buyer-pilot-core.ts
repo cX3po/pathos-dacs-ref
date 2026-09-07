@@ -64,7 +64,15 @@ export function bindPaymentPayee<T extends { content?: { to?: unknown } }>(payme
   if (typeof current === 'string' && current !== '' && current !== '0x' && current.toLowerCase() !== recipient.toLowerCase()) {
     throw new Error('payment payee differs from the bound recipient');
   }
-  content.to = recipient;
+  const data = (content as { data?: unknown }).data;
+  const payload = Array.isArray(data) ? data[1] : null;
+  if (!Array.isArray(data) || data[0] !== 'd402_payment' ||
+      typeof payload !== 'object' || payload === null ||
+      typeof payload.to !== 'string' ||
+      payload.to.toLowerCase() !== recipient.toLowerCase()) {
+    throw new Error('payment data payee differs from the bound recipient');
+  }
+  content.to = recipient.toLowerCase();
   return payment;
 }
 
