@@ -41,8 +41,8 @@ test('only the projected public answer fields are anchored; extra fields are dro
 });
 
 test('the indeterminate-coverage answer shape is accepted as is', () => {
-  const d = organDeliverableFrom(JSON.stringify({ ...good, answer: { coverage: 'indeterminate', active: null, basis: 'feed-not-applicable-or-unavailable' } }), run);
-  assert.deepEqual(d.answer, { coverage: 'indeterminate', active: null, basis: 'feed-not-applicable-or-unavailable' });
+  const d = organDeliverableFrom(JSON.stringify({ ...good, answer: { coverage: 'indeterminate', active: null, basis: 'feed-not-applicable-or-unavailable — absence of data is not calm' } }), run);
+  assert.deepEqual(d.answer, { coverage: 'indeterminate', active: null, basis: 'feed-not-applicable-or-unavailable — absence of data is not calm' });
 });
 
 const deliveryFailures: Array<[string, unknown]> = [
@@ -135,10 +135,10 @@ test('a real bridge script runs through the default executor and yields the deli
   const dir = mkdtempSync(join(tmpdir(), 'organ-bridge-'));
   try {
     const script = join(dir, 'bridge.js');
-    writeFileSync(script, `const [organ, query] = process.argv.slice(2);\nprocess.stdout.write(JSON.stringify({ ...${JSON.stringify(good)}, organ, answer: { ...${JSON.stringify(good.answer)}, basis: 'query ' + query.length } }));\n`);
+    writeFileSync(script, `const [organ, query] = process.argv.slice(2);\nprocess.stdout.write(JSON.stringify({ ...${JSON.stringify(good)}, organ, answer: { ...${JSON.stringify(good.answer)}, count_band: query.length === 16 ? 'several' : 'zero' } }));\n`);
     const d = await runOrganBridge({ ORGAN_CLI: script, AXIOM_PY: process.execPath, PATH: process.env.PATH, HOME: process.env.HOME }, run);
     assert.equal(d.organ, 'nws_alerts');
-    assert.equal(d.answer.basis, `query ${run.query.length}`);
+    assert.equal(d.answer.count_band, 'several', 'the query reached the bridge');
     const missing = join(dir, 'missing.js');
     // At delivery time a vanished bridge is a delivery failure (the pre-payment check is requireOrganBridgeConfig at construction).
     await assert.rejects(runOrganBridge({ ORGAN_CLI: missing, AXIOM_PY: process.execPath, PATH: process.env.PATH, HOME: process.env.HOME }, run), isDelivery);
@@ -322,15 +322,17 @@ test('the live listing and agreement pass the agreement adapter with a fabricate
 
 // ── air_quality and drug_info projections (sellable organs beside nws_alerts) ─────────────────────────────────────
 const aqRun = { jobId: 'job-aq', organ: 'air_quality', query: '35.2271,-80.8431' };
-const aqGood = { ...good, organ: 'air_quality', answer: { category: 'Moderate', reading_present: true, guidance: 'Unusually sensitive people should consider reducing prolonged or heavy exertion.' } };
+const AQ_MODERATE = 'Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.';
+const aqGood = { ...good, organ: 'air_quality', answer: { category: 'Moderate', reading_present: true, guidance: AQ_MODERATE } };
 const rxRun = { jobId: 'job-rx', organ: 'drug_info', query: 'warfarin' };
-const rxGood = { ...good, organ: 'drug_info', answer: { boxed_warning_present: true, interactions_section_present: true, pregnancy_section_present: false, prescription_required: true, basis: 'supplied-label-record' } };
+const rxGood = { ...good, organ: 'drug_info', answer: { boxed_warning_present: true, interactions_section_present: true, pregnancy_section_present: false, prescription_required: true, basis: 'supplied-label-record (no attestation on the record yet — not asserted as-fact)' } };
 
 test('air_quality projects the EPA category, presence flag and vendored guidance only; readings and locations are dropped', () => {
   const d = organDeliverableFrom(JSON.stringify({ ...aqGood, answer: { ...aqGood.answer, aqi: 87, location: '35.2,-80.8' } }), aqRun);
   assert.deepEqual(d.answer, aqGood.answer);
-  assert.deepEqual(organDeliverableFrom(JSON.stringify({ ...aqGood, answer: { category: 'unknown', reading_present: false } }), aqRun).answer, { category: 'unknown', reading_present: false });
-  for (const answer of [{ category: 'Fine', reading_present: true }, { category: 'Good' }, { category: 'Good', reading_present: true, guidance: 'AQI was 87 today' }, { category: 'Good', reading_present: 'yes' }]) {
+  const unknownGuidance = 'No air-quality reading supplied — treat as unknown, not clean.';
+  assert.deepEqual(organDeliverableFrom(JSON.stringify({ ...aqGood, answer: { category: 'unknown', reading_present: false, guidance: unknownGuidance } }), aqRun).answer, { category: 'unknown', reading_present: false, guidance: unknownGuidance });
+  for (const answer of [{ category: 'Fine', reading_present: true, guidance: AQ_MODERATE }, { category: 'Moderate', reading_present: true }, { category: 'Moderate', reading_present: true, guidance: 'AQI was 87 today' }, { category: 'Moderate', reading_present: true, guidance: 'Charlotte' }, { category: 'Good', reading_present: true, guidance: AQ_MODERATE }, { category: 'Moderate', reading_present: 'yes', guidance: AQ_MODERATE }]) {
     assert.throws(() => organDeliverableFrom(JSON.stringify({ ...aqGood, answer }), aqRun), isDelivery, JSON.stringify(answer));
   }
 });
@@ -339,7 +341,7 @@ test('drug_info projects derived booleans and a short basis only; names and labe
   const d = organDeliverableFrom(JSON.stringify({ ...rxGood, answer: { ...rxGood.answer, medication: 'warfarin', boxed_warning_text: 'WARNING: BLEEDING RISK' } }), rxRun);
   assert.deepEqual(d.answer, rxGood.answer);
   assert.equal(organDeliverableFrom(JSON.stringify({ ...rxGood, answer: { ...rxGood.answer, prescription_required: null } }), rxRun).answer.prescription_required, null);
-  for (const answer of [{ ...rxGood.answer, boxed_warning_present: 'yes' }, { boxed_warning_present: true }, { ...rxGood.answer, prescription_required: 'rx' }, { ...rxGood.answer, basis: 'x'.repeat(201) }]) {
+  for (const answer of [{ ...rxGood.answer, boxed_warning_present: 'yes' }, { boxed_warning_present: true }, { ...rxGood.answer, prescription_required: 'rx' }, { ...rxGood.answer, basis: 'warfarin' }, { ...rxGood.answer, basis: 'WARNING: BLEEDING RISK' }, (({ basis, ...rest }) => rest)(rxGood.answer), (({ prescription_required, ...rest }) => rest)(rxGood.answer)]) {
     assert.throws(() => organDeliverableFrom(JSON.stringify({ ...rxGood, answer }), rxRun), isDelivery, JSON.stringify(answer));
   }
 });
@@ -347,4 +349,10 @@ test('drug_info projects derived booleans and a short basis only; names and labe
 test('each supported organ has a distinct deliverable spec hash at the same deliverable version', () => {
   const hashes = new Set(supportedOrgans().map((organ) => liveDeliverableSpec({ organ }).hash));
   assert.equal(hashes.size, 3);
+});
+
+test('nws_alerts bands and basis are enumerated vendored strings; place names and coordinates are refused', () => {
+  for (const answer of [{ ...good.answer, highest_band: 'charlotte' }, { ...good.answer, count_band: 'warfarin' }, { ...good.answer, basis: '35.2271,-80.8431' }, { ...good.answer, basis: 'supplied-feed verified zero active entries for the committed point ' }]) {
+    assert.throws(() => organDeliverableFrom(JSON.stringify({ ...good, answer }), run), isDelivery, JSON.stringify(answer));
+  }
 });
