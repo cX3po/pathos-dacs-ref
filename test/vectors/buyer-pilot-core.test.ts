@@ -8,14 +8,26 @@ const SELLER_DID = `did:demos:agent:${SELLER_HEX}`;
 const PAYEE = `0x${SELLER_HEX}`;
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
-function harness(over: Partial<BuyerPilotDeps> & { requirement?: Record<string, unknown>; receiptSeller?: string; included?: boolean; settleOk?: boolean } = {}) {
+const BUNDLE = { jobId: 'j' };
+const BODY = JSON.stringify({ bundle: BUNDLE });
+const resourceIdFor = (b: string, amountOs: string) => sha256(`${b}|${amountOs}`);
+/** The resourceId the endpoint would bind for this body at a normalized OS amount. */
+const ridFor = (amountOs: string) => resourceIdFor(BODY, amountOs);
+type Tamper = 'inputHash' | 'resultHash' | 'payment';
+
+function harness(over: Partial<BuyerPilotDeps> & { requirement?: Record<string, unknown>; receiptSeller?: string; included?: boolean; settleOk?: boolean; tamper?: Tamper } = {}) {
   const listing = { listingId: 'l', seller: { identity: { presentedBy: SELLER_DID } } };
-  const bundle = { jobId: 'j' };
-  const body = JSON.stringify({ bundle });
+  const bundle = BUNDLE;
+  const body = BODY;
   const state = { settlements: 0, calls: [] as string[], now: 0 };
-  const resourceIdFor = (b: string, amountOs: string) => sha256(`${b}|${amountOs}`);
   const requirement = over.requirement ?? { recipient: PAYEE, amount: '100000000', resourceId: resourceIdFor(body, '100000000'), description: 'DACS attestation-bundle verification' };
-  const receiptFor = (proof: string, verdict: unknown) => ({ body: { inputHash: sha256(body), resultHash: sha256(JSON.stringify({ verdict })), payment: { txHash: proof, amountOs: String(requirement.amount).length > 9 ? String(requirement.amount) : '100000000' }, quoteRef: requirement.resourceId, seller: { pubKeyHex: over.receiptSeller ?? SELLER_HEX } } });
+  const receiptFor = (proof: string, verdict: unknown) => {
+    const rb = { inputHash: sha256(body), resultHash: sha256(JSON.stringify({ verdict })), payment: { txHash: proof, amountOs: String(requirement.amount).length > 9 ? String(requirement.amount) : '100000000' }, quoteRef: requirement.resourceId, seller: { pubKeyHex: over.receiptSeller ?? SELLER_HEX } };
+    if (over.tamper === 'inputHash') rb.inputHash = sha256(body + ' ');
+    if (over.tamper === 'resultHash') rb.resultHash = sha256(JSON.stringify({ verdict: { decision: 'fail' } }));
+    if (over.tamper === 'payment') rb.payment = { txHash: 'cd'.repeat(32), amountOs: rb.payment.amountOs };
+    return { body: rb };
+  };
   const deps: BuyerPilotDeps = {
     fetchAnchored: async (address) => (address === 'stor-listing' ? listing : address === 'stor-bundle' ? bundle : null),
     verifyListing: async (l) => { if ((l.seller as any).identity.presentedBy !== SELLER_DID) throw new Error('unknown seller'); },
@@ -32,7 +44,7 @@ function harness(over: Partial<BuyerPilotDeps> & { requirement?: Record<string, 
     resourceIdFor,
     sleep: async (ms) => { state.now += ms; },
     now: () => state.now,
-    ...Object.fromEntries(Object.entries(over).filter(([k]) => !['requirement', 'receiptSeller', 'included', 'settleOk'].includes(k))),
+    ...Object.fromEntries(Object.entries(over).filter(([k]) => !['requirement', 'receiptSeller', 'included', 'settleOk', 'tamper'].includes(k))),
   } as BuyerPilotDeps;
   const cfg = { listingAnchor: 'stor-listing', sellerDid: SELLER_DID, bundleAnchor: 'stor-bundle', buyerCapDem: 1, ourSellers: new Set([SELLER_DID]), confirmMs: 30_000, pollMs: 5_000 };
   return { deps, cfg, state };
@@ -51,8 +63,9 @@ test('buyer pilot core: no settlement on resource mismatch, unbound seller, wron
     ['resource mismatch', { requirement: { recipient: PAYEE, amount: '100000000', resourceId: 'other' } }, {}],
     ['unbound seller', {}, { sellerDid: 'did:demos:agent:' + '22'.repeat(32) }],
     ['wrong payee', { requirement: { recipient: '0x' + '33'.repeat(32), amount: '100000000', resourceId: 'x' } }, {}],
-    ['over cap numeric (2 DEM)', { requirement: { recipient: PAYEE, amount: 2, resourceId: 'x' } }, {}],
-    ['over cap string (2 DEM in OS)', { requirement: { recipient: PAYEE, amount: '2000000000', resourceId: 'x' } }, {}],
+    // over-cap cases carry the correct resourceId for the body at the normalized OS amount: only the cap refuses them
+    ['over cap numeric (2 DEM)', { requirement: { recipient: PAYEE, amount: 2, resourceId: ridFor('2000000000') } }, {}],
+    ['over cap string (2 DEM in OS)', { requirement: { recipient: PAYEE, amount: '2000000000', resourceId: ridFor('2000000000') } }, {}],
     ['cap 0', {}, { buyerCapDem: 0 }],
     ['cap NaN', {}, { buyerCapDem: Number.NaN }],
   ] as const) {
@@ -78,6 +91,12 @@ test('buyer pilot core: an inclusion timeout keeps the payment but fails the run
   const foreign = harness({ receiptSeller: '44'.repeat(32) });
   const r2 = await runBuyerPilot(foreign.cfg, foreign.deps);
   assert.equal(r2.rollup, 'FAIL'); assert.equal(r2.steps.find((s) => s.step === 'deliver')!.outcome, 'fail'); assert.equal(foreign.state.settlements, 1);
+  // a tampered receipt whose signature check still returns true fails delivery on the binding it broke; the one payment stays on record
+  for (const tamper of ['inputHash', 'resultHash', 'payment'] as const) {
+    const tampered = harness({ tamper, verifyReceipt: () => ({ ok: true }) });
+    const rt = await runBuyerPilot(tampered.cfg, tampered.deps);
+    assert.equal(rt.rollup, 'FAIL', tamper); assert.equal(rt.steps.find((s) => s.step === 'deliver')!.outcome, 'fail', tamper); assert.equal(tampered.state.settlements, 1, tamper);
+  }
   const refused = harness({ settleOk: false });
   const r3 = await runBuyerPilot(refused.cfg, refused.deps);
   assert.equal(r3.rollup, 'FAIL'); assert.equal(r3.payments.length, 0);
