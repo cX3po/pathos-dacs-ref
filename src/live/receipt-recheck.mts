@@ -19,11 +19,11 @@ const file = opt('--file'); const expected = opt('--seller-pubkey');
 if (!file || !expected || !/^[0-9a-f]{64}$/i.test(expected)) { console.error('usage: --file <record.json> --seller-pubkey <64 hex>'); process.exit(2); }
 let doc: Record<string, unknown>;
 try { doc = JSON.parse(readFileSync(file, 'utf8')); } catch (error) { console.log(JSON.stringify({ ok: false, reason: `harness: ${String(error).slice(0, 160)}` })); process.exit(2); }
-// A pilot run record (tools/demos_verify_pilot.py) keeps the buyer harness output under `buyer`; a bare harness output or
-// a delivery envelope carries the receipt at the top level.
-const receipt = doc.deliveryReceipt
-  ?? (doc.buyer as { deliveryReceipt?: unknown } | undefined)?.deliveryReceipt
-  ?? (doc.delivery as { deliveryReceipt?: unknown } | undefined)?.deliveryReceipt;
+// A buyer container is authoritative; never fall back when its receipt is missing.
+const receipt = Object.prototype.hasOwnProperty.call(doc, 'buyer')
+  ? (doc.buyer as { deliveryReceipt?: unknown } | null)?.deliveryReceipt
+  : doc.deliveryReceipt
+    ?? (doc.delivery as { deliveryReceipt?: unknown } | undefined)?.deliveryReceipt;
 if (!receipt) { console.log(JSON.stringify({ ok: false, reason: 'record carries no deliveryReceipt' })); process.exit(1); }
 const check = verifyDeliveryReceipt(receipt, expected.toLowerCase());
 const seller = (receipt as { seller?: { pubKeyHex?: string } }).seller?.pubKeyHex ?? null;
