@@ -28,6 +28,7 @@
  * two-sided anchor lookup for every request (receipt-archive audit deployments only).
  */
 import { createHash } from 'node:crypto';
+import type { DeliveryStore } from './delivery-store.js';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -80,8 +81,13 @@ export interface VerifyEndpointOptions {
   reserved: Set<string>;
   /** Verdicts already delivered, by proof key: a repeat of the same paid request is answered again, not billed again. */
   delivered?: Map<string, string>;
-  /** Bound of the redelivery cache (default 10 000). A committed proof evicted from it is re-verified and served, never refused. */
+  /** Bound of the redelivery cache (default 10 000). A committed proof evicted from it is served from the durable store when one is configured, else re-verified; never refused. */
   maxDelivered?: number;
+  /** Durable record of paid deliveries (src/live/delivery-store.ts), created for THIS deployment's scope; loaded at construction (keys into the committed set, payloads stay on disk); appended after a response finished writing. Restart, eviction and concurrent duplicates then redeliver the original signed payload. */
+  store?: DeliveryStore;
+  /** Bound of concurrent duplicates waiting on one in-flight paid request (default 16) and their wait (default 30 000 ms); beyond either, 503 with proofRetained. */
+  maxWaiters?: number;
+  waitMs?: number;
   verify?: VerifyHttpConfig;
   /** Applied to every request (receipt-archive audit deployments). */
   offline?: boolean;
@@ -143,6 +149,11 @@ function readBody(request: IncomingMessage): Promise<Buffer | null> {
 }
 
 export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
+  // Durable deliveries: the store's keys rebuild the committed set; payloads are read from disk on demand.
+  if (options.store) { for (const key of options.store.load().keys) options.committed.add(key); }
+  // Paid requests in flight, by proof key, registered BEFORE the payment gate so a concurrent duplicate (which the
+  // gate answers 'replayed' while the first request is still verifying its payment) waits and is redelivered.
+  const inflight = new Map<string, { promise: Promise<string | null>; waiters: number }>();
   return async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     let url: URL;
     try {
@@ -190,18 +201,37 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
       }
     }) as typeof liveFetchAnchored;
     const outage = (detail: string) => json(response, 503, { error: detail, retry: 'repeat the same request with the same X-Payment-Proof', proofRetained: true });
+    const presentedKey = deliveredKey(request.headers, resource.resourceId);
+    const flight = presentedKey ? inflight.get(presentedKey) : undefined;
+    if (flight) {
+      if (flight.waiters >= (options.maxWaiters ?? 16)) { outage('too many duplicates of one in-flight paid request'); return; }
+      flight.waiters += 1;
+      let timer: NodeJS.Timeout | undefined;
+      const payload = await Promise.race([flight.promise, new Promise<'timeout'>((r) => { timer = setTimeout(() => r('timeout'), options.waitMs ?? 30_000); })]).finally(() => { if (timer) clearTimeout(timer); flight.waiters -= 1; });
+      if (response.destroyed) return;
+      if (typeof payload === 'string' && payload !== 'timeout') { const again = JSON.parse(payload) as Record<string, unknown>; json(response, 200, { ...again, receipt: { ...(again.receipt as object), redelivered: true } }); return; }
+      outage(payload === 'timeout' ? 'the first delivery of this paid request is still in progress' : 'the first delivery of this paid request did not complete');
+      return;
+    }
+    let settle: (payload: string | null) => void = () => {};
+    const mine = presentedKey ? { promise: new Promise<string | null>((resolve) => { settle = resolve; }), waiters: 0 } : undefined;
+    if (presentedKey && mine) inflight.set(presentedKey, mine);
+    let settled = false;
+    const finishFlight = (payload: string | null) => { if (settled) return; settled = true; settle(payload); if (presentedKey && inflight.get(presentedKey) === mine) inflight.delete(presentedKey); };
     let gated: Awaited<ReturnType<D402Service['gate']>>;
     try {
       gated = await options.service.gate({ headers: request.headers, resource });
     } catch {
+      finishFlight(null);
       json(response, 402, { ...options.service.challenge(resource).body, reason: 'unverifiable' });
       return;
     }
     if (gated.status === 402) {
+      finishFlight(null);
       // the same proof for the same bytes again: redeliver the verdict it already bought, from the
       // cache while it is there, by verifying again once it has been evicted; never a refusal
       const replayKey = gated.reason === 'replayed' ? deliveredKey(request.headers, resource.resourceId) : null;
-      const cached = replayKey ? delivered.get(replayKey) : undefined;
+      const cached = replayKey ? (delivered.get(replayKey) ?? options.store?.get(replayKey)) : undefined;
       if (cached !== undefined) {
         const again = JSON.parse(cached) as Record<string, unknown>;
         json(response, 200, { ...again, receipt: { ...(again.receipt as object), redelivered: true } });
@@ -230,6 +260,7 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
       // unreachable in practice: the same bytes passed parseVerifyRequest before the gate. Kept as a
       // fail-safe that releases the reservation rather than billing a request that produced no verdict.
       options.reserved.delete(key);
+      finishFlight(null);
       json(response, 400, verified.body);
       return;
     }
@@ -239,6 +270,7 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
       // name, so a genuine verdict can never be mistaken for an outage and strand a paid caller.
       // The reservation is released so the same proof pays for a retry.
       options.reserved.delete(key);
+      finishFlight(null);
       outage(rpcFailed ? 'a chain read failed on the server during verification' : verified.incomplete!);
       return;
     }
@@ -246,18 +278,31 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
     const deliveredBody: Record<string, unknown> = { ...verified.body, receipt: plainReceipt };
     if (options.seller) deliveredBody.deliveryReceipt = deliveryReceiptFor(options.seller, { bodyBytes, verdictJson: JSON.stringify(verified.body), txHash: gated.payment.txHash, from: gated.payment.from, amountOs: gated.payment.amount, resourceId: resource.resourceId, implementationVersion: `${ENDPOINT_NAME}@${ENDPOINT_VERSION}/${VERIFIER_API_VERSION}` });
     const payload = JSON.stringify(deliveredBody);
+    if (response.destroyed) { options.reserved.delete(key); finishFlight(null); return; }
+    // Persistence means the response finished writing to the local transport, not that the buyer received it:
+    // commit, cache and append on 'finish'; on a premature close or error release the proof for a retry.
+    let decided = false;
+    const onFinish = () => {
+      if (decided) return; decided = true;
+      options.reserved.delete(key);
+      options.committed.add(key);
+      const bound = options.maxDelivered ?? MAX_DELIVERED;
+      while (delivered.size >= bound && delivered.size > 0) delivered.delete(delivered.keys().next().value as string);
+      delivered.set(key, payload);
+      if (options.store) { try { options.store.append(key, payload); } catch { /* the cache still serves redelivery; a store failure never fails a delivery already sent */ } }
+      finishFlight(payload);
+    };
+    const onAbort = () => { if (decided) return; decided = true; options.reserved.delete(key); finishFlight(null); };
+    response.once('finish', onFinish);
+    response.once('close', () => { if (!decided) onAbort(); });
+    response.once('error', onAbort);
     try {
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(payload), connection: 'close' });
     } catch {
-      options.reserved.delete(key);
+      onAbort();
       if (!response.headersSent) { response.writeHead(502); response.end(); }
       return;
     }
-    options.reserved.delete(key);
-    options.committed.add(key);
-    const bound = options.maxDelivered ?? MAX_DELIVERED;
-    while (delivered.size >= bound && delivered.size > 0) delivered.delete(delivered.keys().next().value as string);
-    delivered.set(key, payload);
     response.end(payload);
   };
 }
