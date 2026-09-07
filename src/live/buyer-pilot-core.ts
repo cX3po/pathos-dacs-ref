@@ -98,11 +98,18 @@ export async function settleThroughNode(node: NodeBroadcaster, payment: unknown,
   let validity: unknown;
   try { validity = await node.confirm(signed); }
   catch (error) { return { success: false, hash, message: `confirm failed before broadcast: ${error instanceof Error ? error.message : String(error)}` }; }
+  const confirmed = validity as {
+    response?: { data?: { valid?: unknown; transaction?: { hash?: unknown } } };
+  } | null;
+  if (confirmed?.response?.data?.valid !== true ||
+      confirmed.response.data.transaction?.hash !== hash) {
+    return { success: false, hash, message: 'invalid or mismatched confirmation; nothing broadcast' };
+  }
   let result: { status?: { state?: unknown; blockNumber?: unknown } } | null;
   try { result = await node.broadcastAndWait(validity, { timeoutMs }) as { status?: { state?: unknown; blockNumber?: unknown } } | null; }
   catch (error) {
     const e = error as { name?: unknown; txHash?: unknown; message?: unknown };
-    const detail = e?.name === 'BroadcastTimeoutError' && e.txHash === hash ? 'broadcast accepted; inclusion not observed within the wait window' : `broadcast outcome unknown: ${typeof e?.message === 'string' ? e.message : String(error)}`;
+    const detail = e?.name === 'BroadcastTimeoutError' && e.txHash === hash ? 'broadcast outcome unknown; inclusion not observed within the wait window' : `broadcast outcome unknown: ${typeof e?.message === 'string' ? e.message : String(error)}`;
     return { success: true, hash, message: detail };
   }
   const state = result?.status?.state;

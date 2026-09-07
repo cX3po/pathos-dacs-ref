@@ -126,7 +126,9 @@ test('buyer pilot core: settlement goes sign -> confirm -> broadcastAndWait; inc
   const HASH = 'ab'.repeat(32);
   const node = (over: { sign?: () => Promise<unknown>; confirm?: () => Promise<unknown>; wait?: () => Promise<unknown> } = {}) => ({
     sign: over.sign ?? (async () => ({ hash: HASH })),
-    confirm: over.confirm ?? (async () => ({ valid: true })),
+    confirm: over.confirm ?? (async () => ({
+      response: { data: { valid: true, transaction: { hash: HASH } } },
+    })),
     broadcastAndWait: over.wait ?? (async () => ({ status: { state: 'included', blockNumber: 250000 } })),
   });
   assert.deepEqual(await settleThroughNode(node(), {}, 1000), { success: true, hash: HASH, blockNumber: 250000 });
@@ -138,6 +140,11 @@ test('buyer pilot core: settlement goes sign -> confirm -> broadcastAndWait; inc
   assert.equal(timeout.success, true); assert.equal(timeout.hash, HASH); assert.equal(timeout.blockNumber, undefined); assert.match(timeout.message ?? '', /inclusion not observed/);
   const unknown = await settleThroughNode(node({ wait: async () => { throw new Error('socket closed'); } }), {}, 1000);
   assert.equal(unknown.success, true); assert.equal(unknown.blockNumber, undefined); assert.match(unknown.message ?? '', /outcome unknown/);
+  let broadcasts = 0;
+  const mismatched = await settleThroughNode(node({ confirm: async () => ({ response: { data: { valid: true, transaction: { hash: 'cd'.repeat(32) } } } }), wait: async () => { broadcasts += 1; return { status: { state: 'included' } }; } }), {}, 1000);
+  assert.equal(mismatched.success, false); assert.match(mismatched.message ?? '', /mismatched confirmation/); assert.equal(broadcasts, 0);
+  const invalid = await settleThroughNode(node({ confirm: async () => ({ response: { data: { valid: false, transaction: { hash: HASH } } } }), wait: async () => { broadcasts += 1; return { status: { state: 'included' } }; } }), {}, 1000);
+  assert.equal(invalid.success, false); assert.equal(broadcasts, 0);
   const unsigned = await settleThroughNode(node({ sign: async () => ({}) }), {}, 1000);
   assert.equal(unsigned.success, false); assert.equal(unsigned.hash, '');
 });
