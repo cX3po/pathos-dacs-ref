@@ -458,7 +458,7 @@ export class OrganDeliverableError extends Error {
 }
 
 const HEX64 = /^[0-9a-f]{64}$/;
-const NONCE = /^[0-9a-f]{16,128}$/;
+const NONCE = /^(?:[0-9a-f]{2}){8,64}$/; // even-length hex only: Node's Buffer.from(hex) would silently drop an odd final digit
 
 /** Public answer projections mirror the PATH-OS batch-2 answer schemas (engines/proof/organ_batch2.py). The bridge
  *  computes the answer; this confidentiality boundary permits only booleans, permitted nulls, enumerated labels, and
@@ -564,6 +564,8 @@ export function organDeliverableFrom(raw: string, run: Pick<DacsTestnetConfig, '
     input_commitment: o.input_commitment, commitment_scheme: o.commitment_scheme, fetched_at: o.fetched_at,
   };
   if (containsNonce(deliverable, o.commitment_nonce)) throw new OrganDeliverableError('organ bridge nonce would be anchored');
+  // The opening's record string (commitment_input, disclosed off-channel for a buyer-side audit) is as private as the nonce.
+  if (typeof o.commitment_input === 'string' && o.commitment_input.length >= 16 && containsNonce(deliverable, o.commitment_input)) throw new OrganDeliverableError('organ bridge commitment input would be anchored');
   return deliverable;
 }
 
