@@ -25,6 +25,7 @@
 import { fetchAnchored } from '../demos/storage.js';
 import { sdkListingProgramName } from './listing-wire.js';
 import { deriveBundleLogicalAddress } from '../lib/bundle-binding-v1.js';
+export { isLogicalLocator, isNativeLocator, sdkProgramName, ownerAddressOfClaim } from '../lib/locator-form.js';
 /** PC-2: railId is a CF-4 variable segment — percent-encode internal colons. */
 export function encodeRailSegment(railId) {
     return railId.replaceAll(':', '%3A');

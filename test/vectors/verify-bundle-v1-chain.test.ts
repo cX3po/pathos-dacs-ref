@@ -314,6 +314,48 @@ test('dacs-sdk#38: properly signed referenced artifact still passes', async () =
   assert.equal(v.rollup, 'pass', JSON.stringify(v.attestationSteps));
 });
 
+test('PC-2 logical locator: settlement evidence cited by its logical address resolves by (signer owner, SDK-form name)', async () => {
+  const jobId = 'v1-ref-logical-ok';
+  const orchestrator = mk(0x31);
+  const unsigned = { evidenceVersion: '1', jobId, phase: 'pay-dem', outcome: 'success', observedAt: 1735689600000 };
+  const artifactHash = hexOf(sha256(jcsCanonical(unsigned)));
+  const value = Buffer.from(sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, enc.encode(artifactHash), orchestrator.priv)).toString('base64');
+  const evidence = JSON.stringify({ ...unsigned, signature: { algorithm: 'ed25519', signer: `cci:${orchestrator.pubHex}`, value } });
+  const logical = `dacs4:payment:${jobId}:pay-dem:2`;
+  const ref = { anchor: { kind: 'storage-program' as const, locator: logical }, contentHash: sha256Hex(evidence), signer: `did:demos:agent:${orchestrator.pubHex}` };
+  const { buyerCopy, map } = twoSidedMap({ jobId, settlementEvidence: [ref] });
+  const seen: Array<[string, string]> = [];
+  const resolveByNameImpl = async (_rpc: string, owner: string, name: string) => {
+    seen.push([owner, name]);
+    return owner === `0x${orchestrator.pubHex}` && name === `dacs4%3Apayment%3A${jobId}%3Apay-dem%3A2`
+      ? { storageAddress: 'stor-' + sha256Hex('logical-evidence'), owner, data: evidence, sizeBytes: evidence.length, createdAt: '2026-09-07T00:00:00Z' }
+      : null;
+  };
+  const v = await verifyBundleV1Full(buyerCopy, { resolveByNameImpl, fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.attestationsVerified, 1, JSON.stringify(v.attestationSteps));
+  assert.equal(v.attestationsFailed, 0);
+  assert.deepEqual(seen.at(-1), [`0x${orchestrator.pubHex}`, `dacs4%3Apayment%3A${jobId}%3Apay-dem%3A2`]);
+});
+
+test('PC-2 logical locator: a name match under another owner is absent → fail; a reference without a resolvable signer owner → indeterminate', async () => {
+  const jobId = 'v1-ref-logical-owner';
+  const orchestrator = mk(0x32);
+  const evidence = JSON.stringify({ evidenceVersion: '1', jobId, phase: 'pay-dem', outcome: 'success', observedAt: 1735689600000 });
+  const logical = `dacs4:payment:${jobId}:pay-dem:2`;
+  const ref = { anchor: { kind: 'storage-program' as const, locator: logical }, contentHash: sha256Hex(evidence), signer: `did:demos:agent:${orchestrator.pubHex}` };
+  const { buyerCopy, map } = twoSidedMap({ jobId, settlementEvidence: [ref] });
+  const wrongOwner = async (_rpc: string, owner: string, _name: string) => (owner === '0x' + 'ab'.repeat(32) ? { storageAddress: 'stor-x', owner, data: evidence, sizeBytes: 1, createdAt: '' } : null);
+  const v = await verifyBundleV1Full(buyerCopy, { resolveByNameImpl: wrongOwner, fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v.attestationsFailed, 1, JSON.stringify(v.attestationSteps));
+  assert.match(v.attestationSteps[0]!.detail, /not found/);
+  const noSigner = { anchor: { kind: 'storage-program' as const, locator: logical }, contentHash: sha256Hex(evidence) };
+  const { buyerCopy: unsignedCopy, map: map2 } = twoSidedMap({ jobId: 'v1-ref-logical-nosigner', settlementEvidence: [noSigner] });
+  const v2 = await verifyBundleV1Full(unsignedCopy, { resolveByNameImpl: async () => { throw new Error('must not be called'); }, fetchAnchoredImpl: mockFetch(map2) });
+  assert.equal(v2.attestationSteps[0]!.outcome, 'indeterminate', JSON.stringify(v2.attestationSteps));
+  assert.match(v2.attestationSteps[0]!.detail, /no resolvable signer owner/);
+  assert.notEqual(v2.rollup, 'pass');
+});
+
 test('BLOCKER 2: v0.1 AttestationRef whose anchor is MISSING → fail (cited evidence does not exist)', async () => {
   const jobId = 'v1-ref-missing';
   const locator = 'stor-' + sha256Hex('missing-anchor');

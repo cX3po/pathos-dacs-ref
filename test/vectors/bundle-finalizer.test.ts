@@ -445,3 +445,19 @@ test('verifyBundleListing reads the DACS-1 Listing: the seller identity presenta
   const noIdentity = (await signDacs1Listing({ ...withoutIdentity, seller: { displayName: 'seller' } }, signer(seller))).listing;
   await assert.rejects(verifyBundleListing(noIdentity, {}), codeIs('listing-identity'));
 });
+
+test('PC-2 logical locator: an evidence reference citing the logical address reads through the phase anchor record; an unbound logical locator is unresolved', async () => {
+  const state = setup();
+  const input = await session(state);
+  const paid = input.phaseResults.find((p) => p.kind.startsWith('pay-'))!;
+  // The reference cites the logical address (what the pinned dacs-sdk requires); the anchor record binds it to the native address.
+  const logicalRef = { ...paid.evidenceRef!, anchor: { kind: 'storage-program' as const, locator: paid.evidenceLogicalAddress! } };
+  const withLogical = { ...input, phaseResults: input.phaseResults.map((p) => (p === paid ? { ...p, evidenceRef: logicalRef } : p)) };
+  const codeIs = (code: string) => (error: unknown) => error instanceof BundleFinalizationError && error.code === code;
+  const out = await finalizeBundle(withLogical, state.deps);
+  assert.equal(out.bundles.buyer!.bundle.settlementEvidence.some((e) => e.anchor.locator === paid.evidenceLogicalAddress), true);
+  const foreign = 'dacs4:payment:other-job:pay-x402:2';
+  state.memory.set(foreign, state.memory.get(paid.evidenceAnchor!.nativeAddress));
+  const unbound = { ...input, phaseResults: input.phaseResults.map((p) => (p === paid ? { ...p, evidenceRef: { ...logicalRef, anchor: { kind: 'storage-program' as const, locator: foreign } } } : p)) };
+  await assert.rejects(finalizeBundle(unbound, state.deps), codeIs('receipt-binding'));
+});

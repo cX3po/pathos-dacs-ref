@@ -102,7 +102,9 @@ export async function anchor(handle, programName, data, options = {}) {
     }
     // Build the storage-program-create payload — returns a StorageProgramPayload object
     // that the SDK's prepare() wraps into a Transaction
-    const payload = StorageProgram.createStorageProgram(address, programName, storedData, encoding, acl, { nonce, salt: options.salt });
+    const payload = StorageProgram.createStorageProgram(address, programName, storedData, encoding, acl, 
+    // metadata.logicalAddress is what the pinned dacs-sdk's adapter records for its own programs; a reader may use it to confirm the name.
+    { nonce, salt: options.salt, ...(options.metadata ? { metadata: options.metadata } : {}) });
     // Sign + broadcast via the DEDICATED storage-program flow (not DemosTransactions.prepare +
     // demos.sign — that validates a `to` address the storage-program payload doesn't carry, and
     // fails live with "Invalid To address: 0x"). This is the exact path the receipt-anchor proved

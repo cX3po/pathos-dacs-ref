@@ -1,4 +1,5 @@
 import { DOMAIN_SEPARATORS, ADDITIVE_DOMAIN_SEPARATORS, type DomainSeparator } from '../../domain-sep.js';
+import { isLogicalLocator } from '../../lib/locator-form.js';
 import { jcsCanonical, jcsHashHex } from '../../jcs.js';
 import { signatureExcludedHash } from '../../lib/content-hash.js';
 import { deriveBundleLogicalAddress, type BundleBindingV1 } from '../../lib/bundle-binding-v1.js';
@@ -255,7 +256,12 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
   for (let i = 0; i < required.length; i++) {
     const phase = required[i]!, ref = refs[i]!;
     let raw: unknown;
-    try { raw = await deps.fetchAnchored(ref.anchor.locator); }
+    // A logical locator (DACS-4 PC-2 form) reads at the native address the phase's own anchor record binds to it; any other
+    // locator reads as given and the fetch layer decides absence. The SB-1 and receipt-binding checks below judge the citation.
+    const readAddress = isLogicalLocator(ref.anchor.locator) && phase.evidenceAnchor && phase.evidenceAnchor.logicalAddress === ref.anchor.locator
+      ? phase.evidenceAnchor.nativeAddress
+      : ref.anchor.locator;
+    try { raw = await deps.fetchAnchored(readAddress); }
     catch { throw new BundleFinalizationError('evidence-transport', `evidence for phase ${phase.index} could not be fetched; a transport error is not absence`); }
     if (raw === null || raw === undefined) throw new BundleFinalizationError('evidence-unresolved', `evidence for phase ${phase.index} is absent at its anchor`);
     const evidence: JsonObject = parsed(raw);
@@ -292,7 +298,8 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     const unsigned = { ...evidence }; delete unsigned.signature;
     if (!await signatureValid(deps, DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, jcsHashHex(unsigned), signature)) throw new BundleFinalizationError('seb-signature', `evidence signature invalid for phase ${phase.index}`);
     if (!phase.evidenceAnchor) throw new BundleFinalizationError('evidence-anchor', `evidence anchor metadata missing for phase ${phase.index}`);
-    if (phase.evidenceAnchor.logicalAddress !== logicalAddress || phase.evidenceAnchor.nativeAddress !== ref.anchor.locator) throw new BundleFinalizationError('receipt-binding', `evidence anchor address mismatch for phase ${phase.index}`);
+    // The reference cites the logical address (PC-2) or, for bundles anchored before 2026-09-07, the native address; either must be the phase's own anchor.
+    if (phase.evidenceAnchor.logicalAddress !== logicalAddress || (ref.anchor.locator !== logicalAddress && ref.anchor.locator !== phase.evidenceAnchor.nativeAddress)) throw new BundleFinalizationError('receipt-binding', `evidence anchor address mismatch for phase ${phase.index}`);
     let receipt: AnchorReceipt;
     try { receipt = await deps.fetchReceipt({ logicalAddress, contentHash: storedHash, anchor: phase.evidenceAnchor }); }
     catch { throw new BundleFinalizationError('evidence-transport', `evidence receipt for phase ${phase.index} could not be independently fetched`); }

@@ -5,6 +5,7 @@ import { jcsCanonical } from '../jcs.js';
 import { bundleSignedScopeHashV1 } from './bundle-signed-scope-v1.js';
 import { sha256 } from '@noble/hashes/sha2';
 import { fetchAnchored, resolveByOwnerListing, unwrapTextAnchor } from '../demos/storage.js';
+import { isNativeLocator, ownerAddressOfClaim, sdkProgramName } from './locator-form.js';
 const enc = new TextEncoder();
 const bytesToHexLocal = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 /**
@@ -539,7 +540,7 @@ function verifyReferencedArtifact(data, ref, bundle, verifiedSigners = new Set()
  *
  * Mirrors the legacy walkAttestationRefs contract (string-anchored only; object-anchored → v0.3).
  */
-async function walkV1AttestationRefs(bundle, rpc, fetchImpl, verifiedSigners = new Set()) {
+async function walkV1AttestationRefs(bundle, rpc, fetchImpl, verifiedSigners = new Set(), resolveImpl) {
     const refs = collectV1Refs(bundle);
     const steps = [];
     let verified = 0;
@@ -566,9 +567,17 @@ async function walkV1AttestationRefs(bundle, rpc, fetchImpl, verifiedSigners = n
                 detail: `anchor not fetchable (kind="${anchorForm?.kind ?? anchorForm?.substrate ?? 'none'}", locator="${anchor?.locator ?? 'none'}") — only Demos storage-program refs are walked` });
             continue;
         }
+        // A logical locator (DACS-4 PC-2 form, what the pinned dacs-sdk requires for settlement evidence) cannot be read by
+        // address: it resolves by exact SDK-form NAME plus the OWNER behind the reference's signer, and a name match under
+        // another owner is absent. A reference with no resolvable signer owner is unverifiable, never a pass.
+        const logicalOwner = isNativeLocator(anchor.locator) ? null : ownerAddressOfClaim(ref.signer);
+        if (!isNativeLocator(anchor.locator) && !logicalOwner) {
+            steps.push({ ref: label, outcome: 'indeterminate', detail: `logical locator "${anchor.locator}" has no resolvable signer owner to resolve it under` });
+            continue;
+        }
         let fetched;
         try {
-            fetched = await fetchImpl(rpc, anchor.locator);
+            fetched = isNativeLocator(anchor.locator) ? await fetchImpl(rpc, anchor.locator) : await resolveImpl(rpc, logicalOwner, sdkProgramName(anchor.locator));
         }
         catch (e) {
             steps.push({ ref: label, outcome: 'indeterminate', detail: `fetch ${anchor.locator} from ${rpc} failed (RPC error): ${e.message}` });
@@ -888,21 +897,22 @@ export async function verifyBundleV1Full(bundle, options = {}) {
     if (!base.structurallyValid) {
         return { ...base, twoSided: { outcome: 'skipped', detail: 'structural reject — chain checks not run' }, attestationsVerified: 0, attestationsFailed: 0, attestationSteps: [], rollup: 'fail' };
     }
+    // Owner-bound resolution: the owner's own program listing first (exact name), then the name index. The name index
+    // lives in the live layer, which depends on this module; load it on demand. Shared by the two-sided lookup and by
+    // the attestation walk, which resolves a logical (PC-2) locator by the reference signer's owner and the SDK-form name.
+    const resolveImpl = options.resolveByNameImpl
+        ?? (async (resolveRpc, expectedOwner, programName) => (await resolveByOwnerListing(resolveRpc, expectedOwner, programName, { fetchAnchoredImpl: fetchImpl }))
+            ?? (await import('../live/anchor-naming.js')).resolveByName(resolveRpc, expectedOwner, programName, { fetchAnchoredImpl: fetchImpl }));
     let twoSided;
     if (options.skipTwoSidedLookup) {
         twoSided = { outcome: 'skipped',
             detail: 'skipTwoSidedLookup=true — offline verification; §10.4.3 unilateral/divergence detection not enforced (caller-accepted scope limit)' };
     }
     else {
-        // Owner-bound resolution: the owner's own program listing first (exact name), then the name index.
-        // The name index lives in the live layer, which depends on this module; load it on demand.
-        const resolveImpl = options.resolveByNameImpl
-            ?? (async (resolveRpc, expectedOwner, programName) => (await resolveByOwnerListing(resolveRpc, expectedOwner, programName, { fetchAnchoredImpl: fetchImpl }))
-                ?? (await import('../live/anchor-naming.js')).resolveByName(resolveRpc, expectedOwner, programName, { fetchAnchoredImpl: fetchImpl }));
         twoSided = await verifyV1TwoSided(bundle, rpc, fetchImpl, requireSignatures, resolveImpl);
     }
     const verifiedSigners = new Set(base.signatureChecks.filter((c) => c.decision === 'pass').map((c) => claimKey(c.party) ?? c.party));
-    const walk = await walkV1AttestationRefs(bundle, rpc, fetchImpl, verifiedSigners);
+    const walk = await walkV1AttestationRefs(bundle, rpc, fetchImpl, verifiedSigners, resolveImpl);
     // §7.5.1 rollup. `skipped` two-sided is informational (does not block), exactly like legacy.
     const baseDecision = base.decision === 'accept' ? 'pass' : base.decision === 'indeterminate' ? 'indeterminate' : 'fail';
     const outcomes = [baseDecision];

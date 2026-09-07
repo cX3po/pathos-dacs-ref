@@ -23,6 +23,7 @@
  *   bundle copies      dacs5:bundle:{jobId}:buyer | :seller           (§10.4.2 equivalent)
  */
 import { fetchAnchored, type FetchResult } from '../demos/storage.js';
+export { isLogicalLocator, isNativeLocator, sdkProgramName, ownerAddressOfClaim } from '../lib/locator-form.js';
 export interface ResolveByNameOptions {
     /** Additional searches after the first absent result. Default: 0. */
     retries?: number;

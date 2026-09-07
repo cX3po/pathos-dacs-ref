@@ -156,7 +156,7 @@ export async function anchor(
   handle: DemosHandle,
   programName: string,
   data: Record<string, unknown> | string,
-  options: { acl?: 'public' | 'private'; salt?: string; encoding?: 'binary'; fetchImpl?: typeof fetch; readBackAttempts?: number; readBackDelayMs?: number } = {}
+  options: { acl?: 'public' | 'private'; salt?: string; encoding?: 'binary'; fetchImpl?: typeof fetch; readBackAttempts?: number; readBackDelayMs?: number; metadata?: Record<string, unknown> } = {}
 ): Promise<AnchorResult> {
   const { demos, address } = handle;
 
@@ -199,7 +199,8 @@ export async function anchor(
     storedData,
     encoding,
     acl,
-    { nonce, salt: options.salt }
+    // metadata.logicalAddress is what the pinned dacs-sdk's adapter records for its own programs; a reader may use it to confirm the name.
+    { nonce, salt: options.salt, ...(options.metadata ? { metadata: options.metadata } : {}) }
   );
 
   // Sign + broadcast via the DEDICATED storage-program flow (not DemosTransactions.prepare +

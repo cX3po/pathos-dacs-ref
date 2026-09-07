@@ -101,6 +101,7 @@ export declare function anchor(handle: DemosHandle, programName: string, data: R
     fetchImpl?: typeof fetch;
     readBackAttempts?: number;
     readBackDelayMs?: number;
+    metadata?: Record<string, unknown>;
 }): Promise<AnchorResult>;
 /** A node record that exists but contradicts itself or the request; never retried. */
 export declare class AnchorFactsContradiction extends Error {
