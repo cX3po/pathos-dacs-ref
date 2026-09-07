@@ -63,6 +63,7 @@ import {
   type TransferAuthorization,
 } from './pay-policy.js';
 import { organProfile } from './organ-profiles.js';
+import { gatewayDeliverableFrom } from './organ-gateway-deliverable.js';
 
 const LIVE = process.env.LIVE === '1';
 const RPC = process.env.DEMOS_RPC ?? 'https://demosnode.discus.sh/';
@@ -374,21 +375,11 @@ const payEvidenceLocator = await anchorString(
 // DACS-4b — deliver-storage-program (§9.6.1): the REAL organ answer, anchored.
 const DELIVER_PHASE_INDEX = 4;
 const organRaw = execFileSync(AXIOM_PY, [ORGAN_CLI, ORGAN, QUERY], { encoding: 'utf8', timeout: 60_000 });
-const organ = JSON.parse(organRaw) as {
-  organ?: string; answer?: Record<string, unknown>; error?: string;
-  input_commitment?: string; commitment_scheme?: string; commitment_nonce?: string; fetched_at?: string;
-};
-if (!organ.answer) throw new Error(`organ bridge failed: ${organ.error ?? organRaw.slice(0, 200)}`);
-// The commitment NONCE stays OUT of every anchored payload (it keys the HMAC commitment —
-// publishing it would reopen the dictionary oracle Codex flagged). The seller retains it
-// off-channel for a later buyer-side opening of the commitment.
-const commitmentNonce = organ.commitment_nonce;
-const deliverableObj = {
-  v: 'pathos-organ-deliverable:0.1', jobId, agreementHash,
-  organ: organ.organ, answer: organ.answer,
-  input_commitment: organ.input_commitment, commitment_scheme: organ.commitment_scheme,
-  fetched_at: organ.fetched_at,
-};
+// The bridge output goes through the coordinator's public answer projection (organDeliverableFrom): only the
+// projected answer, the commitment, its scheme and fetched_at are anchored. The commitment NONCE stays OUT of every
+// anchored payload (it keys the HMAC commitment; publishing it would reopen the dictionary oracle Codex flagged).
+// The seller retains it off-channel for a later buyer-side opening of the commitment.
+const { deliverable: deliverableObj, commitmentNonce } = gatewayDeliverableFrom(organRaw, { jobId, organ: ORGAN, agreementHash });
 const deliverablePayload = jcsString(deliverableObj);
 const deliverableContentHash = jcsHashHex(deliverableObj);
 const deliverableLocator = await anchorString(handles?.seller ?? null, sellerOwner, anchorNames.deliverable(jobId), deliverablePayload);
@@ -403,7 +394,7 @@ const deliveryEvidenceLocator = await anchorString(
   handles?.seller ?? null, sellerOwner,
   anchorNames.deliveryEvidence(jobId, DELIVER_PHASE_INDEX), deliveryEvidenceStr,
 );
-log('DACS-4', `deliverable (${String(organ.answer['coverage'] ?? 'answer')}) anchored @ ${deliverableLocator}; delivery evidence @ ${deliveryEvidenceLocator}`);
+log('DACS-4', `deliverable (${String(deliverableObj.answer['coverage'] ?? deliverableObj.answer['category'] ?? 'answer')}) anchored @ ${deliverableLocator}; delivery evidence @ ${deliveryEvidenceLocator}`);
 
 // DACS-5 — both parties emit + anchor AttestationBundleV1; verify ENFORCING.
 const refFor = (_id: string, locator: string, contentHash: string): AttestationRef => ({
@@ -516,7 +507,7 @@ console.log(JSON.stringify({
   jobId, mode: LIVE ? 'live' : 'dry-run', rollup: verdict.rollup,
   twoSided: verdict.twoSided.outcome,
   attestationsVerified: verdict.attestationsVerified,
-  organAnswer: organ.answer,
+  organAnswer: deliverableObj.answer,
   paramHash,
   // Advertise the authorize line ONLY on a PASSING dry-run — so possessing the hash means the
   // dry-run of these exact parameters actually passed (the match-gate then binds live to it).
