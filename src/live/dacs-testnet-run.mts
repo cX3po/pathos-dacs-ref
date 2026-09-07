@@ -564,6 +564,8 @@ export function organDeliverableFrom(raw: string, run: Pick<DacsTestnetConfig, '
     input_commitment: o.input_commitment, commitment_scheme: o.commitment_scheme, fetched_at: o.fetched_at,
   };
   if (containsNonce(deliverable, o.commitment_nonce)) throw new OrganDeliverableError('organ bridge nonce would be anchored');
+  // The opening's record string (commitment_input, disclosed off-channel for a buyer-side audit) is as private as the nonce.
+  if (typeof o.commitment_input === 'string' && o.commitment_input.length >= 16 && containsNonce(deliverable, o.commitment_input)) throw new OrganDeliverableError('organ bridge commitment input would be anchored');
   return deliverable;
 }
 
