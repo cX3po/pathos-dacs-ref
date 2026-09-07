@@ -67,7 +67,7 @@
     },
     {
       "sourcePath": "src/lib/verify-bundle-v1.ts",
-      "sha256": "68f7a1217d825e6d722392290956631211ac4ba536408a310ff6e7bfa0a92816"
+      "sha256": "2cf24cf1f9e024cf163ac38ac45a186b336d68610dc254b3a343dd7432f84ab5"
     },
     {
       "sourcePath": "src/lib/verify-bundle.ts",
@@ -110,7 +110,7 @@
       "sha256": "165d2f3a872c1300c34ff98482948fc0c2a9ea7e7c8b98902ccc97cfcd5708c0"
     }
   ],
-  "sourceManifestSha256": "2f82e14bf6afdbb1477ae5dca1ba1a48521228a72061fc4e57bc96b7bb74cd49",
+  "sourceManifestSha256": "8dc46c658ab0bd489dcd93bc988eba9f33c386774d8d9aa578f5e383798f678f",
   "emitted": [
     {
       "path": "packages/verifier/src/cli.d.ts",
@@ -230,7 +230,7 @@
     },
     {
       "path": "src/lib/verify-bundle-v1.js",
-      "sha256": "10a6a608c714eed13977b77670d275fa272f8ca252c002c661d1620ba2f8bfce"
+      "sha256": "f20a2aa7496ac1f7939757ae11676437ec482bebe70e2428a85e3d5c55548d1b"
     },
     {
       "path": "src/lib/verify-bundle.d.ts",
@@ -313,5 +313,5 @@
       "sha256": "cc4e23422ec114b49a43bb29d442339934e2d38ca79d41ebd4d9d253a7a122cf"
     }
   ],
-  "emittedSha256": "d82bab813c623ac11aac9d74a6e2c5bc7a35f6a91381cc4f75e935aa30bf54b4"
+  "emittedSha256": "eab8d4eab1d65eb8458deff4ba541b7ec5919f3dddb0825b118690ae714eaa76"
 }

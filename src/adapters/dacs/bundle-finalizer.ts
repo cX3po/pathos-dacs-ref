@@ -294,7 +294,9 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
     const sameSigner = signerKey !== null && orchestratorSignerKey !== null
       ? signerKey === orchestratorSignerKey
       : typeof signature.signer === 'string' && typeof phase.orchestrator === 'string' && signature.signer === phase.orchestrator;
-    if (!sameSigner) throw new BundleFinalizationError('seb-authorship', `evidence signer is not phase ${phase.index}'s authenticated orchestrator`);
+    if (!sameSigner) throw new BundleFinalizationError(
+      'seb-authorship',
+      `evidence signer is not phase ${phase.index}'s authenticated orchestrator`);
     const unsigned = { ...evidence }; delete unsigned.signature;
     if (!await signatureValid(deps, DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, jcsHashHex(unsigned), signature)) throw new BundleFinalizationError('seb-signature', `evidence signature invalid for phase ${phase.index}`);
     if (!phase.evidenceAnchor) throw new BundleFinalizationError('evidence-anchor', `evidence anchor metadata missing for phase ${phase.index}`);
@@ -309,6 +311,17 @@ async function resolveEvidence(input: CompletedSessionEvidence, deps: BundleFina
       ? writerKey === orchestratorKey
       : typeof phase.orchestrator === 'string' && receipt.writer === phase.orchestrator;
     if (!sameWriter) throw new BundleFinalizationError('seb-authorship', `evidence writer is not phase ${phase.index}'s authenticated orchestrator`);
+    // A logical reference resolves by its signer's owner, so that signer must be the authenticated orchestrator or the
+    // finalized bundle could not resolve its own evidence.
+    const refSignerKey = claimKey(ref.signer);
+    const refSignerBound = refSignerKey !== null && orchestratorSignerKey !== null
+      ? refSignerKey === orchestratorSignerKey
+      : typeof ref.signer === 'string' && typeof phase.orchestrator === 'string' && ref.signer === phase.orchestrator;
+    if (isLogicalLocator(ref.anchor.locator) && !refSignerBound) {
+      throw new BundleFinalizationError(
+        'seb-authorship',
+        `evidence reference signer is not phase ${phase.index}'s authenticated orchestrator`);
+    }
   }
   return refs as AttestationRef[];
 }

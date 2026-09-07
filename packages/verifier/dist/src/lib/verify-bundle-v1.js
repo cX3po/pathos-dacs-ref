@@ -583,7 +583,11 @@ async function walkV1AttestationRefs(bundle, rpc, fetchImpl, verifiedSigners = n
             steps.push({ ref: label, outcome: 'indeterminate', detail: `fetch ${anchor.locator} from ${rpc} failed (RPC error): ${e.message}` });
             continue;
         }
-        if (!fetched) {
+        // A logical locator resolves through an index entry; the record actually read must belong to the expected owner too,
+        // or a correct-owner index entry pointing at a foreign-owned copy of correctly signed evidence would pass.
+        const normOwner = (value) => String(value ?? '').replace(/^0x/i, '').toLowerCase();
+        if (!fetched || (logicalOwner !== null &&
+            normOwner(fetched.owner) !== normOwner(logicalOwner))) {
             // The bundle cites this evidence by content hash; if it cannot be retrieved at the locator
             // the citation is unverifiable. §7.5.2 normative MUST: a non-resolvable cited ref fails.
             steps.push({ ref: label, outcome: 'fail', detail: `${anchor.locator} not found at ${rpc} — cited evidence does not exist (§7.5.2)` });

@@ -337,17 +337,28 @@ test('PC-2 logical locator: settlement evidence cited by its logical address res
   assert.deepEqual(seen.at(-1), [`0x${orchestrator.pubHex}`, `dacs4%3Apayment%3A${jobId}%3Apay-dem%3A2`]);
 });
 
-test('PC-2 logical locator: a name match under another owner is absent → fail; a reference without a resolvable signer owner → indeterminate', async () => {
+test('PC-2 logical locator: a correctly signed, hash-matching record under another owner fails; a missing owner fails; a resolver error is indeterminate; no resolvable signer owner → indeterminate', async () => {
   const jobId = 'v1-ref-logical-owner';
   const orchestrator = mk(0x32);
-  const evidence = JSON.stringify({ evidenceVersion: '1', jobId, phase: 'pay-dem', outcome: 'success', observedAt: 1735689600000 });
+  const unsigned = { evidenceVersion: '1', jobId, phase: 'pay-dem', outcome: 'success', observedAt: 1735689600000 };
+  const artifactHash = hexOf(sha256(jcsCanonical(unsigned)));
+  const value = Buffer.from(sign(DOMAIN_SEPARATORS.SETTLEMENT_EVIDENCE, enc.encode(artifactHash), orchestrator.priv)).toString('base64');
+  const evidence = JSON.stringify({ ...unsigned, signature: { algorithm: 'ed25519', signer: `cci:${orchestrator.pubHex}`, value } });
   const logical = `dacs4:payment:${jobId}:pay-dem:2`;
   const ref = { anchor: { kind: 'storage-program' as const, locator: logical }, contentHash: sha256Hex(evidence), signer: `did:demos:agent:${orchestrator.pubHex}` };
   const { buyerCopy, map } = twoSidedMap({ jobId, settlementEvidence: [ref] });
-  const wrongOwner = async (_rpc: string, owner: string, _name: string) => (owner === '0x' + 'ab'.repeat(32) ? { storageAddress: 'stor-x', owner, data: evidence, sizeBytes: 1, createdAt: '' } : null);
-  const v = await verifyBundleV1Full(buyerCopy, { resolveByNameImpl: wrongOwner, fetchAnchoredImpl: mockFetch(map) });
+  // The index entry names the right owner, but the record read back belongs to someone else: correctly signed and hash-matching, still not this owner's.
+  const foreignRecord = async (_rpc: string, owner: string, _name: string) => ({ storageAddress: 'stor-x', owner: '0x' + 'ab'.repeat(32), data: evidence, sizeBytes: 1, createdAt: '' });
+  const v = await verifyBundleV1Full(buyerCopy, { resolveByNameImpl: foreignRecord, fetchAnchoredImpl: mockFetch(map) });
   assert.equal(v.attestationsFailed, 1, JSON.stringify(v.attestationSteps));
-  assert.match(v.attestationSteps[0]!.detail, /not found/);
+  assert.equal(v.rollup, 'fail');
+  const ownerless = async (_rpc: string, owner: string, _name: string) => ({ storageAddress: 'stor-x', data: evidence, sizeBytes: 1, createdAt: '' } as unknown as Awaited<ReturnType<typeof foreignRecord>>);
+  const v1 = await verifyBundleV1Full(buyerCopy, { resolveByNameImpl: ownerless, fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v1.attestationsFailed, 1, JSON.stringify(v1.attestationSteps));
+  const throwing = async () => { throw new Error('index unreachable'); };
+  const v3 = await verifyBundleV1Full(buyerCopy, { skipTwoSidedLookup: true, resolveByNameImpl: throwing, fetchAnchoredImpl: mockFetch(map) });
+  assert.equal(v3.attestationSteps[0]!.outcome, 'indeterminate', JSON.stringify(v3.attestationSteps));
+  assert.notEqual(v3.rollup, 'pass');
   const noSigner = { anchor: { kind: 'storage-program' as const, locator: logical }, contentHash: sha256Hex(evidence) };
   const { buyerCopy: unsignedCopy, map: map2 } = twoSidedMap({ jobId: 'v1-ref-logical-nosigner', settlementEvidence: [noSigner] });
   const v2 = await verifyBundleV1Full(unsignedCopy, { resolveByNameImpl: async () => { throw new Error('must not be called'); }, fetchAnchoredImpl: mockFetch(map2) });

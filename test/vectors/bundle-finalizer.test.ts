@@ -461,3 +461,21 @@ test('PC-2 logical locator: an evidence reference citing the logical address rea
   const unbound = { ...input, phaseResults: input.phaseResults.map((p) => (p === paid ? { ...p, evidenceRef: { ...logicalRef, anchor: { kind: 'storage-program' as const, locator: foreign } } } : p)) };
   await assert.rejects(finalizeBundle(unbound, state.deps), codeIs('receipt-binding'));
 });
+
+test('PC-2 logical reference: its signer must be the authenticated orchestrator (missing or different signer refuses; the equivalent cci form of the same key passes)', async () => {
+  const state = setup();
+  const input = await session(state);
+  const paid = input.phaseResults.find((p) => p.kind.startsWith('pay-'))!;
+  const codeIs = (code: string) => (error: unknown) => error instanceof BundleFinalizationError && error.code === code;
+  const withRef = (ref: AttestationRef) => ({ ...input, phaseResults: input.phaseResults.map((p) => (p === paid ? { ...p, evidenceRef: ref } : p)) });
+  const logicalRef = { ...paid.evidenceRef!, anchor: { kind: 'storage-program' as const, locator: paid.evidenceLogicalAddress! } };
+  const { signer: _omitted, ...missingSigner } = logicalRef;
+  await assert.rejects(finalizeBundle(withRef(missingSigner as AttestationRef), state.deps), codeIs('seb-authorship'));
+  await assert.rejects(finalizeBundle(withRef({ ...logicalRef, signer: buyer.claim }), state.deps), codeIs('seb-authorship'));
+  const orchestratorHex = /^(?:did:demos:agent:|cci:)([0-9a-f]{64})$/.exec(String(orchestrator.claim))?.[1];
+  if (orchestratorHex) {
+    const equivalent = String(orchestrator.claim).startsWith('cci:') ? `did:demos:agent:${orchestratorHex}` : `cci:${orchestratorHex}`;
+    const out = await finalizeBundle(withRef({ ...logicalRef, signer: equivalent }), state.deps);
+    assert.ok(out.bundles.buyer);
+  }
+});
