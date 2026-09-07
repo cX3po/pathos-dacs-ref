@@ -28,6 +28,7 @@
  * two-sided anchor lookup for every request (receipt-archive audit deployments only).
  */
 import { createHash } from 'node:crypto';
+import type { DeliveryStore } from './delivery-store.js';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -80,8 +81,10 @@ export interface VerifyEndpointOptions {
   reserved: Set<string>;
   /** Verdicts already delivered, by proof key: a repeat of the same paid request is answered again, not billed again. */
   delivered?: Map<string, string>;
-  /** Bound of the redelivery cache (default 10 000). A committed proof evicted from it is re-verified and served, never refused. */
+  /** Bound of the redelivery cache (default 10 000). A committed proof evicted from it is served from the durable store when one is configured, else re-verified; never refused. */
   maxDelivered?: number;
+  /** Durable record of paid deliveries (src/live/delivery-store.ts): loaded at construction into the committed set and a durable redelivery map; appended after every sent delivery. Restart, eviction and concurrent duplicates then redeliver the original signed payload. */
+  store?: DeliveryStore;
   verify?: VerifyHttpConfig;
   /** Applied to every request (receipt-archive audit deployments). */
   offline?: boolean;
@@ -143,6 +146,14 @@ function readBody(request: IncomingMessage): Promise<Buffer | null> {
 }
 
 export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
+  // Durable deliveries: rebuild the committed set and keep an unbounded-by-cache map of original payloads.
+  const durable = new Map<string, string>();
+  if (options.store) {
+    const loaded = options.store.load();
+    for (const [key, payload] of loaded.records) { durable.set(key, payload); options.committed.add(key); }
+  }
+  // Paid requests in flight, by proof key: a concurrent duplicate waits for the first delivery and redelivers it.
+  const inflight = new Map<string, Promise<string | null>>();
   return async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     let url: URL;
     try {
@@ -201,7 +212,11 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
       // the same proof for the same bytes again: redeliver the verdict it already bought, from the
       // cache while it is there, by verifying again once it has been evicted; never a refusal
       const replayKey = gated.reason === 'replayed' ? deliveredKey(request.headers, resource.resourceId) : null;
-      const cached = replayKey ? delivered.get(replayKey) : undefined;
+      let cached = replayKey ? (delivered.get(replayKey) ?? durable.get(replayKey)) : undefined;
+      if (cached === undefined && replayKey && inflight.has(replayKey)) {
+        // the same paid request is being answered right now: wait for it and redeliver, never a second billing
+        cached = (await inflight.get(replayKey)!) ?? undefined;
+      }
       if (cached !== undefined) {
         const again = JSON.parse(cached) as Record<string, unknown>;
         json(response, 200, { ...again, receipt: { ...(again.receipt as object), redelivered: true } });
@@ -225,11 +240,15 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
 
     // Paid. The proof is reserved by the gate; commit it only once the verdict has been sent.
     const key = proofKey(gated.payment.txHash, resource.resourceId);
+    let settleInflight: (payload: string | null) => void = () => {};
+    inflight.set(key, new Promise<string | null>((resolve) => { settleInflight = resolve; }));
+    const finishInflight = (payload: string | null) => { settleInflight(payload); inflight.delete(key); };
     const verified = await handleVerifyRequest(body, { ...(options.verify ?? {}), fetchAnchoredImpl: watchedFetch, forceOffline: options.offline === true, lockRequestOptions: true });
     if (verified.status !== 200) {
       // unreachable in practice: the same bytes passed parseVerifyRequest before the gate. Kept as a
       // fail-safe that releases the reservation rather than billing a request that produced no verdict.
       options.reserved.delete(key);
+      finishInflight(null);
       json(response, 400, verified.body);
       return;
     }
@@ -239,6 +258,7 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
       // name, so a genuine verdict can never be mistaken for an outage and strand a paid caller.
       // The reservation is released so the same proof pays for a retry.
       options.reserved.delete(key);
+      finishInflight(null);
       outage(rpcFailed ? 'a chain read failed on the server during verification' : verified.incomplete!);
       return;
     }
@@ -250,6 +270,7 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(payload), connection: 'close' });
     } catch {
       options.reserved.delete(key);
+      finishInflight(null);
       if (!response.headersSent) { response.writeHead(502); response.end(); }
       return;
     }
@@ -259,6 +280,9 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
     while (delivered.size >= bound && delivered.size > 0) delivered.delete(delivered.keys().next().value as string);
     delivered.set(key, payload);
     response.end(payload);
+    // durable only after the bytes went out: a record means the buyer received this exact payload
+    if (options.store) { try { options.store.append(key, payload); durable.set(key, payload); } catch { /* the in-memory cache still serves redelivery; a store failure never fails a delivery already sent */ } }
+    finishInflight(payload);
   };
 }
 
