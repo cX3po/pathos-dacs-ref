@@ -20,7 +20,7 @@ import { D402Client } from '@kynesyslabs/demosdk/d402/client';
 import { verifyBundleListing } from '../adapters/dacs/bundle-finalizer.js';
 import { agentDidSignatureVerifier, assertDacs1Listing } from './producer-listing.js';
 import { verifyDeliveryReceipt } from '../lib/delivery-receipt.js';
-import { runBuyerPilot } from './buyer-pilot-core.js';
+import { bindPaymentPayee, runBuyerPilot } from './buyer-pilot-core.js';
 import { resourceForBody } from './verify-endpoint.mjs';
 import { fetchAnchored, unwrapTextAnchor } from '../demos/storage.js';
 
@@ -72,7 +72,7 @@ async function main(): Promise<number> {
       settlements += 1;
       const h = await wallet();
       const client = new D402Client(h.demos as never);
-      const payment = await client.createPayment(requirement as never);
+      const payment = bindPaymentPayee(await client.createPayment(requirement as never) as { content?: { to?: unknown } }, requirement.recipient);
       return client.settle(payment as never);
     },
     txBlock: async (txHash) => {

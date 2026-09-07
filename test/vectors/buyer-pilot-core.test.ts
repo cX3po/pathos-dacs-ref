@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { capOs, requirementAmountOs, runBuyerPilot, type BuyerPilotDeps } from '../../src/live/buyer-pilot-core.js';
+import { bindPaymentPayee, capOs, requirementAmountOs, runBuyerPilot, type BuyerPilotDeps } from '../../src/live/buyer-pilot-core.js';
 
 const SELLER_HEX = '11'.repeat(32);
 const SELLER_DID = `did:demos:agent:${SELLER_HEX}`;
@@ -100,4 +100,14 @@ test('buyer pilot core: an inclusion timeout keeps the payment but fails the run
   const refused = harness({ settleOk: false });
   const r3 = await runBuyerPilot(refused.cfg, refused.deps);
   assert.equal(r3.rollup, 'FAIL'); assert.equal(r3.payments.length, 0);
+});
+
+test('buyer pilot core: the d402 payment binds its top-level payee to the bound recipient', () => {
+  const skeleton = () => ({ content: { type: 'd402_payment', to: '', data: ['d402_payment', { to: PAYEE, amount: '100000000', memo: 'resourceId:x' }] } });
+  assert.equal(bindPaymentPayee(skeleton(), PAYEE).content.to, PAYEE);
+  const preset = skeleton(); preset.content.to = '0x';
+  assert.equal(bindPaymentPayee(preset, PAYEE).content.to, PAYEE);
+  const other = skeleton(); other.content.to = '0x' + '33'.repeat(32);
+  assert.throws(() => bindPaymentPayee(other, PAYEE), /differs from the bound recipient/);
+  assert.throws(() => bindPaymentPayee({} as { content?: { to?: unknown } }, PAYEE), /no content/);
 });
