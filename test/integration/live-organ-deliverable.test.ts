@@ -32,7 +32,7 @@ test('a valid organ answer becomes the projected deliverable and the commitment 
   assert.equal(d.v, 'pathos-organ-deliverable:0.1');
   assert.deepEqual(d.answer, good.answer);
   assert.ok(!JSON.stringify(d).includes(NONCE));
-  assert.deepEqual(supportedOrgans(), ['nws_alerts']);
+  assert.deepEqual(supportedOrgans(), ['nws_alerts', 'air_quality', 'drug_info']);
 });
 
 test('only the projected public answer fields are anchored; extra fields are dropped', () => {
@@ -318,4 +318,33 @@ test('the live listing and agreement pass the agreement adapter with a fabricate
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ── air_quality and drug_info projections (sellable organs beside nws_alerts) ─────────────────────────────────────
+const aqRun = { jobId: 'job-aq', organ: 'air_quality', query: '35.2271,-80.8431' };
+const aqGood = { ...good, organ: 'air_quality', answer: { category: 'Moderate', reading_present: true, guidance: 'Unusually sensitive people should consider reducing prolonged or heavy exertion.' } };
+const rxRun = { jobId: 'job-rx', organ: 'drug_info', query: 'warfarin' };
+const rxGood = { ...good, organ: 'drug_info', answer: { boxed_warning_present: true, interactions_section_present: true, pregnancy_section_present: false, prescription_required: true, basis: 'supplied-label-record' } };
+
+test('air_quality projects the EPA category, presence flag and vendored guidance only; readings and locations are dropped', () => {
+  const d = organDeliverableFrom(JSON.stringify({ ...aqGood, answer: { ...aqGood.answer, aqi: 87, location: '35.2,-80.8' } }), aqRun);
+  assert.deepEqual(d.answer, aqGood.answer);
+  assert.deepEqual(organDeliverableFrom(JSON.stringify({ ...aqGood, answer: { category: 'unknown', reading_present: false } }), aqRun).answer, { category: 'unknown', reading_present: false });
+  for (const answer of [{ category: 'Fine', reading_present: true }, { category: 'Good' }, { category: 'Good', reading_present: true, guidance: 'AQI was 87 today' }, { category: 'Good', reading_present: 'yes' }]) {
+    assert.throws(() => organDeliverableFrom(JSON.stringify({ ...aqGood, answer }), aqRun), isDelivery, JSON.stringify(answer));
+  }
+});
+
+test('drug_info projects derived booleans and a short basis only; names and label prose are dropped', () => {
+  const d = organDeliverableFrom(JSON.stringify({ ...rxGood, answer: { ...rxGood.answer, medication: 'warfarin', boxed_warning_text: 'WARNING: BLEEDING RISK' } }), rxRun);
+  assert.deepEqual(d.answer, rxGood.answer);
+  assert.equal(organDeliverableFrom(JSON.stringify({ ...rxGood, answer: { ...rxGood.answer, prescription_required: null } }), rxRun).answer.prescription_required, null);
+  for (const answer of [{ ...rxGood.answer, boxed_warning_present: 'yes' }, { boxed_warning_present: true }, { ...rxGood.answer, prescription_required: 'rx' }, { ...rxGood.answer, basis: 'x'.repeat(201) }]) {
+    assert.throws(() => organDeliverableFrom(JSON.stringify({ ...rxGood, answer }), rxRun), isDelivery, JSON.stringify(answer));
+  }
+});
+
+test('each supported organ has a distinct deliverable spec hash at the same deliverable version', () => {
+  const hashes = new Set(supportedOrgans().map((organ) => liveDeliverableSpec({ organ }).hash));
+  assert.equal(hashes.size, 3);
 });

@@ -460,32 +460,64 @@ const HEX64 = /^[0-9a-f]{64}$/;
 const NONCE = /^[0-9a-f]{16,128}$/;
 
 /** Public answer schemas per organ: only these keys, with these value shapes, are ever anchored.
- *  The bridge is trusted to compute the answer; this projection is the confidentiality boundary. */
-const ORGAN_ANSWER_PROJECTIONS: ReadonlyMap<string, (answer: Record<string, unknown>) => Record<string, unknown>> = new Map([
-  ['nws_alerts', (answer: Record<string, unknown>): Record<string, unknown> => {
+ *  The bridge is trusted to compute the answer; this projection is the confidentiality boundary. Each entry mirrors
+ *  the PATH-OS batch-2 public answer for that organ (engines/proof/organ_batch2.py): a category or a boolean, never
+ *  an exact reading, a location, a medication name or label prose. Every organ here is a sellable LIVE deliverable
+ *  behind the same coordinator at the same listing price. */
+type AnswerProjection = (answer: Record<string, unknown>) => Record<string, unknown>;
+const AQI_CATEGORIES = new Set(['Good', 'Moderate', 'Unhealthy for Sensitive Groups', 'Unhealthy', 'Very Unhealthy', 'Hazardous', 'unknown']);
+const own = (answer: Record<string, unknown>, key: string): unknown => (Object.hasOwn(answer, key) ? answer[key] : undefined);
+const shortString = (organ: string, key: string, value: unknown, max: number): string => {
+  if (typeof value !== 'string' || value.length > max) throw new OrganDeliverableError(`${organ} answer.${key} is not a short string`);
+  return value;
+};
+const ORGAN_PROJECTIONS: Record<string, AnswerProjection> = {
+  nws_alerts(answer) {
     const out: Record<string, unknown> = {};
-    const own = (key: string): unknown => (Object.hasOwn(answer, key) ? answer[key] : undefined);
-    const coverage = own('coverage');
+    const coverage = own(answer, 'coverage');
     if (coverage !== 'indeterminate' && coverage !== 'verified-empty' && coverage !== 'reported') throw new OrganDeliverableError('nws_alerts answer.coverage is not a known value');
     out.coverage = coverage;
-    const active = own('active');
+    const active = own(answer, 'active');
     if (active !== null && typeof active !== 'boolean') throw new OrganDeliverableError('nws_alerts answer.active is not boolean or null');
     out.active = active ?? null;
     for (const key of ['highest_band', 'count_band'] as const) {
-      const value = own(key);
+      const value = own(answer, key);
       if (value !== undefined) {
         if (typeof value !== 'string' || !/^[a-z-]{1,32}$/.test(value)) throw new OrganDeliverableError(`nws_alerts answer.${key} is not a short band label`);
         out[key] = value;
       }
     }
-    const basis = own('basis');
-    if (basis !== undefined) {
-      if (typeof basis !== 'string' || basis.length > 200) throw new OrganDeliverableError('nws_alerts answer.basis is not a short string');
-      out.basis = basis;
-    }
+    const basis = own(answer, 'basis');
+    if (basis !== undefined) out.basis = shortString('nws_alerts', 'basis', basis, 200);
     return out;
-  }],
-]);
+  },
+  air_quality(answer) {
+    // EPA category + vendored guidance only; the exact AQI reading and the location stay committed (organ_batch2._air_quality_answer).
+    const category = own(answer, 'category');
+    if (typeof category !== 'string' || !AQI_CATEGORIES.has(category)) throw new OrganDeliverableError('air_quality answer.category is not an EPA category or unknown');
+    const readingPresent = own(answer, 'reading_present');
+    if (typeof readingPresent !== 'boolean') throw new OrganDeliverableError('air_quality answer.reading_present is not boolean');
+    const guidance = own(answer, 'guidance');
+    if (guidance !== undefined && (typeof guidance !== 'string' || guidance.length > 400 || /\d{2,}/.test(guidance))) throw new OrganDeliverableError('air_quality answer.guidance is not short vendored text without readings');
+    return { category, reading_present: readingPresent, ...(guidance !== undefined ? { guidance } : {}) };
+  },
+  drug_info(answer) {
+    // Derived booleans only; the medication name and the label record stay committed (organ_batch2._drug_answer).
+    const out: Record<string, unknown> = {};
+    for (const key of ['boxed_warning_present', 'interactions_section_present', 'pregnancy_section_present'] as const) {
+      const value = own(answer, key);
+      if (typeof value !== 'boolean') throw new OrganDeliverableError(`drug_info answer.${key} is not boolean`);
+      out[key] = value;
+    }
+    const rx = own(answer, 'prescription_required');
+    if (rx !== null && rx !== undefined && typeof rx !== 'boolean') throw new OrganDeliverableError('drug_info answer.prescription_required is not boolean or null');
+    out.prescription_required = rx ?? null;
+    const basis = own(answer, 'basis');
+    if (basis !== undefined) out.basis = shortString('drug_info', 'basis', basis, 200);
+    return out;
+  },
+};
+const ORGAN_ANSWER_PROJECTIONS: ReadonlyMap<string, AnswerProjection> = new Map(Object.entries(ORGAN_PROJECTIONS));
 
 export function supportedOrgans(): string[] { return [...ORGAN_ANSWER_PROJECTIONS.keys()]; }
 
