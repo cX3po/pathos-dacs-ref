@@ -27,7 +27,7 @@ interface Script {
   /** what broadcastAndWait does: 'included' | 'timeout' | 'failed-state' */
   broadcast: 'included' | 'timeout';
   /** node states polled after a timeout, in order; the last repeats */
-  pollStates?: string[];
+  nodeAnswers?: string[];
   /** read-back: how many getStorageProgram calls answer 404 before the record appears (delayed indexing) */
   readbackAbsent?: number;
   /** read-back owner (a conflicting writer when it is not ADDRESS) */
@@ -48,7 +48,7 @@ function fakeHandle(script: Script) {
     },
     async call(_m: string, message: string) {
       if (message === 'getTransactionStatus') {
-        const list = script.pollStates ?? ['pending'];
+        const list = script.nodeAnswers ?? ['pending'];
         const state = list[Math.min(counters.pollCount, list.length - 1)]; counters.pollCount += 1;
         return { state, blockNumber: state === 'included' ? 249444 : undefined };
       }
@@ -96,9 +96,9 @@ async function main(): Promise<number> {
   const timeout = Number(process.env.GATEWAY_BROADCAST_TIMEOUT_MS ?? '150'); const grace = Number(process.env.GATEWAY_BROADCAST_GRACE_MS ?? '400'); const poll = Number(process.env.GATEWAY_BROADCAST_POLL_MS ?? '100');
   const bound = timeout + grace + poll + 4 * 10 + 1500; // windows + read-back attempts + scheduling slack
   await scenario('delayed-indexing', { broadcast: 'included', readbackAbsent: 2 }, { ok: true }, bound);
-  await scenario('missing-finality-pending-forever', { broadcast: 'timeout', pollStates: ['pending'] }, { ok: false, cls: 'anchor-not-confirmed' }, bound);
-  await scenario('timeout-after-broadcast-then-included', { broadcast: 'timeout', pollStates: ['pending', 'included'] }, { ok: true }, bound);
-  await scenario('failed-on-chain', { broadcast: 'timeout', pollStates: ['failed'] }, { ok: false, cls: 'anchor-failed-on-chain' }, bound);
+  await scenario('missing-finality-pending-forever', { broadcast: 'timeout', nodeAnswers: ['pending'] }, { ok: false, cls: 'anchor-not-confirmed' }, bound);
+  await scenario('timeout-after-broadcast-then-included', { broadcast: 'timeout', nodeAnswers: ['pending', 'included'] }, { ok: true }, bound);
+  await scenario('failed-on-chain', { broadcast: 'timeout', nodeAnswers: ['failed'] }, { ok: false, cls: 'anchor-failed-on-chain' }, bound);
   await scenario('conflicting-writer', { broadcast: 'included', owner: OTHER }, { ok: false, cls: 'anchor-facts-mismatch' }, bound);
   const rollup = steps.every((s) => s.outcome === 'pass') ? 'PASS' : 'FAIL';
   const out = { harness: 'rpc-replay-fixture:0.1', mode: 'offline-corpus', corpus: 'demos-node-shape-probe (sanitized shapes)', windows_ms: { timeout, grace, poll }, rollup, steps };
