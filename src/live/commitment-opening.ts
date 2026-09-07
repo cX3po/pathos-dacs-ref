@@ -12,7 +12,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export const COMMITMENT_SCHEME = 'hmac-sha256(nonce, sorted-json-record)';
-const NONCE = /^[0-9a-f]{16,128}$/;
+const NONCE = /^(?:[0-9a-f]{2}){8,64}$/; // even-length hex only: Node's Buffer.from(hex) would silently drop an odd final digit
 const HEX64 = /^[0-9a-f]{64}$/;
 
 export interface CommitmentOpening {
@@ -39,7 +39,11 @@ export function commitmentFor(opening: CommitmentOpening): string {
   return createHmac('sha256', Buffer.from(opening.nonce, 'hex')).update(Buffer.from(opening.commitment_input, 'utf8')).digest('hex');
 }
 
-/** Buyer side: does the disclosed opening bind to the deliverable's commitment under its scheme? */
+/**
+ * Verify that the disclosed record opens the supplied commitment.
+ * The caller must authenticate the anchored deliverable and check its jobId and organ.
+ * Success does not prove engine execution, freshness, or correctness of the public answer.
+ */
 export function verifyCommitmentOpening(deliverable: { input_commitment?: unknown; commitment_scheme?: unknown }, opening: unknown): OpeningVerdict {
   if (deliverable.commitment_scheme !== COMMITMENT_SCHEME) return { ok: false, reason: 'scheme-unsupported' };
   if (typeof deliverable.input_commitment !== 'string' || !HEX64.test(deliverable.input_commitment)) return { ok: false, reason: 'commitment-malformed' };

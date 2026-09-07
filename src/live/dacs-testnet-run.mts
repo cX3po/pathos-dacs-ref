@@ -458,7 +458,7 @@ export class OrganDeliverableError extends Error {
 }
 
 const HEX64 = /^[0-9a-f]{64}$/;
-const NONCE = /^[0-9a-f]{16,128}$/;
+const NONCE = /^(?:[0-9a-f]{2}){8,64}$/; // even-length hex only: Node's Buffer.from(hex) would silently drop an odd final digit
 
 /** Public answer projections mirror the PATH-OS batch-2 answer schemas (engines/proof/organ_batch2.py). The bridge
  *  computes the answer; this confidentiality boundary permits only booleans, permitted nulls, enumerated labels, and
