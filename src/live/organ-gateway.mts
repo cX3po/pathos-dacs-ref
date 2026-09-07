@@ -64,6 +64,7 @@ import {
 } from './pay-policy.js';
 import { organProfile } from './organ-profiles.js';
 import { gatewayDeliverableFrom } from './organ-gateway-deliverable.js';
+import { OrganDeliverableError } from './dacs-testnet-run.mjs';
 
 const LIVE = process.env.LIVE === '1';
 const RPC = process.env.DEMOS_RPC ?? 'https://demosnode.discus.sh/';
@@ -374,7 +375,13 @@ const payEvidenceLocator = await anchorString(
 
 // DACS-4b — deliver-storage-program (§9.6.1): the REAL organ answer, anchored.
 const DELIVER_PHASE_INDEX = 4;
-const organRaw = execFileSync(AXIOM_PY, [ORGAN_CLI, ORGAN, QUERY], { encoding: 'utf8', timeout: 60_000 });
+// A bridge that does not complete is a delivery failure; its stderr and partial output never enter the thrown error.
+let organRaw: string;
+try {
+  organRaw = execFileSync(AXIOM_PY, [ORGAN_CLI, ORGAN, QUERY], { encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'] });
+} catch {
+  throw new OrganDeliverableError('organ bridge did not complete');
+}
 // The bridge output goes through the coordinator's public answer projection (organDeliverableFrom): only the
 // projected answer, the commitment, its scheme and fetched_at are anchored. The commitment NONCE stays OUT of every
 // anchored payload (it keys the HMAC commitment; publishing it would reopen the dictionary oracle Codex flagged).
