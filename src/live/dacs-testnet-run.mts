@@ -459,33 +459,70 @@ export class OrganDeliverableError extends Error {
 const HEX64 = /^[0-9a-f]{64}$/;
 const NONCE = /^[0-9a-f]{16,128}$/;
 
-/** Public answer schemas per organ: only these keys, with these value shapes, are ever anchored.
- *  The bridge is trusted to compute the answer; this projection is the confidentiality boundary. */
-const ORGAN_ANSWER_PROJECTIONS: ReadonlyMap<string, (answer: Record<string, unknown>) => Record<string, unknown>> = new Map([
-  ['nws_alerts', (answer: Record<string, unknown>): Record<string, unknown> => {
+/** Public answer projections mirror the PATH-OS batch-2 answer schemas (engines/proof/organ_batch2.py). The bridge
+ *  computes the answer; this confidentiality boundary permits only booleans, permitted nulls, enumerated labels, and
+ *  exact vendored guidance/basis strings. No reading, location, event name, medication name or label prose can pass. */
+type AnswerProjection = (answer: Record<string, unknown>) => Record<string, unknown>;
+const AQI_GUIDANCE: Readonly<Record<string, ReadonlySet<string>>> = {
+  Good: new Set(['Air quality is satisfactory, and air pollution poses little or no risk.']),
+  Moderate: new Set(['Air quality is acceptable. However, there may be a risk for some people, particularly those who are unusually sensitive to air pollution.']),
+  'Unhealthy for Sensitive Groups': new Set(['Members of sensitive groups may experience health effects. The general public is less likely to be affected.']),
+  Unhealthy: new Set(['Some members of the general public may experience health effects; members of sensitive groups may experience more serious health effects.']),
+  'Very Unhealthy': new Set(['Health alert: The risk of health effects is increased for everyone.']),
+  Hazardous: new Set(['Health warning of emergency conditions: everyone is more likely to be affected.']),
+  unknown: new Set(['No air-quality reading supplied — treat as unknown, not clean.', 'Supplied reading is not a valid AQI — treat as unknown, not clean.']),
+};
+const NWS_HIGHEST_BANDS = new Set(['none', 'critical', 'high', 'elevated', 'low', 'unrated']);
+const NWS_COUNT_BANDS = new Set(['zero', 'single', 'several', 'many']);
+const NWS_BASIS = new Set(['feed-not-applicable-or-unavailable — absence of data is not calm', 'supplied-feed verified zero active entries for the committed point', 'supplied-feed (no attestation on the feed yet — not asserted as-fact)']);
+const DRUG_BASIS = 'supplied-label-record (no attestation on the record yet — not asserted as-fact)';
+const own = (answer: Record<string, unknown>, key: string): unknown => (Object.hasOwn(answer, key) ? answer[key] : undefined);
+const exactString = (organ: string, key: string, value: unknown, allowed: ReadonlySet<string>): string => {
+  if (typeof value !== 'string' || !allowed.has(value)) throw new OrganDeliverableError(`${organ} answer.${key} is not one of the vendored strings`);
+  return value;
+};
+const ORGAN_PROJECTIONS: Record<string, AnswerProjection> = {
+  nws_alerts(answer) {
     const out: Record<string, unknown> = {};
-    const own = (key: string): unknown => (Object.hasOwn(answer, key) ? answer[key] : undefined);
-    const coverage = own('coverage');
+    const coverage = own(answer, 'coverage');
     if (coverage !== 'indeterminate' && coverage !== 'verified-empty' && coverage !== 'reported') throw new OrganDeliverableError('nws_alerts answer.coverage is not a known value');
     out.coverage = coverage;
-    const active = own('active');
+    const active = own(answer, 'active');
     if (active !== null && typeof active !== 'boolean') throw new OrganDeliverableError('nws_alerts answer.active is not boolean or null');
     out.active = active ?? null;
-    for (const key of ['highest_band', 'count_band'] as const) {
-      const value = own(key);
-      if (value !== undefined) {
-        if (typeof value !== 'string' || !/^[a-z-]{1,32}$/.test(value)) throw new OrganDeliverableError(`nws_alerts answer.${key} is not a short band label`);
-        out[key] = value;
-      }
+    for (const [key, allowed] of [['highest_band', NWS_HIGHEST_BANDS], ['count_band', NWS_COUNT_BANDS]] as const) {
+      const value = own(answer, key);
+      if (value !== undefined) out[key] = exactString('nws_alerts', key, value, allowed);
     }
-    const basis = own('basis');
-    if (basis !== undefined) {
-      if (typeof basis !== 'string' || basis.length > 200) throw new OrganDeliverableError('nws_alerts answer.basis is not a short string');
-      out.basis = basis;
-    }
+    const basis = own(answer, 'basis');
+    if (basis !== undefined) out.basis = exactString('nws_alerts', 'basis', basis, NWS_BASIS);
     return out;
-  }],
-]);
+  },
+  air_quality(answer) {
+    // EPA category + vendored guidance only; the exact AQI reading and the location stay committed (organ_batch2._air_quality_answer).
+    const category = own(answer, 'category');
+    if (typeof category !== 'string' || !Object.hasOwn(AQI_GUIDANCE, category)) throw new OrganDeliverableError('air_quality answer.category is not an EPA category or unknown');
+    const readingPresent = own(answer, 'reading_present');
+    if (typeof readingPresent !== 'boolean') throw new OrganDeliverableError('air_quality answer.reading_present is not boolean');
+    const guidance = exactString('air_quality', 'guidance', own(answer, 'guidance'), AQI_GUIDANCE[category]!);
+    return { category, reading_present: readingPresent, guidance };
+  },
+  drug_info(answer) {
+    // Derived booleans only; the medication name and the label record stay committed (organ_batch2._drug_answer).
+    const out: Record<string, unknown> = {};
+    for (const key of ['boxed_warning_present', 'interactions_section_present', 'pregnancy_section_present'] as const) {
+      const value = own(answer, key);
+      if (typeof value !== 'boolean') throw new OrganDeliverableError(`drug_info answer.${key} is not boolean`);
+      out[key] = value;
+    }
+    const rx = own(answer, 'prescription_required');
+    if (rx !== null && typeof rx !== 'boolean') throw new OrganDeliverableError('drug_info answer.prescription_required is not boolean or null');
+    out.prescription_required = rx;
+    out.basis = exactString('drug_info', 'basis', own(answer, 'basis'), new Set([DRUG_BASIS]));
+    return out;
+  },
+};
+const ORGAN_ANSWER_PROJECTIONS: ReadonlyMap<string, AnswerProjection> = new Map(Object.entries(ORGAN_PROJECTIONS));
 
 export function supportedOrgans(): string[] { return [...ORGAN_ANSWER_PROJECTIONS.keys()]; }
 
