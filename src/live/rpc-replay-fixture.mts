@@ -26,8 +26,8 @@ class BroadcastTimeoutError extends Error { constructor(public txHash: string) {
 interface Script {
   /** what broadcastAndWait does: 'included' | 'timeout' | 'failed-state' */
   broadcast: 'included' | 'timeout';
-  /** getTransactionStatus states after a timeout, in order; the last repeats */
-  statuses?: string[];
+  /** node states polled after a timeout, in order; the last repeats */
+  pollStates?: string[];
   /** read-back: how many getStorageProgram calls answer 404 before the record appears (delayed indexing) */
   readbackAbsent?: number;
   /** read-back owner (a conflicting writer when it is not ADDRESS) */
@@ -35,7 +35,7 @@ interface Script {
 }
 
 function fakeHandle(script: Script) {
-  const counters = { broadcasts: 0, statusPolls: 0, readbacks: 0 };
+  const counters = { broadcasts: 0, pollCount: 0, readbacks: 0 };
   const txHash = hex64(`tx:${JSON.stringify(script)}`);
   const demos = {
     async getAddressNonce() { return 7; },
@@ -48,8 +48,8 @@ function fakeHandle(script: Script) {
     },
     async call(_m: string, message: string) {
       if (message === 'getTransactionStatus') {
-        const list = script.statuses ?? ['pending'];
-        const state = list[Math.min(counters.statusPolls, list.length - 1)]; counters.statusPolls += 1;
+        const list = script.pollStates ?? ['pending'];
+        const state = list[Math.min(counters.pollCount, list.length - 1)]; counters.pollCount += 1;
         return { state, blockNumber: state === 'included' ? 249444 : undefined };
       }
       throw new Error(`unexpected call ${message}`);
@@ -88,7 +88,7 @@ async function scenario(name: string, script: Script, expect: { ok: boolean; cls
   const honest = outcome.ok ? expect.ok : (expect.ok === false && typed !== null && typed.cls === expect.cls && (expect.cls === 'anchor-facts-mismatch' || typed.txHash === txHash) && (expect.state === undefined || typed.state === expect.state));
   const single = counters.broadcasts === 1;
   const label = outcome.ok ? 'anchored' : typed ? `${typed.cls}${typed.txHash ? ' tx=' + typed.txHash.slice(0, 8) : ''}${typed.state ? ' state=' + typed.state : ''}` : `untyped: ${(outcome as { message: string }).message}`;
-  step(name, honest && bounded && single, `${label} broadcasts=${counters.broadcasts} polls=${counters.statusPolls} readbacks=${counters.readbacks} elapsed=${elapsed}ms bound=${boundMs}ms`);
+  step(name, honest && bounded && single, `${label} broadcasts=${counters.broadcasts} polls=${counters.pollCount} readbacks=${counters.readbacks} elapsed=${elapsed}ms bound=${boundMs}ms`);
 }
 
 async function main(): Promise<number> {
@@ -96,9 +96,9 @@ async function main(): Promise<number> {
   const timeout = Number(process.env.GATEWAY_BROADCAST_TIMEOUT_MS ?? '150'); const grace = Number(process.env.GATEWAY_BROADCAST_GRACE_MS ?? '400'); const poll = Number(process.env.GATEWAY_BROADCAST_POLL_MS ?? '100');
   const bound = timeout + grace + poll + 4 * 10 + 1500; // windows + read-back attempts + scheduling slack
   await scenario('delayed-indexing', { broadcast: 'included', readbackAbsent: 2 }, { ok: true }, bound);
-  await scenario('missing-finality-pending-forever', { broadcast: 'timeout', statuses: ['pending'] }, { ok: false, cls: 'anchor-not-confirmed' }, bound);
-  await scenario('timeout-after-broadcast-then-included', { broadcast: 'timeout', statuses: ['pending', 'included'] }, { ok: true }, bound);
-  await scenario('failed-on-chain', { broadcast: 'timeout', statuses: ['failed'] }, { ok: false, cls: 'anchor-failed-on-chain' }, bound);
+  await scenario('missing-finality-pending-forever', { broadcast: 'timeout', pollStates: ['pending'] }, { ok: false, cls: 'anchor-not-confirmed' }, bound);
+  await scenario('timeout-after-broadcast-then-included', { broadcast: 'timeout', pollStates: ['pending', 'included'] }, { ok: true }, bound);
+  await scenario('failed-on-chain', { broadcast: 'timeout', pollStates: ['failed'] }, { ok: false, cls: 'anchor-failed-on-chain' }, bound);
   await scenario('conflicting-writer', { broadcast: 'included', owner: OTHER }, { ok: false, cls: 'anchor-facts-mismatch' }, bound);
   const rollup = steps.every((s) => s.outcome === 'pass') ? 'PASS' : 'FAIL';
   const out = { harness: 'rpc-replay-fixture:0.1', mode: 'offline-corpus', corpus: 'demos-node-shape-probe (sanitized shapes)', windows_ms: { timeout, grace, poll }, rollup, steps };
