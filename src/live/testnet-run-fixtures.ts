@@ -144,7 +144,7 @@ export function createDryRunDependencies(config: DacsTestnetConfig): DacsTestnet
   const storeEvidence = async (logicalAddress: string, evidence: SettlementEvidenceV1): Promise<AnchoredEvidence> => {
     const evidenceAnchor = await anchor({ logicalAddress, content: evidence, contentHash: jcsHashHex(evidence) });
     const evidenceRef: AttestationRef = {
-      anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: signatureExcludedHash(evidence), signer: orchestrator.claim,
+      anchor: { kind: 'storage-program', locator: logicalAddress }, contentHash: signatureExcludedHash(evidence), signer: orchestrator.claim,
     };
     return { evidence, evidenceRef, evidenceLogicalAddress: logicalAddress, evidenceAnchor };
   };

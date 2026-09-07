@@ -362,7 +362,8 @@ export async function createLiveSettlementDependency(
       await durableOutcomeJournal({ timestamp: new Date().toISOString(), resolution: 'settled', settlementKey, txHash: settled.txHash });
       return {
         evidence,
-        evidenceRef: { anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: signatureExcludedHash(evidence), signer: String(wiring.signers.orchestrator.claim) },
+        // PC-2: the bundle cites payment evidence by its logical address; the native address stays in the anchor record and the run ledger.
+        evidenceRef: { anchor: { kind: 'storage-program', locator: logicalAddress }, contentHash: signatureExcludedHash(evidence), signer: String(wiring.signers.orchestrator.claim) },
         evidenceLogicalAddress: logicalAddress, evidenceAnchor,
       };
     } catch (error) {
@@ -409,7 +410,11 @@ export async function createLiveAdapterWiring(
       // The buyer's wallet writes the buyer's bundle copy; the seller (also the orchestrator) writes everything else.
       const role = (await import('./anchor-naming.js')).anchorWriterRole(config.jobId, request.logicalAddress);
       const handle = role === 'buyer' ? buyerHandle : sellerHandle;
-      const result = await storage.anchor(handle, request.logicalAddress, request.content as Record<string, unknown> | string);
+      // The pinned dacs-sdk finds a program by (owner, NAME) with ':' encoded as '%3A' and records the logical address as
+      // metadata; a colon-named program is invisible to its index (attempt 10, 2026-09-07). Idempotent for the listing.
+      const { sdkProgramName } = await import('../lib/locator-form.js');
+      const result = await storage.anchor(handle, sdkProgramName(request.logicalAddress), request.content as Record<string, unknown> | string,
+        { metadata: { logicalAddress: request.logicalAddress } });
       if (result.nonce === undefined) throw new DacsTestnetRefusal('capability', 'SR-2 anchor result did not bind a nonce');
       const anchored: AgreementAnchorResult = { logicalAddress: request.logicalAddress, nativeAddress: result.storageAddress,
         transactionRef: { kind: 'demos', value: result.txHash }, writer: handle === buyerHandle ? buyer.dacsClaim : seller.dacsClaim, nonce: result.nonce };
@@ -418,7 +423,9 @@ export async function createLiveAdapterWiring(
     },
     anchored: (logicalAddress) => anchorsByLogical.get(logicalAddress),
     async fetchAnchored(address) {
-      const result = await storage.fetchAnchored(config.rpc, address);
+      // A logical address this run anchored reads at the native address it received; anything else reads as given.
+      const native = anchorsByLogical.get(address)?.nativeAddress ?? address;
+      const result = await storage.fetchAnchored(config.rpc, native);
       if (!result) throw new Error('anchor unavailable');
       return result.data;
     },
@@ -717,7 +724,7 @@ export async function createLiveDependencies(
       const logicalAddress = anchorNames.deliveryEvidence(run.jobId, 3);
       const contentHash = jcsHashHex(evidence);
       const evidenceAnchor = await wiring.anchor({ logicalAddress, content: evidence, contentHash });
-      return { evidence, evidenceRef: { anchor: { kind: 'storage-program', locator: evidenceAnchor.nativeAddress }, contentHash: signatureExcludedHash(evidence), signer: String(wiring.signers.orchestrator.claim) },
+      return { evidence, evidenceRef: { anchor: { kind: 'storage-program', locator: logicalAddress }, contentHash: signatureExcludedHash(evidence), signer: String(wiring.signers.orchestrator.claim) },
         evidenceLogicalAddress: logicalAddress, evidenceAnchor, deliverableAnchor };
     },
     async finalize(input) {

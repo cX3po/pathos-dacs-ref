@@ -100,11 +100,11 @@ test('every reference a finalized copy cites is the DACS-2 §7.5.2 wire form, in
 // travels on the session as commitmentRef and is not what the bundle cites.
 test('a finalized copy cites the anchored agreement document, not the finality commitment', async () => {
   const { jcsHashHex } = await import('../../src/jcs.js');
-  let store: Map<string, unknown> | undefined;
+  let store: Map<string, unknown> | undefined; let logical: Map<string, unknown> | undefined;
   const out = process.stdout.write.bind(process.stdout);
   process.stdout.write = (() => true) as typeof process.stdout.write;
   try {
-    const exit = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (run) => { const deps = createDryRunDependencies(run); store = deps.fixtureState.byNative; return deps; });
+    const exit = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (run) => { const deps = createDryRunDependencies(run); store = deps.fixtureState.byNative; logical = deps.fixtureState.byLogical; return deps; });
     assert.equal(exit, 0);
   } finally { process.stdout.write = out; }
   const entries = [...(store ?? new Map()).values()].filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null);
@@ -129,7 +129,7 @@ test('a finalized copy cites the anchored agreement document, not the finality c
       assert.equal(party.vetRecordRef.contentHash, jcsHashHex(unsignedComposite), 'the citation hashes the signature-excluded composite');
     }
     for (const ev of bundle.settlementEvidence as Array<{ anchor: { locator: string }; contentHash: string }>) {
-      const record = store!.get(ev.anchor.locator) as Record<string, unknown>;
+      const record = (store!.get(ev.anchor.locator) ?? logical!.get(ev.anchor.locator)) as Record<string, unknown>;
       const { signature: _sig, ...unsignedRecord } = record; void _sig;
       assert.equal(ev.contentHash, jcsHashHex(unsignedRecord), 'evidence references hash the signature-excluded record');
     }
@@ -140,11 +140,11 @@ test('a finalized copy cites the anchored agreement document, not the finality c
 // DACS-5: the payment phase's summary entry carries the settlement's ChainTxRefs, the same arms the evidence record carries;
 // the pinned dacs-sdk's Agent verifies a successful payment phase's evidence against exactly that entry (Agent.ts verifyEvidence).
 test('a finalized copy\'s payment phase entry carries txRefs equal to the evidence record\'s ChainTxRef arms, and every settlement phase entry cites its evidence', async () => {
-  let store: Map<string, unknown> | undefined;
+  let store: Map<string, unknown> | undefined; let logical: Map<string, unknown> | undefined;
   const out = process.stdout.write.bind(process.stdout);
   process.stdout.write = (() => true) as typeof process.stdout.write;
   try {
-    const exit = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (run) => { const deps = createDryRunDependencies(run); store = deps.fixtureState.byNative; return deps; });
+    const exit = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (run) => { const deps = createDryRunDependencies(run); store = deps.fixtureState.byNative; logical = deps.fixtureState.byLogical; return deps; });
     assert.equal(exit, 0);
   } finally { process.stdout.write = out; }
   const bundles = [...(store ?? new Map()).values()].filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null && 'anchoredByRole' in v);
@@ -153,7 +153,7 @@ test('a finalized copy\'s payment phase entry carries txRefs equal to the eviden
     const phases = bundle.phaseSummary as Array<{ index: number; kind: string; txRefs?: unknown[]; attestationRef?: { anchor: { locator: string } } }>;
     const pay = phases.find((p) => p.kind === 'pay-dem')!, deliver = phases.find((p) => p.kind === 'deliver-storage-program')!;
     assert.ok(pay.attestationRef && deliver.attestationRef, 'settlement phases cite their evidence');
-    const evidence = store!.get(pay.attestationRef!.anchor.locator) as { paymentTxRefs: unknown[] };
+    const evidence = (store!.get(pay.attestationRef!.anchor.locator) ?? logical!.get(pay.attestationRef!.anchor.locator)) as { paymentTxRefs: unknown[] };
     assert.deepEqual(pay.txRefs, evidence.paymentTxRefs, 'txRefs are the evidence record\'s ChainTxRef arms');
     assert.equal((pay.txRefs as Array<{ kind: string }>)[0]!.kind, 'demos');
     assert.equal(deliver.txRefs, undefined);
@@ -217,11 +217,11 @@ test('the vet phase anchors a counterparty-signed VerifyResult and composite per
   const { DOMAIN_SEPARATORS } = await import('../../src/domain-sep.js');
   const { jcsHashHex } = await import('../../src/jcs.js');
   const { identityBundleHash, selfSignedBundleRequirement } = await import('../../src/live/listing-wire.js');
-  let store: Map<string, unknown> | undefined; const chunks: string[] = [];
+  let store: Map<string, unknown> | undefined; let logical: Map<string, unknown> | undefined; const chunks: string[] = [];
   const out = process.stdout.write.bind(process.stdout);
   process.stdout.write = ((c: string | Uint8Array) => { chunks.push(String(c)); return true; }) as typeof process.stdout.write;
   try {
-    const exit = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (run) => { const deps = createDryRunDependencies(run); store = deps.fixtureState.byNative; return deps; });
+    const exit = await main(['--dry-run', '--json'], { DACS_BUNDLE_KIND: 'fab' }, (run) => { const deps = createDryRunDependencies(run); store = deps.fixtureState.byNative; logical = deps.fixtureState.byLogical; return deps; });
     assert.equal(exit, 0);
   } finally { process.stdout.write = out; }
   const result = JSON.parse(chunks.join('').trim().split('\n').pop()!);
