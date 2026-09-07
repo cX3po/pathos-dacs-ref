@@ -27,7 +27,8 @@ function signedRecord(sellerSeed: Uint8Array): string {
   const receipt = signDeliveryReceipt(body, sellerSeed);
   const dir = mkdtempSync(join(tmpdir(), 'recheck-'));
   const file = join(dir, 'verify-pilot-test.json');
-  writeFileSync(file, JSON.stringify({ buyer: { deliveryReceipt: receipt }, deliveryReceipt: receipt }));
+  // The pilot run record's shape: the receipt lives only under `buyer` (tools/demos_verify_pilot.py), never at the top level.
+  writeFileSync(file, JSON.stringify({ schema: 1, buyer: { deliveryReceipt: receipt } }));
   return file;
 }
 
