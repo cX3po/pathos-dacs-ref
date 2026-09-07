@@ -148,7 +148,16 @@ export function createDemosNodeReceiptProvider(config: { rpc: string }, options:
       const recordedLogical = isRecord(program.metadata) ? program.metadata.logicalAddress : undefined;
       if (recordedLogical !== undefined) {
         observed.recordedLogicalAddress = recordedLogical;
-        if (recordedLogical !== request.logicalAddress) return indeterminate('node storage record binds a different logical address than requested', observed);
+      }
+      if (
+        (program.programName !== request.logicalAddress ||
+          recordedLogical !== undefined) &&
+        recordedLogical !== request.logicalAddress
+      ) {
+        return indeterminate(
+          'node storage record binds a different logical address than requested',
+          observed,
+        );
       }
       const owner = program.owner;
       const createdByTx = program.createdByTx;

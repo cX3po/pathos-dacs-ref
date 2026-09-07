@@ -141,6 +141,27 @@ test('a program named in the SDK form for the logical address is accepted; its r
   const provider = createDemosNodeReceiptProvider(config, { nodeCall: nodeCallFor(sdkNamed) });
   const bound = await provider.fetch({ ...request, logicalAddress: logical, anchor: { ...request.anchor, logicalAddress: logical } });
   assert.ok('receiptVersion' in bound, JSON.stringify(bound));
+  for (const metadata of [undefined, {}, null, { logicalAddress: null }]) {
+    const fixture = nodeFixture();
+    Object.assign(fixture.program as Node, {
+      programName: sdkProgramName(logical), metadata,
+    });
+    const p = createDemosNodeReceiptProvider(config, {
+      nodeCall: nodeCallFor(fixture),
+    });
+    const result = asObservation(await p.fetch({
+      ...request, logicalAddress: logical,
+    }));
+    assert.equal(result.outcome, 'indeterminate');
+  }
+  const collision = logical.replace(':01', '%3A01');
+  assert.notEqual(collision, logical);
+  assert.equal(sdkProgramName(collision), sdkProgramName(logical));
+  const rejected = asObservation(await provider.fetch({
+    ...request, logicalAddress: collision,
+  }));
+  assert.match(rejected.detail, /binds a different logical address/);
+  assert.equal(rejected.observed?.recordedLogicalAddress, logical);
   // The same record asked for under another logical address is indeterminate, as before.
   const relabelled = asObservation(await provider.fetch({ ...request, logicalAddress: 'dacs3:agreement:01OTHERJOB', anchor: { ...request.anchor, logicalAddress: 'dacs3:agreement:01OTHERJOB' } }));
   assert.equal(relabelled.outcome, 'indeterminate'); assert.match(relabelled.detail, /not named by the requested logical address/);
