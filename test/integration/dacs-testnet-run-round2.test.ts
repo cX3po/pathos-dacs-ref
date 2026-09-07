@@ -77,7 +77,7 @@ test('preflight is enveloped, redacted, and still propagates typed refusals', as
   failedDeps.capabilityPreflight = async () => { throw new Error('dependency-secret-sentinel'); };
   const failed = await runDacsTestnetSession(run, failedDeps);
   assert.equal(failed.error?.stage, 'capability-preflight');
-  assert.equal(failed.error?.detail, 'capability-preflight: phase failed');
+  assert.equal(failed.error?.detail, 'capability-preflight: phase failed — Error/unclassified');
   assert.ok(!JSON.stringify(failed).includes('dependency-secret-sentinel'));
 
   const refusedDeps = createDryRunDependencies(run);

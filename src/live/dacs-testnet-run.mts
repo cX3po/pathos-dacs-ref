@@ -10,6 +10,7 @@
  */
 
 import { pathToFileURL } from 'node:url';
+import { Sr2AnchorError } from '../demos/storage.js';
 import { dahrFetch } from '../demos/dahr.js';
 import { leiClaimOf, gleifRecordUrl, type VetRecordRefs, type SingleFetchVet } from './vet-record.js';
 import { vetParties, type PartyVetRecords } from './party-vet.js';
@@ -767,6 +768,63 @@ const redactedVerdict = (phase: 'agreement' | 'bundle', verdict: ColdVerdict): C
 });
 
 /** Execute listing/vet and the four indexed pipeline phases in fail-closed order. */
+/** Error classes a phase failure may name; anything else is reported as `Error` (Error.name is writable and untrusted). */
+const KNOWN_ERROR_KINDS = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'AbortError', 'TimeoutError', 'BroadcastTimeoutError', 'DacsTestnetRefusal', 'Sr2AnchorError', 'AggregateError']);
+
+export interface FailureDiagnostics {
+  /** Allowlisted class name of the thrown value. */
+  kind: string;
+  /** The typed failure class found in the error chain: an Sr2AnchorError's class, a refusal's code, or 'unclassified'. */
+  class: string;
+  txHash: string | null;
+  waitMs: number | null;
+  state: string | null;
+  /** How deep in the cause chain the typed diagnostics were found (0 = the thrown error itself). */
+  depth: number;
+}
+
+/**
+ * What a phase failure may carry into the run record: diagnostics read from TYPED fields only. The SR-2 anchor
+ * path throws Sr2AnchorError with its class, transaction hash, wait window and node state as fields
+ * (src/demos/storage.ts); a DacsTestnetRefusal carries its code. No message text is read, matched or hashed, so
+ * this file's confidentiality rule (no configured or environment value in the result) holds by construction:
+ * provenance is the class, not a pattern found in text. The chain is walked through `cause` and AggregateError
+ * members with depth, node and member limits. Attempt 9 (2026-09-07) said only "listing: phase failed"; the
+ * anchor's transaction hash and 420 s wait window had been thrown and dropped here.
+ */
+export function describeFailure(error: unknown): FailureDiagnostics {
+  const out: FailureDiagnostics = { kind: 'Error', class: 'unclassified', txHash: null, waitMs: null, state: null, depth: 0 };
+  if (error instanceof Error && KNOWN_ERROR_KINDS.has(error.name) && !(error instanceof Sr2AnchorError && error.name !== 'Sr2AnchorError')) out.kind = error.name;
+  if (error instanceof Sr2AnchorError) out.kind = 'Sr2AnchorError';
+  const seen = new Set<unknown>();
+  let found = false;
+  const visit = (value: unknown, level: number): void => {
+    if (found || level > 4 || value === null || typeof value !== 'object' || seen.has(value) || seen.size >= 16) return;
+    seen.add(value);
+    if (value instanceof Sr2AnchorError) {
+      const d = value.diagnostics;
+      out.class = d.class; out.txHash = d.txHash ?? null; out.waitMs = d.waitMs ?? null; out.state = d.state ?? null; out.depth = level;
+      found = true; return;
+    }
+    if (value instanceof DacsTestnetRefusal) { out.class = `refusal-${value.code}`; out.depth = level; found = true; return; }
+    if (value instanceof Error && 'cause' in value) visit((value as { cause?: unknown }).cause, level + 1);
+    if (value instanceof AggregateError) for (const inner of value.errors.slice(0, 8)) visit(inner, level + 1);
+  };
+  visit(error, 0);
+  return out;
+}
+
+/** The `error.detail` suffix built from typed diagnostics only. */
+export function causeSuffix(diagnostics?: FailureDiagnostics): string {
+  if (!diagnostics) return '';
+  const parts = [`${diagnostics.kind}/${diagnostics.class}`];
+  if (diagnostics.txHash) parts.push(`tx ${diagnostics.txHash}`);
+  if (diagnostics.waitMs !== null) parts.push(`waited ${diagnostics.waitMs}ms`);
+  if (diagnostics.state) parts.push(`state ${diagnostics.state}`);
+  if (diagnostics.depth) parts.push(`cause depth ${diagnostics.depth}`);
+  return ` — ${parts.join('; ')}`;
+}
+
 export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: DacsTestnetDependencies): Promise<DacsTestnetRunResult> {
   const paramHash = parameterHash(config);
   const phases: DacsTestnetRunResult['phases'] = [];
@@ -776,7 +834,7 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
 
   let paidWitness: import('../adapters/dacs/pay-dem.js').PayDemSettlementWitness | undefined;
   let vetVerification: NonNullable<DacsTestnetRunResult['verification']['vet']> | undefined;
-  const failed = (stage: string, code: 'phase-failed' | 'verification-failed' = 'phase-failed'): DacsTestnetRunResult => ({
+  const failed = (stage: string, code: 'phase-failed' | 'verification-failed' = 'phase-failed', cause?: FailureDiagnostics): DacsTestnetRunResult => ({
     jobId: config.jobId,
     mode: config.mode,
     rollup: 'FAIL',
@@ -785,7 +843,7 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
     anchors,
     paramHash,
     // Once a payment was included, every later failure carries its witness so the moved DEM is never lost behind the stage that failed.
-    error: paidWitness ? { stage, code: 'settlement-failed', detail: `${stage}: failed after an included payment`, settlement: paidWitness } : { stage, code, detail: `${stage}: phase failed` },
+    error: paidWitness ? { stage, code: 'settlement-failed', detail: `${stage}: failed after an included payment${causeSuffix(cause)}`, settlement: paidWitness } : { stage, code, detail: `${stage}: phase failed${causeSuffix(cause)}` },
   });
 
   const guarded = async <T,>(stage: string, operation: () => Promise<T>): Promise<T | DacsTestnetRunResult> => {
@@ -793,7 +851,7 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
     catch (error) {
       // A refusal after the payment was included is not a refusal any more: the session failed with DEM moved.
       if (error instanceof DacsTestnetRefusal && !paidWitness) throw error;
-      return failed(stage);
+      return failed(stage, 'phase-failed', describeFailure(error));
     }
   };
 

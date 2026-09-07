@@ -7,6 +7,7 @@
  *
  * Run:  LIVE=1 DACS_ENV_PATH=<dotenv with the mnemonics> node --import tsx src/live/anchor-canary.mts
  * Env:  DEMOS_RPC            RPC URL (default https://demosnode.discus.sh/)
+ *       ANCHOR_NAME          anchor under this exact program name (overrides ANCHOR_NAME_STYLE)
  *       ANCHOR_WALLET_ENV    dotenv key holding the anchoring mnemonic (default DEMOS_MNEMONIC)
  *       ANCHOR_NAME_STYLE    `listing` mimics the gateway's `dacs1listing-<64 hex>` program name
  *       ANCHOR_ENCODING      `json` anchors an object; `binary` explicitly reproduces the node
@@ -31,9 +32,13 @@ const { anchor, fetchAnchored, verifyAnchor } = await import('../demos/storage.j
 
 const startedAt = new Date().toISOString();
 const stamp = startedAt.replace(/[-:.TZ]/g, '').slice(0, 14);
-const programName = process.env.ANCHOR_NAME_STYLE === 'listing'
-  ? `dacs1listing-${createHash('sha256').update(stamp).digest('hex')}`
-  : `canary-a-${stamp}`;
+// ANCHOR_NAME anchors under an explicit program name (e.g. the SDK-form percent-encoded listing address
+// the coordinator writes since #84) so a node's treatment of a name form can be probed with one 2 DEM anchor.
+const programName = process.env.ANCHOR_NAME && process.env.ANCHOR_NAME.length > 0
+  ? process.env.ANCHOR_NAME
+  : process.env.ANCHOR_NAME_STYLE === 'listing'
+    ? `dacs1listing-${createHash('sha256').update(stamp).digest('hex')}`
+    : `canary-a-${stamp}`;
 const base: Record<string, unknown> = { kind: 'pathos-dacs-ref-canary-a', startedAt, programName };
 const encoding = process.env.ANCHOR_ENCODING === 'binary'
   ? 'binary'
