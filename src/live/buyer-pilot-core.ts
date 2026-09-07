@@ -52,6 +52,30 @@ export interface BuyerPilotResult {
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 /** The OS amount of a 402 requirement, read without coercion: a decimal-integer string is OS, a finite number is DEM. */
+/**
+ * The pinned SDK's D402Client.createPayment writes the payee only into the d402 data array; demos.sign validates the
+ * transaction's top-level content.to and refuses an empty one ('Invalid To address: 0x', pilot run 2026-09-07). Bind the
+ * top-level field to the same payee; refuse a payment whose top-level payee already names someone else.
+ */
+export function bindPaymentPayee<T extends { content?: { to?: unknown } }>(payment: T, recipient: string): T {
+  const content = payment.content;
+  if (typeof content !== 'object' || content === null) throw new Error('payment has no content');
+  const current = content.to;
+  if (typeof current === 'string' && current !== '' && current !== '0x' && current.toLowerCase() !== recipient.toLowerCase()) {
+    throw new Error('payment payee differs from the bound recipient');
+  }
+  const data = (content as { data?: unknown }).data;
+  const payload = Array.isArray(data) ? data[1] : null;
+  if (!Array.isArray(data) || data[0] !== 'd402_payment' ||
+      typeof payload !== 'object' || payload === null ||
+      typeof payload.to !== 'string' ||
+      payload.to.toLowerCase() !== recipient.toLowerCase()) {
+    throw new Error('payment data payee differs from the bound recipient');
+  }
+  content.to = recipient.toLowerCase();
+  return payment;
+}
+
 export function requirementAmountOs(amount: unknown): bigint | null {
   try {
     if (typeof amount === 'string') return /^[0-9]{1,30}$/.test(amount) ? amountToOs(amount) : null;
