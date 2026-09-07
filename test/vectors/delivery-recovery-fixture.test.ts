@@ -13,8 +13,8 @@ test('the delivery-recovery harness passes every step in a fresh process', () =>
   assert.equal(r.status, 0, r.stderr);
   const out = JSON.parse(r.stdout.trim().split('\n').at(-1)!);
   assert.equal(out.rollup, 'PASS');
-  assert.equal(out.payments, 3);
-  assert.deepEqual(out.steps.map((s: { step: string }) => s.step), ['paid', 'restart-redelivers-original', 'eviction-redelivers-original', 'concurrent-duplicate-redelivers', 'cross-request-proof-refused', 'disconnected-buyer-not-recorded', 'scope-mismatch-refused']);
+  assert.equal(out.payments, 4);
+  assert.deepEqual(out.steps.map((s: { step: string }) => s.step), ['paid', 'restart-redelivers-original', 'eviction-redelivers-original', 'concurrent-duplicate-redelivers', 'cross-request-proof-refused', 'disconnected-buyer-not-recorded', 'waiter-timeout-503', 'scope-mismatch-refused']);
   assert.ok(out.steps.every((s: { outcome: string }) => s.outcome === 'pass'), JSON.stringify(out.steps));
 });
 
@@ -40,7 +40,10 @@ test('the file store writes a scope header, keeps payloads on disk, survives a t
     writeFileSync(path, readFileSync(path, 'utf8') + 'not json\n' + JSON.stringify({ key: 'k1', payload: 'p1b', at: 't' }) + '\n');
     const last = createFileDeliveryStore(path, scope); last.load();
     assert.equal(last.get('k1'), 'p1b');
-    // another deployment scope is refused
+    // a torn scope header (an interrupted first write) is unrecoverable and refused before any append
+    const torn = join(dir, 'torn.jsonl'); writeFileSync(torn, '{"v":"delivery-store:1","sco');
+    assert.throws(() => createFileDeliveryStore(torn, scope).load(), (e: unknown) => e instanceof Error && e.message === SCOPE_MISMATCH);
+    // another configuration scope is refused
     assert.throws(() => createFileDeliveryStore(path, { ...scope, recipient: '0x' + 'ff'.repeat(32) }).load(), (e: unknown) => e instanceof Error && e.message === SCOPE_MISMATCH);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

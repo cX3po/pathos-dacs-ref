@@ -68,7 +68,7 @@ function endpoint(storePath: string, fake: FakeVerifier, maxDelivered?: number, 
   const committed = new Set<string>(); const reserved = new Set<string>(); const delivered = new Map<string, string>();
   const service = createD402Service({ recipient: RECIPIENT, rpcUrl: 'https://unused.invalid', verifier: fake, usedProofs: createD402ProofStore(committed, reserved) });
   const store = createFileDeliveryStore(storePath, scope);
-  const handler = createVerifyEndpointHandler({ seller: SELLER, service, amountOs: AMOUNT_OS, priceDem: '0.1', recipient: RECIPIENT, committed, reserved, delivered, maxDelivered, offline: true, store, waitMs: 5_000 });
+  const handler = createVerifyEndpointHandler({ seller: SELLER, service, amountOs: AMOUNT_OS, priceDem: '0.1', recipient: RECIPIENT, committed, reserved, delivered, maxDelivered, offline: true, store, waitMs: 1_000 });
   const server = createServer((req, res) => { void handler(req, res).catch(() => { if (!res.headersSent) { res.writeHead(500); res.end(); } }); });
   return { server, committed, reserved, handler, store };
 }
@@ -171,7 +171,23 @@ async function main(): Promise<number> {
     const keys5 = store5.load().keys.length;
     step('disconnected-buyer-not-recorded', heldAtVerifier5 && keys5 === 0 && ep5.committed.size === 0 && ep5.reserved.size === 0, `held=${heldAtVerifier5} store keys=${keys5} committed=${ep5.committed.size} reserved after disconnect=${ep5.reserved.size}`);
     await close(ep5.server);
-    // (f) a store written under another deployment scope is refused at startup
+    // (g) a duplicate that waits longer than waitMs is answered 503 with proofRetained, never a parsed 'timeout'
+    const fake7 = new FakeVerifier();
+    const ep7 = endpoint(join(dir, 'timeout.jsonl'), fake7);
+    const port7 = await listen(ep7.server);
+    const body7 = JSON.stringify({ bundle: makeBundle('delivery-recovery-0007'), offline: true });
+    fake7.memo = `resourceId:${resourceForBody(body7, AMOUNT_OS).resourceId} - DACS attestation-bundle verification`;
+    const HASH7 = `0x${'56'.repeat(32)}`;
+    let release7: () => void = () => {};
+    fake7.barrier = new Promise<void>((r) => { release7 = r; });
+    const first7 = call(port7, body7, { 'X-Payment-Proof': HASH7 });
+    await new Promise((r) => setTimeout(r, 150));
+    const dup7 = await call(port7, body7, { 'X-Payment-Proof': HASH7 }); // waits up to waitMs (5 s in this fixture) while the first is held
+    release7();
+    const first7r = await first7; payments += 1;
+    step('waiter-timeout-503', dup7.status === 503 && dup7.body?.proofRetained === true && first7r.status === 200, `duplicate ${dup7.status} proofRetained=${dup7.body?.proofRetained}; first ${first7r.status}`);
+    await close(ep7.server);
+    // (f) a store written under another configuration scope is refused at startup
     let scopeRefused = '';
     try { endpoint(storePath, new FakeVerifier(), undefined, scopeFor({ recipient: '0x' + 'ff'.repeat(32) })); } catch (e) { scopeRefused = e instanceof Error ? e.message : String(e); }
     step('scope-mismatch-refused', scopeRefused === SCOPE_MISMATCH, scopeRefused || 'no refusal');

@@ -209,7 +209,7 @@ export function createVerifyEndpointHandler(options: VerifyEndpointOptions) {
       let timer: NodeJS.Timeout | undefined;
       const payload = await Promise.race([flight.promise, new Promise<'timeout'>((r) => { timer = setTimeout(() => r('timeout'), options.waitMs ?? 30_000); })]).finally(() => { if (timer) clearTimeout(timer); flight.waiters -= 1; });
       if (response.destroyed) return;
-      if (typeof payload === 'string') { const again = JSON.parse(payload) as Record<string, unknown>; json(response, 200, { ...again, receipt: { ...(again.receipt as object), redelivered: true } }); return; }
+      if (typeof payload === 'string' && payload !== 'timeout') { const again = JSON.parse(payload) as Record<string, unknown>; json(response, 200, { ...again, receipt: { ...(again.receipt as object), redelivered: true } }); return; }
       outage(payload === 'timeout' ? 'the first delivery of this paid request is still in progress' : 'the first delivery of this paid request did not complete');
       return;
     }

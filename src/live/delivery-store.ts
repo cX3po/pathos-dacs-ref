@@ -72,6 +72,8 @@ export function createFileDeliveryStore(path: string, scope: DeliveryScope): Del
         if (typeof row.key !== 'string' || typeof row.payload !== 'string') { corrupt += 1; continue; }
         index.set(row.key, { offset: lineOffset, length: nl - lineOffset });
       }
+      // a nonempty file whose header never completed is unrecoverable: refuse before any record is written after it
+      if (first && buf.length > 0) throw new Error(SCOPE_MISMATCH);
       loaded = true;
       return { keys: [...index.keys()], corrupt };
     },
