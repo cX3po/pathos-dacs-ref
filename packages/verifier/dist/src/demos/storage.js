@@ -59,19 +59,23 @@ export async function getStorageProgram(rpc, storageAddress, options = {}) {
         return null;
     return envelope.response;
 }
+export const SR2_ANCHOR_STATES = new Set(['pending', 'included', 'failed', 'missing']);
 /**
- * Anchor `data` to SR-2 (Demos Storage Program).
- *
- * @param handle Connected Demos handle
- * @param programName Human-readable identifier (used in deterministic address derivation)
- * @param data JSON-encodable object or raw string. JCS canonical form recommended for hash-stable artifacts.
- * @param options Optional ACL (defaults to public-read) + nonce (defaults to wallet's next nonce)
- *
- * Returns the storage address (`stor-...`) — this becomes the `AttestationRef.anchor.locator`
- * in §7.5.2 / §10.4.2.
- *
- * Throws on broadcast failure, insufficient DEM balance, or RPC error.
+ * An anchor failure that carries its diagnostics as typed fields. The live coordinator's run record reports
+ * ONLY these fields (never the message): provenance is the class, not a pattern found in text.
  */
+export class Sr2AnchorError extends Error {
+    diagnostics;
+    constructor(failureClass, fields, message) {
+        super(message);
+        this.name = 'Sr2AnchorError';
+        const txHash = typeof fields.txHash === 'string' && /^[0-9a-f]{64}$/.test(fields.txHash) ? fields.txHash : undefined;
+        const waitMs = typeof fields.waitMs === 'number' && Number.isSafeInteger(fields.waitMs) && fields.waitMs >= 0 ? fields.waitMs : undefined;
+        const state = fields.state === undefined ? undefined
+            : typeof fields.state === 'string' && SR2_ANCHOR_STATES.has(fields.state) ? fields.state : 'unknown';
+        this.diagnostics = { class: failureClass, ...(txHash ? { txHash } : {}), ...(waitMs !== undefined ? { waitMs } : {}), ...(state ? { state } : {}) };
+    }
+}
 export async function anchor(handle, programName, data, options = {}) {
     const { demos, address } = handle;
     // Get current nonce — required for deterministic address derivation + as `options.nonce`
@@ -79,7 +83,7 @@ export async function anchor(handle, programName, data, options = {}) {
     const nonceInfo = await demos.getAddressNonce(address);
     const nonce = typeof nonceInfo === 'number' ? nonceInfo : (typeof nonceInfo === 'object' && nonceInfo !== null && 'nonce' in nonceInfo ? Number(nonceInfo.nonce) : Number.NaN);
     if (!Number.isSafeInteger(nonce) || nonce < 0)
-        throw new Error('SR-2 anchor nonce is unavailable');
+        throw new Sr2AnchorError('anchor-nonce-unavailable', {}, 'SR-2 anchor nonce is unavailable');
     // Derive the deterministic storage address — this is what the spec calls the SR-2 locator
     const storageAddress = StorageProgram.deriveStorageAddress(address, programName, nonce, options.salt ?? '');
     // Build ACL (default: public read)
@@ -94,7 +98,7 @@ export async function anchor(handle, programName, data, options = {}) {
     const encoding = options.encoding === 'binary' ? 'binary' : 'json';
     const storedData = storedAnchorPayload(data, encoding);
     if (!StorageProgram.validateSize(storedData, encoding)) {
-        throw new Error(`Data exceeds StorageProgram size limit (encoding=${encoding})`);
+        throw new Sr2AnchorError('anchor-size-limit', {}, `Data exceeds StorageProgram size limit (encoding=${encoding})`);
     }
     // Build the storage-program-create payload — returns a StorageProgramPayload object
     // that the SDK's prepare() wraps into a Transaction
@@ -113,10 +117,10 @@ export async function anchor(handle, programName, data, options = {}) {
     const signedNonce = typeof signed.content?.nonce === 'number' && Number.isSafeInteger(signed.content.nonce) ? String(signed.content.nonce)
         : typeof signed.content?.nonce === 'string' && /^\d+$/.test(signed.content.nonce) ? signed.content.nonce : undefined;
     if (signedHash === undefined || signedFrom === undefined || signedNonce === undefined) {
-        throw new Error(`SR-2 anchor of "${programName}": the signed transaction lacks a hash, signer or nonce; nothing is broadcast`);
+        throw new Sr2AnchorError('anchor-unsigned', {}, `SR-2 anchor of "${programName}": the signed transaction lacks a hash, signer or nonce; nothing is broadcast`);
     }
     if (signedFrom !== address)
-        throw new Error(`SR-2 anchor of "${programName}": signed transaction is from ${signedFrom.slice(0, 12)}, not this wallet`);
+        throw new Sr2AnchorError('anchor-wrong-wallet', {}, `SR-2 anchor of "${programName}": signed transaction is from ${signedFrom.slice(0, 12)}, not this wallet`);
     const validity = await demosAny.confirm(tx);
     // Broadcast wait window. A slow devnet node can take >90s to CONFIRM a tx it already accepted for
     // propagation (the 2026-07-11 + 2026-07-23 BroadcastTimeoutError). Raise the default and make it tunable.
@@ -156,10 +160,10 @@ export async function anchor(handle, programName, data, options = {}) {
                 break;
             }
             if (st === 'failed')
-                throw new Error(`SR-2 anchor of "${programName}" tx ${timedOutHash} FAILED on chain (not re-broadcast)`);
+                throw new Sr2AnchorError('anchor-failed-on-chain', { txHash: timedOutHash }, `SR-2 anchor of "${programName}" tx ${timedOutHash} FAILED on chain (not re-broadcast)`);
         }
         if (!landed) {
-            throw new Error(`SR-2 anchor of "${programName}" not confirmed within ${broadcastTimeoutMs + graceMs}ms ` +
+            throw new Sr2AnchorError('anchor-not-confirmed', { txHash: timedOutHash, waitMs: broadcastTimeoutMs + graceMs }, `SR-2 anchor of "${programName}" not confirmed within ${broadcastTimeoutMs + graceMs}ms ` +
                 `(tx ${timedOutHash}; never re-broadcast — reconcile balance, then re-run the deal)`);
         }
         result = { broadcast: { response: { hash: timedOutHash } }, status: { state: 'included' } };
@@ -170,7 +174,7 @@ export async function anchor(handle, programName, data, options = {}) {
     // Require an explicit terminal `included` — a missing/other state is NOT success (matches the
     // receipt-anchor's positive check; never treat an unobserved anchor as confirmed).
     if (result.status?.state !== 'included') {
-        throw new Error(`SR-2 anchor of "${programName}" not included (state=${result.status?.state ?? 'missing'})`);
+        throw new Sr2AnchorError('anchor-not-included', { state: result.status?.state }, `SR-2 anchor of "${programName}" not included (state=${result.status?.state ?? 'missing'})`);
     }
     // The anchor result must state the facts a CORE §5.1 receipt will be checked against: the creating
     // transaction and the nonce that transaction carries. The broadcast payload's hash field varies by SDK
@@ -188,16 +192,16 @@ export async function anchor(handle, programName, data, options = {}) {
         facts = await anchorFactsFromNode(handle.rpc, storageAddress, { fetchImpl: options.fetchImpl });
     }
     if (!facts) {
-        throw new Error(`SR-2 anchor of "${programName}" was included but its creating transaction and nonce could not be read back from the node after ${attempts} attempt(s)`);
+        throw new Sr2AnchorError('anchor-readback-missing', { txHash: signedHash }, `SR-2 anchor of "${programName}" was included but its creating transaction and nonce could not be read back from the node after ${attempts} attempt(s)`);
     }
     if (facts.owner !== address)
-        throw new Error(`SR-2 anchor of "${programName}": node records owner ${facts.owner.slice(0, 12)}, not this wallet`);
+        throw new Sr2AnchorError('anchor-facts-mismatch', { txHash: signedHash }, `SR-2 anchor of "${programName}": node records owner ${facts.owner.slice(0, 12)}, not this wallet`);
     if (facts.txHash !== signedHash)
-        throw new Error(`SR-2 anchor of "${programName}": node's creating transaction ${facts.txHash.slice(0, 12)} is not the transaction this wallet signed ${signedHash.slice(0, 12)}`);
+        throw new Sr2AnchorError('anchor-facts-mismatch', { txHash: signedHash }, `SR-2 anchor of "${programName}": node's creating transaction ${facts.txHash.slice(0, 12)} is not the transaction this wallet signed ${signedHash.slice(0, 12)}`);
     if (facts.nonce !== signedNonce)
-        throw new Error(`SR-2 anchor of "${programName}": node records nonce ${facts.nonce}, the signed transaction carried ${signedNonce}`);
+        throw new Sr2AnchorError('anchor-facts-mismatch', { txHash: signedHash }, `SR-2 anchor of "${programName}": node records nonce ${facts.nonce}, the signed transaction carried ${signedNonce}`);
     if (broadcastHash && broadcastHash !== facts.txHash) {
-        throw new Error(`SR-2 anchor of "${programName}": broadcast hash ${broadcastHash.slice(0, 12)} differs from the node's creating transaction ${facts.txHash.slice(0, 12)}`);
+        throw new Sr2AnchorError('anchor-facts-mismatch', { txHash: signedHash }, `SR-2 anchor of "${programName}": broadcast hash ${broadcastHash.slice(0, 12)} differs from the node's creating transaction ${facts.txHash.slice(0, 12)}`);
     }
     const txHash = facts.txHash;
     const sizeBytes = StorageProgram.getDataSize(storedData, encoding);
