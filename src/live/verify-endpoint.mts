@@ -352,7 +352,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): { recipient: s
 }
 
 /** The seller signing key from the seller wallet named by VERIFY_SELLER_MNEMONIC_ENV in the DACS_ENV_PATH dotenv. */
-export async function sellerFromMnemonicEnv(env: NodeJS.ProcessEnv = process.env): Promise<VerifyEndpointSeller | { error: string } | null> {
+export async function sellerFromMnemonicEnv(env: NodeJS.ProcessEnv = process.env, connect?: (mnemonic: string, rpc: string) => Promise<{ demos: unknown; address: string }>): Promise<VerifyEndpointSeller | { error: string } | null> {
   const name = env.VERIFY_SELLER_MNEMONIC_ENV;
   if (!name) return null;
   if (!/^[A-Z][A-Z0-9_]*$/.test(name)) return { error: 'VERIFY_SELLER_MNEMONIC_ENV must name an environment variable' };
@@ -361,10 +361,11 @@ export async function sellerFromMnemonicEnv(env: NodeJS.ProcessEnv = process.env
   const mnemonic = process.env[name];
   if (!mnemonic || mnemonic.trim().split(/\s+/).length < 12) return { error: `${name} does not hold a 12-word mnemonic` };
   const rpcUrl = env.D402_RPC ?? 'https://demosnode.discus.sh/';
-  const { connectDemos } = await import('../demos/connection.js');
   const { sellerKeyFromWallet } = await import('./seller-key.js');
+  const unlock = connect ?? (await import('../demos/connection.js')).connectDemos;
   let handle;
-  try { handle = await connectDemos(mnemonic, rpcUrl); } catch (error) { return { error: `seller wallet could not be unlocked: ${error instanceof Error ? error.message : String(error)}` }; }
+  // The SDK's exception text may echo wallet material; it never reaches the output.
+  try { handle = await unlock(mnemonic, rpcUrl); } catch { return { error: 'seller wallet could not be unlocked' }; }
   let key;
   try { key = sellerKeyFromWallet((handle.demos as unknown as { keypair: { publicKey: ArrayLike<number>; privateKey: ArrayLike<number> } }).keypair, handle.address); }
   catch (error) { return { error: `seller wallet key is not usable for receipts: ${error instanceof Error ? error.message : String(error)}` }; }
