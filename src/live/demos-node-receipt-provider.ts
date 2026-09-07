@@ -73,6 +73,8 @@ export function createDefaultNodeCall(rpc: string, fetchImpl: typeof fetch = fet
   };
 }
 
+import { sdkProgramName } from '../lib/locator-form.js';
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** Block numbers arrive from the node as JSON numbers or decimal strings (both observed); other shapes are absent. */
@@ -136,7 +138,27 @@ export function createDemosNodeReceiptProvider(config: { rpc: string }, options:
       if (!isRecord(program)) return indeterminate('node storage record unavailable', observed);
       if (program.storageAddress !== nativeAddress) return indeterminate('node returned a different storage record than requested', observed);
       if (typeof program.programName === 'string') observed.programName = program.programName;
-      if (program.programName !== request.logicalAddress) return indeterminate('node storage record is not named by the requested logical address', observed);
+      // The writer names the program in the pinned SDK's form (':' encoded as '%3A', PR #93) and records the logical
+      // address as metadata; older anchors carry the logical address as the name itself. Either name binds, and a
+      // recorded metadata.logicalAddress must agree with the request (attempt 11, 2026-09-07: every anchor came back
+      // indeterminate here after the naming change).
+      if (program.programName !== request.logicalAddress && program.programName !== sdkProgramName(request.logicalAddress)) {
+        return indeterminate('node storage record is not named by the requested logical address', observed);
+      }
+      const recordedLogical = isRecord(program.metadata) ? program.metadata.logicalAddress : undefined;
+      if (recordedLogical !== undefined) {
+        observed.recordedLogicalAddress = recordedLogical;
+      }
+      if (
+        (program.programName !== request.logicalAddress ||
+          recordedLogical !== undefined) &&
+        recordedLogical !== request.logicalAddress
+      ) {
+        return indeterminate(
+          'node storage record binds a different logical address than requested',
+          observed,
+        );
+      }
       const owner = program.owner;
       const createdByTx = program.createdByTx;
       if (typeof owner !== 'string' || owner.length === 0) return indeterminate('node storage record has no owner', observed);
