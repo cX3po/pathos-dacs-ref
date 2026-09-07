@@ -11,6 +11,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { Sr2AnchorError } from '../demos/storage.js';
+import { organProfile } from './organ-profiles.js';
 import { dahrFetch } from '../demos/dahr.js';
 import { leiClaimOf, gleifRecordUrl, type VetRecordRefs, type SingleFetchVet } from './vet-record.js';
 import { vetParties, type PartyVetRecords } from './party-vet.js';
@@ -1000,10 +1001,11 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
   };
 }
 
-interface CliOptions { dryRun: boolean; json: boolean; help: boolean; jobId: string; fixtureSeedHex?: string; receiptProvider?: 'observer' | 'demos-node' }
+interface CliOptions { dryRun: boolean; json: boolean; help: boolean; jobId: string; fixtureSeedHex?: string; receiptProvider?: 'observer' | 'demos-node'; organ: string;
+}
 
 function parseCli(argv: readonly string[], env: NodeJS.ProcessEnv): CliOptions {
-  let explicitDry = false, json = false, help = false, jobId: string | undefined, fixtureSeedHex: string | undefined, receiptProvider: 'observer' | 'demos-node' | undefined;
+  let explicitDry = false, json = false, help = false, jobId: string | undefined, fixtureSeedHex: string | undefined, receiptProvider: 'observer' | 'demos-node' | undefined, organ: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === '--dry-run') explicitDry = true;
@@ -1019,6 +1021,9 @@ function parseCli(argv: readonly string[], env: NodeJS.ProcessEnv): CliOptions {
       const value = argv[++i];
       if (value !== 'observer' && value !== 'demos-node') throw new DacsTestnetRefusal('usage', '--receipt-provider must be observer or demos-node');
       receiptProvider = value;
+    } else if (arg === '--organ') {
+      organ = argv[++i];
+      if (organ === undefined) throw new DacsTestnetRefusal('usage', '--organ requires a value');
     }
     else throw new DacsTestnetRefusal('usage', `unknown option: ${arg}`);
   }
@@ -1027,10 +1032,16 @@ function parseCli(argv: readonly string[], env: NodeJS.ProcessEnv): CliOptions {
   if (env.LIVE === '1' && explicitDry) throw new DacsTestnetRefusal('usage', 'LIVE=1 and --dry-run are contradictory mode selections');
   if (env.LIVE === '1' && fixtureSeedHex !== undefined) throw new DacsTestnetRefusal('usage', '--fixture-seed is refused in LIVE mode');
   if (fixtureSeedHex !== undefined && !/^[0-9a-fA-F]+$/.test(fixtureSeedHex)) throw new DacsTestnetRefusal('usage', '--fixture-seed must be hexadecimal');
-  return { dryRun: env.LIVE !== '1', json, help, jobId, ...(fixtureSeedHex ? { fixtureSeedHex: fixtureSeedHex.toLowerCase() } : {}), ...(receiptProvider ? { receiptProvider } : {}) };
+  // --organ wins over ORGAN; the organ must have both a public answer projection and a listing profile (config, not usage:
+  // the operator chose an organ this build cannot sell). Checked before any credential read or network call.
+  const chosen = organ ?? env.ORGAN ?? 'nws_alerts';
+  if (!ORGAN_ANSWER_PROJECTIONS.has(chosen) || organProfile(chosen) === undefined) {
+    throw new DacsTestnetRefusal('config', `organ ${chosen} is not sellable by this build (supported: ${supportedOrgans().filter((o) => organProfile(o) !== undefined).join(', ')})`);
+  }
+  return { dryRun: env.LIVE !== '1', json, help, jobId, organ: chosen, ...(fixtureSeedHex ? { fixtureSeedHex: fixtureSeedHex.toLowerCase() } : {}), ...(receiptProvider ? { receiptProvider } : {}) };
 }
 
-const HELP = `Usage: node --import tsx src/live/dacs-testnet-run.mts [--dry-run] [--job-id ID] [--fixture-seed HEX] [--receipt-provider observer|demos-node] [--json]\n\nLIVE=1 selects LIVE. --dry-run is the explicit default and overrides no LIVE request.\n--receipt-provider demos-node selects the finality-proving CORE §5.1 receipt source (the node's confirmed block); it enters the parameter hash, so the dry run and the LIVE run must both name it.\nLIVE delivery runs the proof-organ bridge: ORGAN_CLI (script path) under AXIOM_PY (default python3) with <organ> <query>; its JSON answer becomes the anchored deliverable, minus the commitment nonce.`;
+const HELP = `Usage: node --import tsx src/live/dacs-testnet-run.mts [--dry-run] [--job-id ID] [--organ nws_alerts|air_quality|drug_info] [--fixture-seed HEX] [--receipt-provider observer|demos-node] [--json]\n\n--organ (or ORGAN) selects the proof organ sold; it enters the parameter hash. ORGAN_QUERY overrides the organ's default query.\nLIVE=1 selects LIVE. --dry-run is the explicit default and overrides no LIVE request.\n--receipt-provider demos-node selects the finality-proving CORE §5.1 receipt source (the node's confirmed block); it enters the parameter hash, so the dry run and the LIVE run must both name it.\nLIVE delivery runs the proof-organ bridge: ORGAN_CLI (script path) under AXIOM_PY (default python3) with <organ> <query>; its JSON answer becomes the anchored deliverable, minus the commitment nonce.`;
 
 export async function main(
   argv = process.argv.slice(2),
@@ -1042,7 +1053,7 @@ export async function main(
     if (cli.help) { process.stdout.write(HELP + '\n'); return 0; }
     const mode = cli.dryRun ? 'dry-run' : 'live';
     const config: DacsTestnetConfig = {
-      jobId: cli.jobId, mode, organ: 'nws_alerts', query: env.ORGAN_QUERY ?? '35.2271,-80.8431',
+      jobId: cli.jobId, mode, organ: cli.organ, query: env.ORGAN_QUERY ?? organProfile(cli.organ)!.defaultQuery,
       priceDem: '1', spendCapDem: Number(env.GATEWAY_SPEND_CAP_DEM ?? '50'),
       rpc: env.DEMOS_RPC ?? 'https://demosnode.discus.sh/', ...(cli.fixtureSeedHex ? { fixtureSeedHex: cli.fixtureSeedHex } : {}),
       ...(cli.receiptProvider ? { receiptProvider: cli.receiptProvider } : {}),

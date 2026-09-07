@@ -62,11 +62,14 @@ import {
   type PayPolicy,
   type TransferAuthorization,
 } from './pay-policy.js';
+import { organProfile } from './organ-profiles.js';
 
 const LIVE = process.env.LIVE === '1';
 const RPC = process.env.DEMOS_RPC ?? 'https://demosnode.discus.sh/';
-const QUERY = process.env.ORGAN_QUERY ?? '35.2271,-80.8431'; // buyer's committed point (lat,lon)
-const ORGAN = 'nws_alerts';
+const ORGAN = process.env.ORGAN ?? 'nws_alerts';
+const PROFILE = organProfile(ORGAN);
+if (PROFILE === undefined) { console.error(`organ ${ORGAN} has no listing profile (see src/live/organ-profiles.ts)`); process.exit(2); }
+const QUERY = process.env.ORGAN_QUERY ?? PROFILE.defaultQuery; // buyer's committed input (a point or a medication name)
 const PRICE_DEM = '1'; // CD-1 canonical
 const PRICE_OS = 1_000_000_000n;
 const SPEND_CAP_DEM = Number(process.env.GATEWAY_SPEND_CAP_DEM ?? '50');
@@ -253,8 +256,8 @@ const GATEWAY_PIPELINE = [
 const published = await publishProducerListing({
   jobId, seller: sellerKeys, displayName: 'PATH-OS proof organ',
   offering: {
-    title: 'proof-organ:nws_alerts severity band', category: 'proof-organ', tags: ['nws_alerts', 'severe-weather'],
-    description: 'severe-weather severity band near a committed point (raw feed + location committed, never disclosed)',
+    title: PROFILE.title, category: 'proof-organ', tags: [...PROFILE.tags],
+    description: PROFILE.description,
     deliverable: { kind: 'storage-program', accessModel: 'public' },
   },
   price: { amount: PRICE_DEM, currency: 'DEM' }, railId: 'pay-dem', pipeline: GATEWAY_PIPELINE, now: now(),
