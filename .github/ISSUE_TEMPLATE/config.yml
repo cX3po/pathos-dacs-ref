@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/cX3po/pathos-dacs-ref/blob/main/SECURITY.md
+    about: Vulnerabilities go to security@path-os.net, not to a public issue. SECURITY.md says what to include.
