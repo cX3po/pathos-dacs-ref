@@ -17,8 +17,10 @@ npx tsx src/live/organ-gateway.mts                 # dry-run (default): no chain
 LIVE=1 npx tsx src/live/organ-gateway.mts          # real devnet session (~6-7 DEM in fees/writes)
 ```
 
-Live mode needs in `~/axiom/.env`: `DEMOS_MNEMONIC` (buyer, funded) and
-`DEMOS_SELLER_MNEMONIC` (seller). Exit 0 iff the bundle verification rollup is PASS.
+Live mode needs in `~/axiom/.env`: `DEMOS_MNEMONIC` (buyer, funded) and the chosen organ's seller
+mnemonic named by `src/live/organ-profiles.ts` (`DEMOS_SELLER_MNEMONIC` for `nws_alerts`,
+`DEMOS_SELLER_AIR_MNEMONIC` for `air_quality`, `DEMOS_SELLER_DRUG_MNEMONIC` for `drug_info`; one seller per organ,
+never the buyer's variable). Exit 0 iff the bundle verification rollup is PASS.
 
 ## Wrapped text anchors
 

@@ -11,7 +11,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { Sr2AnchorError } from '../demos/storage.js';
-import { organProfile } from './organ-profiles.js';
+import { organProfile, organSeller, BUYER_MNEMONIC_ENV } from './organ-profiles.js';
 import { dahrFetch } from '../demos/dahr.js';
 import { leiClaimOf, gleifRecordUrl, type VetRecordRefs, type SingleFetchVet } from './vet-record.js';
 import { vetParties, type PartyVetRecords } from './party-vet.js';
@@ -126,6 +126,8 @@ export interface DacsTestnetRunResult {
   verification: { agreement: ColdVerdict; bundle: ColdVerdict; vet?: { outcome: ColdVerdict['outcome']; detail: string; records?: VetVerdict['records']; singleFetch?: SingleFetchVet } };
   anchors: Partial<Record<'listing' | 'agreement' | 'commitment' | 'paymentEvidence' | 'deliverable' | 'deliveryEvidence' | 'buyerBundle' | 'sellerBundle', string>>;
   paramHash: string;
+  /** The organ's registered seller principal (src/live/organ-profiles.ts); the env variable name stays out of results. */
+  seller: { principal: string };
   authorizeLiveWith?: string;
   error?: { stage: string; code: 'phase-failed' | 'verification-failed' | 'settlement-failed'; detail: string; settlement?: Readonly<import('../adapters/dacs/pay-dem.js').PayDemSettlementWitness> };
 }
@@ -388,19 +390,23 @@ export async function createLiveAdapterWiring(
   } catch {
     throw new DacsTestnetRefusal('capability', 'CORE §5.1 finalized-receipt provider is not configured');
   }
+  // The seller env is a config fact from the profile table; resolve and validate it before dotenv loads or any
+  // credential is read, so a profile naming the buyer's variable refuses with zero reads and zero connections.
+  const sellerEnv = organSellerEnv(config.organ);
   const { config: loadEnvFile } = await import('dotenv');
   loadEnvFile({ path: env.DACS_ENV_PATH ?? '.env', processEnv: env as Record<string, string> });
   const { connectDemos, mnemonicFromEnv } = await import('../demos/connection.js');
   const { claimRefFor, agentDidForAddress, keyClaimForPubkeyClaim, signDomainHashAsAgent } = await import('../adapters/demos/identity.js');
   const storage = await import('../demos/storage.js');
   const buyerHandle = await connectDemos(mnemonicFromEnv('DEMOS_MNEMONIC', env), config.rpc);
-  const sellerHandle = await connectDemos(mnemonicFromEnv('DEMOS_SELLER_MNEMONIC', env), config.rpc);
+  // The seller is the organ's registered seller (src/live/organ-profiles.ts), never the buyer's key (validated above).
+  const sellerHandle = await connectDemos(mnemonicFromEnv(sellerEnv, env), config.rpc);
   // DACS artifacts present the `cci:<pubkey>` claim, the form this repository's verifiers, the bundle finalizer
   // and the dry-run fixtures resolve to a public key; the DACS-1 listing address takes the registered `key:`
   // form of the same key; the wallet signs through its `demos:` claim (same ed25519 key: the address is the
   // public key). Anchor writers and the node receipt provider both use the DACS-1 §6.3.1 agent DID form so authorship binds and any reader resolves the key from the claim itself.
   const buyer = { ...buyerHandle, name: 'buyer', role: 'buyer-reviewer' as const, mnemonicEnv: 'DEMOS_MNEMONIC', claim: claimRefFor(buyerHandle.address), dacsClaim: agentDidForAddress(buyerHandle.address) };
-  const seller = { ...sellerHandle, name: 'seller', role: 'seller' as const, mnemonicEnv: 'DEMOS_SELLER_MNEMONIC', claim: claimRefFor(sellerHandle.address), dacsClaim: agentDidForAddress(sellerHandle.address) };
+  const seller = { ...sellerHandle, name: 'seller', role: 'seller' as const, mnemonicEnv: sellerEnv, claim: claimRefFor(sellerHandle.address), dacsClaim: agentDidForAddress(sellerHandle.address) };
   const asSigner = (handle: typeof buyer | typeof seller): AdapterSigner => ({ claim: handle.dacsClaim, sign: (domain, hash) => signDomainHashAsAgent(handle, domain, hash) });
   const anchorsByLogical = new Map<string, AgreementAnchorResult>();
   return {
@@ -774,6 +780,19 @@ export function parseBundleKind(raw: string): 'ebfab' | 'fab' {
   throw new DacsTestnetRefusal('config', `DACS_BUNDLE_KIND must be "ebfab" or "fab", got "${raw}"`);
 }
 
+/** The mnemonic env the chosen organ sells with; a profile naming the buyer's variable is refused as config. */
+export function organSellerEnvFrom(organ: string, seller: { principal: string; mnemonicEnv: string } | undefined): string {
+  if (!seller) throw new DacsTestnetRefusal('config', `organ ${organ} has no seller profile`);
+  if (seller.mnemonicEnv === BUYER_MNEMONIC_ENV) throw new DacsTestnetRefusal('config', `organ ${organ} names the buyer mnemonic as its seller`);
+  return seller.mnemonicEnv;
+}
+
+/** The mnemonic env the chosen organ sells with, from the profile table. */
+export function organSellerEnv(organ: string): string {
+  return organSellerEnvFrom(organ, organSeller(organ));
+}
+
+
 export function parameterHash(config: Pick<DacsTestnetConfig, 'organ' | 'query' | 'priceDem' | 'spendCapDem' | 'receiptProvider' | 'bundleKind'>): string {
   return jcsHashHex({
     version: 'dacs-testnet-coordinator-params:3',
@@ -889,6 +908,7 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
     verification: { agreement: agreementVerification, bundle: bundleVerification, ...(vetVerification ? { vet: vetVerification } : {}) },
     anchors,
     paramHash,
+    seller: { principal: organSeller(config.organ)?.principal ?? 'unknown' },
     // Once a payment was included, every later failure carries its witness so the moved DEM is never lost behind the stage that failed.
     error: paidWitness ? { stage, code: 'settlement-failed', detail: `${stage}: failed after an included payment${causeSuffix(cause)}`, settlement: paidWitness } : { stage, code, detail: `${stage}: phase failed${causeSuffix(cause)}` },
   });
@@ -1004,6 +1024,7 @@ export async function runDacsTestnetSession(config: DacsTestnetConfig, deps: Dac
     jobId: config.jobId, mode: config.mode, rollup, phases,
     verification: { agreement: agreementVerification, bundle: bundleVerification, ...(vetVerification ? { vet: vetVerification } : {}) },
     anchors, paramHash,
+    seller: { principal: organSeller(config.organ)?.principal ?? 'unknown' },
     ...(rollup === 'PASS' && config.mode === 'dry-run'
       ? { authorizeLiveWith: 'GATEWAY_LIVE_APPROVED=1 GATEWAY_DRYRUN_HASH=' + paramHash + ' LIVE=1' }
       : {}),

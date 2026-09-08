@@ -10,6 +10,7 @@
  *   npx tsx src/live/faucet-topup.mts        # fund buyer + seller, print before/after balances
  */
 import { connectDemos, mnemonicFromEnv } from '../demos/connection.js';
+import { BUYER_MNEMONIC_ENV, sellerMnemonicEnvs } from './organ-profiles.js';
 import { config } from 'dotenv';
 
 config({ path: process.env.DACS_ENV_PATH ?? '.env' });
@@ -24,8 +25,8 @@ async function balanceDem(h: Awaited<ReturnType<typeof connectDemos>>): Promise<
 }
 
 let ok = 0;
-for (const env of ['DEMOS_MNEMONIC', 'DEMOS_SELLER_MNEMONIC']) {
-  const label = env === 'DEMOS_MNEMONIC' ? 'buyer' : 'seller';
+for (const env of [BUYER_MNEMONIC_ENV, ...sellerMnemonicEnvs()]) {
+  const label = env === BUYER_MNEMONIC_ENV ? 'buyer' : `seller (${env})`;
   try {
     const h = await connectDemos(mnemonicFromEnv(env));
     const before = await balanceDem(h);
