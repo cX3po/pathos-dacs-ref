@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { ORGAN_PROFILES, organProfile, profiledOrgans } from '../../src/live/organ-profiles.js';
+import { ORGAN_PROFILES, organProfile, profiledOrgans, organSeller, sellerMnemonicEnvs, BUYER_MNEMONIC_ENV } from '../../src/live/organ-profiles.js';
+import { organSellerEnv, organSellerEnvFrom, createLiveAdapterWiring, DacsTestnetRefusal } from '../../src/live/dacs-testnet-run.mjs';
 import { supportedOrgans } from '../../src/live/dacs-testnet-run.mjs';
 
 const run = (args: string[], env: Record<string, string> = {}) =>
@@ -27,6 +28,8 @@ test('the coordinator sells each profiled organ in a dry run with its own parame
     const result = lastJson(r.stdout);
     assert.equal(r.status, 0, r.stderr);
     assert.equal(result.rollup, 'PASS', JSON.stringify(result.error));
+    assert.deepEqual(result.seller, { principal: organSeller(organ)!.principal }, `${organ} reports its registered seller`);
+    assert.doesNotMatch(r.stdout, /mnemonic/i, 'the env name and any value stay out of results');
     hashes.set(organ, result.paramHash);
   }
   assert.equal(new Set(hashes.values()).size, profiledOrgans().length, 'parameter hashes differ per organ');
@@ -47,4 +50,33 @@ test('an organ without a profile or projection is a config refusal before anythi
   }
   const r = run(['--dry-run', '--json'], { ORGAN: 'nope' });
   assert.notEqual(r.status, 0);
+});
+
+test('every profiled organ names its own seller: distinct principals, distinct mnemonic envs, never the buyer\'s', () => {
+  const principals = new Set<string>(); const envs = new Set<string>();
+  for (const organ of profiledOrgans()) {
+    const seller = organSeller(organ)!;
+    assert.ok(seller.principal.startsWith('seller-'), `${organ}: ${seller.principal}`);
+    assert.match(seller.mnemonicEnv, /^DEMOS_SELLER(?:_[A-Z]+)?_MNEMONIC$/);
+    assert.notEqual(seller.mnemonicEnv, BUYER_MNEMONIC_ENV);
+    assert.equal(organSellerEnv(organ), seller.mnemonicEnv);
+    principals.add(seller.principal); envs.add(seller.mnemonicEnv);
+  }
+  assert.equal(principals.size, profiledOrgans().length, 'one seller principal per organ');
+  assert.equal(envs.size, profiledOrgans().length, 'one mnemonic env per organ');
+  assert.deepEqual(sellerMnemonicEnvs().slice().sort(), [...envs].sort());
+  assert.equal(organSeller('bogus'), undefined);
+  assert.throws(() => organSellerEnv('bogus'), /no seller profile/);
+});
+
+
+test('a profile naming the buyer variable is a config refusal, and an organ without a profile refuses before dotenv or any credential read', async () => {
+  assert.throws(() => organSellerEnvFrom('x', { principal: 'seller-x', mnemonicEnv: BUYER_MNEMONIC_ENV }), (e: unknown) => e instanceof DacsTestnetRefusal && e.code === 'config' && /buyer mnemonic/.test(e.message));
+  assert.throws(() => organSellerEnvFrom('x', undefined), (e: unknown) => e instanceof DacsTestnetRefusal && e.code === 'config');
+  let reads = 0;
+  const env = new Proxy({}, { get(t, key, r) { if (typeof key === 'string' && /MNEMONIC$/.test(key)) reads++; return Reflect.get(t, key, r); } }) as NodeJS.ProcessEnv;
+  const config = { organ: 'bogus', rpc: 'http://127.0.0.1:1', jobId: 'seller-order', mode: 'live', query: '0,0', priceDem: '1', spendCapDem: '1' } as unknown as Parameters<typeof createLiveAdapterWiring>[0];
+  const provider = { describe: () => ({ kind: 'core-5.1-receipts', provesFinality: true }), fetch: async () => { throw new Error('unreachable'); } } as unknown as Parameters<typeof createLiveAdapterWiring>[2];
+  await assert.rejects(createLiveAdapterWiring(config, env, provider), (e: unknown) => e instanceof DacsTestnetRefusal && e.code === 'config' && /no seller profile/.test(e.message));
+  assert.equal(reads, 0, 'no credential variable was read before the refusal');
 });

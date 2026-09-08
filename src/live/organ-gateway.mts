@@ -19,7 +19,7 @@
  *       in-memory anchor map + clearly-labelled mock payment; proves the whole artifact
  *       pipeline including two-sided verification over the injected fetch)
  *   LIVE=1 npx tsx src/live/organ-gateway.mts        (real devnet: needs DEMOS_MNEMONIC
- *       (buyer, funded) + DEMOS_SELLER_MNEMONIC in your .env; ~6-7 DEM in fees/writes)
+ *       (buyer, funded) + the ORGAN's seller mnemonic from src/live/organ-profiles.ts in your .env; ~6-7 DEM in fees/writes)
  *
  * Honest scope: party claims are per-run ed25519 keys presented as self-certifying agent DIDs
  * (did:demos:agent:<pubkey>, recorded in the anchored artifacts) — durable gateway identities come next.
@@ -62,7 +62,7 @@ import {
   type PayPolicy,
   type TransferAuthorization,
 } from './pay-policy.js';
-import { organProfile } from './organ-profiles.js';
+import { organProfile, organSeller, BUYER_MNEMONIC_ENV } from './organ-profiles.js';
 import { gatewayDeliverableFrom } from './organ-gateway-deliverable.js';
 import { OrganDeliverableError } from './dacs-testnet-run.mjs';
 
@@ -76,7 +76,7 @@ const PRICE_DEM = '1'; // CD-1 canonical
 const PRICE_OS = 1_000_000_000n;
 const SPEND_CAP_DEM = Number(process.env.GATEWAY_SPEND_CAP_DEM ?? '50');
 // Env config for running this gateway against your own setup:
-//   DACS_ENV_PATH  path to the dotenv file holding DEMOS_MNEMONIC / DEMOS_SELLER_MNEMONIC (default: .env)
+//   DACS_ENV_PATH  path to the dotenv file holding DEMOS_MNEMONIC and the organ seller mnemonics (default: .env)
 //   DACS_PAYDEM_JOURNAL  append-only JSONL journal of signed pay-dem preparations, outside the checkout
 //                        (default: ~/.pathos-dacs-ref/pay-dem-journal.jsonl); built in LIVE preflight so a
 //                        refused path fails before any SR-2 write
@@ -163,9 +163,14 @@ type LiveHandles = {
 async function connectLive(): Promise<LiveHandles> {
   const { connectDemos, mnemonicFromEnv } = await import('../demos/connection.js');
   const { config } = await import('dotenv');
+  // The seller is decided from the ORGAN captured at module load, before dotenv runs, so an ORGAN line in the env
+  // file cannot move it; a profile naming the buyer's variable, or no profile, refuses before any credential read.
+  const organSellerInfo = organSeller(ORGAN);
+  if (!organSellerInfo) throw new Error(`organ ${ORGAN} has no seller profile`);
+  if (organSellerInfo.mnemonicEnv === BUYER_MNEMONIC_ENV) throw new Error(`organ ${ORGAN} names the buyer mnemonic as its seller`);
   config({ path: process.env.DACS_ENV_PATH ?? '.env' });
-  const buyer = await connectDemos(mnemonicFromEnv('DEMOS_MNEMONIC'), RPC);
-  const seller = await connectDemos(mnemonicFromEnv('DEMOS_SELLER_MNEMONIC'), RPC);
+  const buyer = await connectDemos(mnemonicFromEnv(BUYER_MNEMONIC_ENV), RPC);
+  const seller = await connectDemos(mnemonicFromEnv(organSellerInfo.mnemonicEnv), RPC);
   return { buyer, seller };
 }
 

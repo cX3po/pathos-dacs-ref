@@ -4,11 +4,12 @@
  *   npx tsx src/live/total-balance.mts   →  prints a single number (total DEM) to stdout.
  */
 import { connectDemos, mnemonicFromEnv } from '../demos/connection.js';
+import { BUYER_MNEMONIC_ENV, sellerMnemonicEnvs } from './organ-profiles.js';
 import { config } from 'dotenv';
 
 config({ path: process.env.DACS_ENV_PATH ?? '.env' });
 let total = 0;
-for (const env of ['DEMOS_MNEMONIC', 'DEMOS_SELLER_MNEMONIC']) {
+for (const env of [BUYER_MNEMONIC_ENV, ...sellerMnemonicEnvs()]) {
   const h = await connectDemos(mnemonicFromEnv(env));
   const info = await (h.demos as unknown as { getAddressInfo: (a: string) => Promise<{ balance?: bigint }> }).getAddressInfo(h.address);
   total += Number(info?.balance ?? 0n) / 1e9;

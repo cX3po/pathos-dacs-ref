@@ -153,7 +153,7 @@ test('LIVE policy BLOCK refuses before credential reads or connection', async ()
   let connectCalls = 0;
   const env = new Proxy({}, {
     get(target, key, receiver) {
-      if (key === 'DEMOS_MNEMONIC' || key === 'DEMOS_SELLER_MNEMONIC') credentialReads++;
+      if (typeof key === 'string' && /MNEMONIC$/.test(key)) credentialReads++;
       return Reflect.get(target, key, receiver);
     },
   }) as NodeJS.ProcessEnv;
