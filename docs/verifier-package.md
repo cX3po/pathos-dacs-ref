@@ -45,6 +45,6 @@ README). Building the image is a local or release step, not part of `npm test`.
 
 ## Scope
 
-Registry publication, credentials, release approval and image publication remain separate
-operator steps (plan item s5-pkg-publish). The package is a reference implementation and not a
-DACS-Standard publication.
+The package is published on npm as `@pathos-labs/dacs-verifier` at the versions recorded in
+`packages/registry-versions.json`. Release approval and image publication remain separate
+operator steps. The package is a reference implementation and not a DACS-Standard publication.

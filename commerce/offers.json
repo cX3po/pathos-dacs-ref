@@ -79,8 +79,8 @@
         "licence": "MIT",
         "support": "issues on the repository for that version"
       },
-      "fulfilment": "manual until the operator opens the package registry door (plan item s5-pkg-publish)",
-      "status": "builds; not yet on a registry"
+      "fulfilment": "npm install @pathos-labs/dacs-verifier@0.1.0 (packages/registry-versions.json records the published versions); the support entitlement is opened by an issue on the repository naming the version",
+      "status": "published: @pathos-labs/dacs-verifier@0.1.0 on npm"
     },
     {
       "id": "pr-review",

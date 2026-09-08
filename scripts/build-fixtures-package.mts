@@ -127,6 +127,14 @@ A deterministic, data-only package of PATH-OS C1 materials and settlement/HTLC f
 
 This package is **not a DACS-Standard publication**. It includes non-normative PATH-OS material and byte-for-byte copies of the pinned inputs identified below.
 
+The package is published on npm as \`@pathos-labs/dacs-fixtures\`; the exact published versions are recorded in \`packages/registry-versions.json\`. Install the published version; this repository README was updated after 0.1.0 was published, and those documentation changes are not included in the published 0.1.0 tarball.
+
+Install:
+
+\`\`\`
+npm install @pathos-labs/dacs-fixtures@0.1.0
+\`\`\`
+
 ## Contents and origins
 
 | Packaged file | Group | Upstream path | Repository and pin |

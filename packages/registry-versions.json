@@ -1,0 +1,37 @@
+{
+  "v": "pathos-registry-versions:0.1",
+  "registry": "https://registry.npmjs.org",
+  "scope": "@pathos-labs",
+  "publishedFromCommit": "637cfb02aa40f0196d39544772cf269ac4923c23",
+  "publishedAt": "2026-09-07T23:39:29Z",
+  "note": "The exact published versions of this repository's packages. Later commits may change package sources without a new version; a version listed here names the tarball npm serves, not the tree at main. The conformance implementation manifest is deliberately not the pin record: the fixtures package embeds it byte for byte.",
+  "packages": [
+    {
+      "name": "@pathos-labs/dacs-jcs",
+      "version": "0.1.0",
+      "source": "packages/jcs",
+      "install": "npm install @pathos-labs/dacs-jcs@0.1.0",
+      "tarball": "https://registry.npmjs.org/@pathos-labs/dacs-jcs/-/dacs-jcs-0.1.0.tgz",
+      "shasum": "5ecbd0b788a1d76be8898034084bc34beb6c7ff8",
+      "integrity": "sha512-xuIRgzFlFnWAM2FeXmAhoAJGwUvz9SG6PvYolYShXy5eZnwkyhOeaDjwgrdoCXd4rcoArDRp4uuCZgl/O/pIDg=="
+    },
+    {
+      "name": "@pathos-labs/dacs-fixtures",
+      "version": "0.1.0",
+      "source": "packages/fixtures",
+      "install": "npm install @pathos-labs/dacs-fixtures@0.1.0",
+      "tarball": "https://registry.npmjs.org/@pathos-labs/dacs-fixtures/-/dacs-fixtures-0.1.0.tgz",
+      "shasum": "3a2b1f8f2e9f9e9101f79b4a9d07eeff236b13e5",
+      "integrity": "sha512-jaCIQGeXR7t69Vb8Q8yt3MBoxtmRt5F7XugGavaO/wnEMC42wRG2XYNxjRU+s9B3sYt877yPzn1zxGEj4be8oA=="
+    },
+    {
+      "name": "@pathos-labs/dacs-verifier",
+      "version": "0.1.0",
+      "source": "packages/verifier",
+      "install": "npm install @pathos-labs/dacs-verifier@0.1.0",
+      "tarball": "https://registry.npmjs.org/@pathos-labs/dacs-verifier/-/dacs-verifier-0.1.0.tgz",
+      "shasum": "ac2c84170ab3072ec2eb87f8a208940279eaf562",
+      "integrity": "sha512-+xomjXAo4h+h/SLve8lH4Alo4P8Vz62rWFASN4FeyZTnJUsXAdXTsPCfFE8dUhxGHp1dECB8TxuRJdhkxMGeDg=="
+    }
+  ]
+}
