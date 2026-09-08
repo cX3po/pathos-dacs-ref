@@ -2,7 +2,13 @@
 
 This package exposes the PATH-OS JSON canonicalization, SHA-256, and Ed25519 signing helpers for Node.js 20 or later.
 
-This is **not a DACS-Standard publication**. This repository does not publish the package to an npm registry; registry publication is a separate operator action.
+This is **not a DACS-Standard publication**. The package is published on npm as `@pathos-labs/dacs-jcs`; the exact published versions are recorded in `packages/registry-versions.json`. Install the published version; this repository README was updated after 0.1.0 was published, and those documentation changes are not included in the published 0.1.0 tarball.
+
+Install:
+
+```
+npm install @pathos-labs/dacs-jcs@0.1.0
+```
 
 ## API
 
