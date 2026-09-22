@@ -23,7 +23,7 @@
     },
     {
       "sourcePath": "packages/verifier/src/mcp.ts",
-      "sha256": "f4950184b17ce6df8b92162e69f91d6aa9692cda943df8bf0636526bde61c6ef"
+      "sha256": "f628b0c1e21d5e704c4962be16dd167982c5dd07cf84f83c1d89869a2f93faeb"
     },
     {
       "sourcePath": "src/adapters/dacs/agreement-commitment.ts",
@@ -110,7 +110,7 @@
       "sha256": "165d2f3a872c1300c34ff98482948fc0c2a9ea7e7c8b98902ccc97cfcd5708c0"
     }
   ],
-  "sourceManifestSha256": "8dc46c658ab0bd489dcd93bc988eba9f33c386774d8d9aa578f5e383798f678f",
+  "sourceManifestSha256": "7ce7b43280aa032cfaa730ab41d192f2499b3626653b91a495cd4c381da42549",
   "emitted": [
     {
       "path": "packages/verifier/src/cli.d.ts",
@@ -138,11 +138,11 @@
     },
     {
       "path": "packages/verifier/src/mcp.d.ts",
-      "sha256": "702c5096507a30b197ef7bb99065126df51d87ed7e2c89298f4418d76555aff7"
+      "sha256": "f21293b8345afd9d82498c999f8a2442ecd02ffad8917dd0598874720c75fa5f"
     },
     {
       "path": "packages/verifier/src/mcp.js",
-      "sha256": "9170f61f03bbcd959d8618a986c292253675bab5f40a7e61f98b6d72b3a0754a"
+      "sha256": "036d934e101773acc71661f5e63566dccae0c94fcf490d52b8544c7429826618"
     },
     {
       "path": "src/adapters/dacs/agreement-commitment.d.ts",
@@ -313,5 +313,5 @@
       "sha256": "cc4e23422ec114b49a43bb29d442339934e2d38ca79d41ebd4d9d253a7a122cf"
     }
   ],
-  "emittedSha256": "eab8d4eab1d65eb8458deff4ba541b7ec5919f3dddb0825b118690ae714eaa76"
+  "emittedSha256": "89fdbed9508f028eb4ac9275e2608a9479549f704bf697aecbae07c21b6c68a6"
 }

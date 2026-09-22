@@ -1,0 +1,59 @@
+{
+  "bundleVersion": "1",
+  "jobId": "mcp-e2e-fixture-0001",
+  "outcome": "completed",
+  "anchoredByRole": "buyer",
+  "listingRef": {
+    "listingId": "lst-fixture",
+    "version": 1,
+    "contentHash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+  },
+  "parties": [
+    {
+      "role": "buyer",
+      "bundleHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "primaryClaim": {
+        "scheme": "cci",
+        "identifier": "48075a597e721a156e2e0799de5cc0c5324dc6e7eaf1cdd46250868ec53215dd"
+      }
+    },
+    {
+      "role": "seller",
+      "bundleHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "primaryClaim": {
+        "scheme": "cci",
+        "identifier": "5e212c0980e4b39fc09721134aa02109374edfd260c0d3d03cb501c8d65457a9"
+      }
+    }
+  ],
+  "phaseSummary": [
+    {
+      "index": 0,
+      "kind": "vet-credentials",
+      "outcome": "ok"
+    }
+  ],
+  "vetRecords": [],
+  "settlementEvidence": [],
+  "recipeRegistryVersion": 1,
+  "railRegistryVersion": 1,
+  "finalisedAt": 1735689600000,
+  "signatures": [
+    {
+      "party": {
+        "scheme": "cci",
+        "identifier": "48075a597e721a156e2e0799de5cc0c5324dc6e7eaf1cdd46250868ec53215dd"
+      },
+      "algorithm": "ed25519",
+      "value": "SZFyc60HUSkpQO+4ATrnFxGurcTrK0udsR2bvKA3hogjbYMTN+Nazr+Na3TqUDzU6URWWSkW2yXWl7e1Y1BeBw=="
+    },
+    {
+      "party": {
+        "scheme": "cci",
+        "identifier": "5e212c0980e4b39fc09721134aa02109374edfd260c0d3d03cb501c8d65457a9"
+      },
+      "algorithm": "ed25519",
+      "value": "ZuKjAfCptTP37xv5gBb8nObo9vGFcPEscrEOsjoKOULxHtfJ6Klh47oKfRh0wX9Fpd4vUIictnyc4Ws2ncB2Bg=="
+    }
+  ]
+}
