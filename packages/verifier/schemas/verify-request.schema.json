@@ -6,8 +6,8 @@
   "type": "object",
   "properties": {
     "bundle": { "type": "object", "description": "A DACS AttestationBundle: v0.1 (bundleVersion \"1\") or legacy (v \"dacs-5-bundle:0.1\")." },
-    "offline": { "type": "boolean", "description": "Skip the two-sided anchor lookup. Receipt-archive audit only; without it an unanchored bundle is indeterminate." },
-    "requireSignatures": { "type": "boolean", "description": "v0.1 only. false = fixture mode (placeholder signatures not enforced)." }
+    "offline": { "type": "boolean", "description": "Compatibility echo of the MCP server policy, or a request option on unlocked HTTP/CLI surfaces. It cannot weaken the MCP server policy." },
+    "requireSignatures": { "type": "boolean", "description": "Compatibility echo of the MCP server policy, or a request option on unlocked HTTP/CLI surfaces. MCP fixture mode must be authorized by server configuration." }
   },
   "required": ["bundle"],
   "additionalProperties": false

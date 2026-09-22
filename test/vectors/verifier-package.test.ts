@@ -58,6 +58,23 @@ function makeBundle(jobId = 'verifier-pkg-test-0001'): AttestationBundleV1 {
   ]);
 }
 
+function makePlaceholderBundle(): AttestationBundleV1 {
+  const bundle = makeBundle('verifier-pkg-placeholder-0001');
+  const buyer = 'did:example:buyer';
+  const seller = 'did:example:seller';
+  return {
+    ...bundle,
+    parties: bundle.parties.map((party) => ({
+      ...party,
+      primaryClaim: party.role === 'buyer' ? buyer : seller,
+    })),
+    signatures: bundle.signatures.map((signature, index) => ({
+      ...signature,
+      party: index === 0 ? buyer : seller,
+    })),
+  } as AttestationBundleV1;
+}
+
 /** Minimal JSON-Schema checker for the subset these schemas use (type, const, enum, properties, required, additionalProperties, items, minimum). */
 function validate(schema: any, value: any, path = '$'): string[] {
   const errs: string[] = [];
@@ -124,7 +141,10 @@ test('CLI (dist), HTTP route and MCP tool return the same verdict, and it satisf
     const fromCli = JSON.parse(cli.stdout);
     const http = await route('POST', '/verify', JSON.stringify({ bundle, offline: true }));
     assert.equal(http.status, 200);
-    const mcp = await handleRequest({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_bundle', arguments: { bundle, offline: true } } });
+    const mcp = await handleRequest(
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_bundle', arguments: { bundle } } },
+      { verificationPolicy: 'offline-enforcing' },
+    );
     const fromMcp = JSON.parse((mcp as any).result.content[0].text);
     assert.deepEqual(fromCli, http.body);
     assert.deepEqual(fromCli, fromMcp);
@@ -141,6 +161,70 @@ test('CLI (dist), HTTP route and MCP tool return the same verdict, and it satisf
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('MCP policy is server-owned; fixture mode is explicit and offline results do not claim live anchoring', async () => {
+  const signed = makeBundle();
+  const call = (arguments_: Record<string, unknown>, verificationPolicy?: 'live-enforcing' | 'offline-enforcing' | 'offline-fixture') =>
+    handleRequest(
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'verify_bundle', arguments: arguments_ } },
+      verificationPolicy ? { verificationPolicy } : {},
+    );
+
+  // Default policy is live + signature-enforcing. A caller cannot disable either check.
+  for (const arguments_ of [
+    { bundle: signed, offline: true },
+    { bundle: signed, requireSignatures: false },
+    { bundle: signed, unexpected: true },
+  ]) {
+    const refused = await call(arguments_);
+    assert.equal((refused as any).result.isError, true);
+  }
+
+  // The signed offline harness is server-authorized and keeps its scope explicit in both info
+  // and the verdict: signatures pass, while two-sided anchoring is skipped rather than claimed.
+  const offlineInfo = await handleRequest(
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'verifier_info', arguments: {} } },
+    { verificationPolicy: 'offline-enforcing' },
+  );
+  const info = JSON.parse((offlineInfo as any).result.content[0].text);
+  assert.deepEqual(info.verificationPolicy, {
+    name: 'offline-enforcing', offline: true, requireSignatures: true, fixtureMode: false,
+    signaturePolicy: 'v1-cryptographic-required', anchoringPolicy: 'two-sided-lookup-skipped',
+  });
+  assert.equal(info.apiVersion, 'pathos-dacs-verifier:1');
+  const offline = await call({ bundle: signed }, 'offline-enforcing');
+  const offlineVerdict = JSON.parse((offline as any).result.content[0].text);
+  assert.equal(offlineVerdict.verdict.decision, 'pass');
+  assert.equal(offlineVerdict.verdict.signersVerified.length, 2);
+  assert.equal(offlineVerdict.verdict.steps.find((s: any) => s.step === 'signatures').outcome, 'pass');
+  assert.equal(offlineVerdict.verdict.steps.find((s: any) => s.step === 'two-sided-anchoring').outcome, 'skipped');
+  assert.deepEqual(validate(SCHEMA_VERDICT, offlineVerdict), []);
+
+  // Placeholder identities are undecidable under the default. Only an explicit server fixture
+  // policy permits the structural fixture pass, and info makes the zero-signature policy visible.
+  const placeholder = makePlaceholderBundle();
+  const enforcing = await call({ bundle: placeholder }, 'offline-enforcing');
+  assert.equal(JSON.parse((enforcing as any).result.content[0].text).verdict.decision, 'indeterminate');
+  const fixture = await call({ bundle: placeholder }, 'offline-fixture');
+  const fixtureVerdict = JSON.parse((fixture as any).result.content[0].text);
+  assert.equal(fixtureVerdict.verdict.decision, 'pass');
+  assert.equal(fixtureVerdict.verdict.signersVerified.length, 0);
+  assert.equal(fixtureVerdict.verdict.steps.find((s: any) => s.step === 'signatures').outcome, 'indeterminate');
+  const fixtureInfo = await handleRequest(
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'verifier_info', arguments: {} } },
+    { verificationPolicy: 'offline-fixture' },
+  );
+  assert.deepEqual(JSON.parse((fixtureInfo as any).result.content[0].text).verificationPolicy, {
+    name: 'offline-fixture', offline: true, requireSignatures: false, fixtureMode: true,
+    signaturePolicy: 'v1-placeholder-signatures-allowed', anchoringPolicy: 'two-sided-lookup-skipped',
+  });
+
+  const infoUnknown = await handleRequest(
+    { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'verifier_info', arguments: { extra: true } } },
+    {},
+  );
+  assert.equal((infoUnknown as any).result.isError, true);
 });
 
 test('verdicts are never coerced: unanchored, tampered, unrecognised, unloadable', async () => {
@@ -253,7 +337,12 @@ test('MCP stdio rejects an oversized frame with a structured error and keeps ser
   assert.equal(out.length, 2);
   assert.equal(out[0].error.code, -32600);
   assert.match(out[0].error.message, /frame exceeds/);
-  assert.equal(JSON.parse(out[1].result.content[0].text).apiVersion, 'pathos-dacs-verifier:1');
+  const info = JSON.parse(out[1].result.content[0].text);
+  assert.equal(info.apiVersion, 'pathos-dacs-verifier:1');
+  assert.deepEqual(info.verificationPolicy, {
+    name: 'live-enforcing', offline: false, requireSignatures: true, fixtureMode: false,
+    signaturePolicy: 'v1-cryptographic-required', anchoringPolicy: 'two-sided-lookup-required-for-pass',
+  });
 });
 
 test('MCP: initialize/list/call over stdio on the built dist; bad frames are structured errors', async () => {
@@ -262,14 +351,17 @@ test('MCP: initialize/list/call over stdio on the built dist; bad frames are str
     { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
     { jsonrpc: '2.0', method: 'notifications/initialized' },
     { jsonrpc: '2.0', id: 2, method: 'tools/list' },
-    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'verify_bundle', arguments: { bundle, offline: true } } },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'verify_bundle', arguments: { bundle } } },
     { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'verify_bundle', arguments: { bundle: 'x' } } },
     { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'verify_bundle', arguments: { bundle, rpc: 'x' } } },
     { jsonrpc: '2.0', id: 6, method: 'tools/call', params: ['bad'] },
     { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'nope' } },
     'a JSON string is not a request',
   ].map((f) => JSON.stringify(f)).join('\n') + '\nnot json\n' + JSON.stringify({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'verifier_info' } }) + '\n';
-  const r = spawnSync(process.execPath, [relative(PKG, DIST_MCP)], { encoding: 'utf8', input: frames, cwd: PKG });
+  const r = spawnSync(process.execPath, [relative(PKG, DIST_MCP)], {
+    encoding: 'utf8', input: frames, cwd: PKG,
+    env: { ...process.env, DACS_VERIFIER_MCP_POLICY: 'offline-enforcing' },
+  });
   assert.equal(r.status, 0, r.stderr);
   const out = r.stdout.trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(out.length, 10);
@@ -284,7 +376,9 @@ test('MCP: initialize/list/call over stdio on the built dist; bad frames are str
   assert.equal(out[6].error.code, -32601);
   assert.equal(out[7].error.code, -32600);
   assert.equal(out[8].error.code, -32700);
-  assert.equal(JSON.parse(out[9].result.content[0].text).apiVersion, 'pathos-dacs-verifier:1');
+  const info = JSON.parse(out[9].result.content[0].text);
+  assert.equal(info.apiVersion, 'pathos-dacs-verifier:1');
+  assert.equal(info.verificationPolicy.name, 'offline-enforcing');
   // in-process serve() with an injected chain reader: an unanchored bundle stays indeterminate
   const input = new PassThrough(); const output = new PassThrough();
   const chunks: string[] = []; output.on('data', (c) => chunks.push(c.toString()));
@@ -292,6 +386,17 @@ test('MCP: initialize/list/call over stdio on the built dist; bad frames are str
   input.end(JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'verify_bundle', arguments: { bundle } } }) + '\n');
   await done;
   assert.equal(JSON.parse(JSON.parse(chunks.join('')).result.content[0].text).verdict.decision, 'indeterminate');
+});
+
+test('MCP executable refuses an unknown server policy before serving', () => {
+  const r = spawnSync(process.execPath, [relative(PKG, DIST_MCP)], {
+    encoding: 'utf8', input: '', cwd: PKG,
+    env: { ...process.env, DACS_VERIFIER_MCP_POLICY: 'unsafe-mystery-mode' },
+  });
+  assert.equal(r.status, 3);
+  assert.equal(r.stdout, '');
+  assert.match(r.stderr, /invalid DACS_VERIFIER_MCP_POLICY=unsafe-mystery-mode/);
+  assert.match(r.stderr, /live-enforcing, offline-enforcing, offline-fixture/);
 });
 
 test('container recipe references files the build produces', () => {

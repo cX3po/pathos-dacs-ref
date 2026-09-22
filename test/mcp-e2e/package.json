@@ -1,0 +1,11 @@
+{
+  "name": "dacs-verifier-mcp-e2e-clients",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0"
+  }
+}
