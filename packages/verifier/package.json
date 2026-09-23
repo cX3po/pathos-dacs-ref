@@ -1,6 +1,6 @@
 {
   "name": "@pathos-labs/dacs-verifier",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "PATH-OS DACS attestation-bundle verifier: stable API, CLI, HTTP service and MCP verify_bundle tool",
   "type": "module",
   "license": "MIT",
@@ -22,7 +22,8 @@
     "provenance.json",
     "README.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "CHANGELOG.md"
   ],
   "dependencies": {
     "@kynesyslabs/demosdk": "^4.0.16",

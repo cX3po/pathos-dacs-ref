@@ -82,10 +82,10 @@ between the committed `dist` and a fresh build, and CI runs that check.
 
 This package is a reference implementation and not a DACS-Standard publication. It is published
 on npm as `@pathos-labs/dacs-verifier`; the exact published versions are recorded in
-`packages/registry-versions.json`. Install the published version; this repository README was updated after 0.1.0 was published, and those documentation changes are not included in the published 0.1.0 tarball.
+`packages/registry-versions.json`. Version 0.2.0 includes the server-owned MCP policy described above. See `CHANGELOG.md` for the caller-visible behavior change.
 
 Install:
 
 ```
-npm install @pathos-labs/dacs-verifier@0.1.0
+npm install @pathos-labs/dacs-verifier@0.2.0
 ```
