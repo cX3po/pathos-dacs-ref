@@ -49,6 +49,14 @@ bodies over 1 MiB answer 413. The Demos RPC is server configuration (`--rpc` or
 
 `dacs-verifier-mcp` speaks JSON-RPC over stdio (protocol 2024-11-05) with tools
 `verify_bundle` (`bundle`, `offline?`, `requireSignatures?`) and `verifier_info`.
+Verification policy is server-owned and defaults to `live-enforcing`. Set
+`DACS_VERIFIER_MCP_POLICY=offline-enforcing` for a signed receipt-archive harness that does
+not claim live two-sided anchoring, or `offline-fixture` only for illustrative fixtures whose
+placeholder identities cannot be cryptographically verified. Caller flags may echo the
+effective policy for compatibility but cannot weaken it. `verifier_info` reports the effective
+policy without changing the `pathos-dacs-verifier:1` verdict schema. Its live policy says the
+two-sided lookup is required for a pass; it is configuration disclosure, not proof that any
+particular bundle was anchored. The verdict's `two-sided-anchoring` step carries that evidence.
 
 ## Container
 

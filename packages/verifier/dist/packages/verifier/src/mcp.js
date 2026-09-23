@@ -3,8 +3,8 @@
  * dacs-verifier-mcp — the verifier as an MCP server over stdio (JSON-RPC lines).
  *
  * Tools: `verify_bundle` (bundle object, offline?, requireSignatures?) → VerifyDocumentResult
- * as JSON text; `verifier_info` → name, version, apiVersion, rpc. The Demos RPC is server
- * configuration (DACS_VERIFIER_RPC), never a tool argument.
+ * as JSON text; `verifier_info` → name, version, API version, RPC and effective verification
+ * policy. RPC and verification policy are server configuration, never caller-controlled.
  */
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -14,21 +14,46 @@ import { PACKAGE_NAME, PACKAGE_VERSION } from './index.js';
 export const MCP_PROTOCOL_VERSION = '2024-11-05';
 /** Largest accepted stdio frame (one JSON-RPC line); the HTTP service has the same body budget. */
 export const MAX_FRAME_BYTES = 1_048_576;
-async function toolVerifyBundle(args, config) {
+export const MCP_VERIFICATION_POLICIES = ['live-enforcing', 'offline-enforcing', 'offline-fixture'];
+function effectivePolicy(config) {
+    const name = config.verificationPolicy ?? 'live-enforcing';
+    if (!MCP_VERIFICATION_POLICIES.includes(name))
+        throw new Error(`unsupported MCP verification policy: ${String(name)}`);
+    return {
+        name,
+        offline: name !== 'live-enforcing',
+        requireSignatures: name !== 'offline-fixture',
+        fixtureMode: name === 'offline-fixture',
+        signaturePolicy: name === 'offline-fixture' ? 'v1-placeholder-signatures-allowed' : 'v1-cryptographic-required',
+        anchoringPolicy: name === 'live-enforcing' ? 'two-sided-lookup-required-for-pass' : 'two-sided-lookup-skipped',
+    };
+}
+function validateArguments(args, policy) {
+    const known = new Set(['bundle', 'offline', 'requireSignatures']);
+    const unknown = Object.keys(args).filter((key) => !known.has(key));
+    if (unknown.includes('rpc'))
+        throw new Error('rpc is server configuration, not a tool argument');
+    if (unknown.length)
+        throw new Error(`unknown argument(s): ${unknown.sort().join(', ')}`);
     const bundle = args.bundle;
     if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle))
         throw new Error('bundle must be a JSON object');
     for (const flag of ['offline', 'requireSignatures']) {
         if (args[flag] !== undefined && typeof args[flag] !== 'boolean')
             throw new Error(`${flag} must be a boolean`);
+        if (args[flag] !== undefined && args[flag] !== policy[flag]) {
+            throw new Error(`${flag}=${String(args[flag])} conflicts with server policy ${policy.name} (${flag}=${String(policy[flag])})`);
+        }
     }
-    if (args.rpc !== undefined)
-        throw new Error('rpc is server configuration, not a tool argument');
+}
+async function toolVerifyBundle(args, config) {
+    const policy = effectivePolicy(config);
+    validateArguments(args, policy);
     try {
-        const result = await verifyDocument(bundle, {
+        const result = await verifyDocument(args.bundle, {
             rpc: config.rpc,
-            offline: args.offline,
-            requireSignatures: args.requireSignatures,
+            offline: policy.offline,
+            requireSignatures: policy.requireSignatures,
             fetchAnchoredImpl: config.fetchAnchoredImpl,
         });
         return JSON.stringify(result);
@@ -39,24 +64,37 @@ async function toolVerifyBundle(args, config) {
     }
 }
 export function tools(config) {
+    const policy = effectivePolicy(config);
     return {
         verify_bundle: {
-            description: 'Verify a DACS attestation bundle (v0.1 bundleVersion "1" or legacy dacs-5-bundle:0.1). Returns the structured verdict: pass, fail or indeterminate, never coerced; offline=true skips the two-sided anchor lookup (audit only).',
+            description: `Verify a DACS attestation bundle (v0.1 bundleVersion "1" or legacy dacs-5-bundle:0.1) under server policy ${policy.name}. Returns pass, fail or indeterminate, never coerced. Offline modes do not claim two-sided anchoring.`,
             inputSchema: {
                 type: 'object',
                 properties: {
                     bundle: { type: 'object', description: 'the AttestationBundle document' },
-                    offline: { type: 'boolean', description: 'skip the two-sided anchor lookup (receipt-archive audit only)' },
-                    requireSignatures: { type: 'boolean', description: 'v0.1 only: false = fixture mode' },
+                    offline: { type: 'boolean', description: `compatibility echo only; server policy requires ${String(policy.offline)}` },
+                    requireSignatures: { type: 'boolean', description: `compatibility echo only; server policy requires ${String(policy.requireSignatures)}` },
                 },
                 required: ['bundle'],
+                additionalProperties: false,
             },
             handler: (args) => toolVerifyBundle(args, config),
         },
         verifier_info: {
-            description: 'Name, version, API version and the configured Demos RPC of this verifier.',
-            inputSchema: { type: 'object', properties: {}, required: [] },
-            handler: async () => JSON.stringify({ name: PACKAGE_NAME, version: PACKAGE_VERSION, apiVersion: VERIFIER_API_VERSION, rpc: config.rpc ?? 'https://demosnode.discus.sh/' }),
+            description: 'Name, version, API version, configured Demos RPC and effective server-owned verification policy.',
+            inputSchema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+            handler: async (args) => {
+                const unknown = Object.keys(args);
+                if (unknown.length)
+                    throw new Error(`unknown argument(s): ${unknown.sort().join(', ')}`);
+                return JSON.stringify({
+                    name: PACKAGE_NAME,
+                    version: PACKAGE_VERSION,
+                    apiVersion: VERIFIER_API_VERSION,
+                    rpc: config.rpc ?? 'https://demosnode.discus.sh/',
+                    verificationPolicy: policy,
+                });
+            },
         },
     };
 }
@@ -165,5 +203,16 @@ function isProcessEntry() {
     return target === self;
 }
 const isEntry = isProcessEntry();
-if (isEntry)
-    serve({ rpc: process.env.DACS_VERIFIER_RPC });
+if (isEntry) {
+    const requestedPolicy = process.env.DACS_VERIFIER_MCP_POLICY ?? 'live-enforcing';
+    if (!MCP_VERIFICATION_POLICIES.includes(requestedPolicy)) {
+        console.error(`dacs-verifier-mcp: invalid DACS_VERIFIER_MCP_POLICY=${requestedPolicy}; expected ${MCP_VERIFICATION_POLICIES.join(', ')}`);
+        process.exitCode = 3;
+    }
+    else {
+        serve({ rpc: process.env.DACS_VERIFIER_RPC, verificationPolicy: requestedPolicy }).catch((e) => {
+            console.error(`dacs-verifier-mcp: server failed: ${e.message}`);
+            process.exitCode = 2;
+        });
+    }
+}
