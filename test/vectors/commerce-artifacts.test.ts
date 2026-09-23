@@ -95,7 +95,7 @@ test('openapi surface matches the endpoint contract', () => {
 
 test('artifact hashes are pinned (a price or term change is a deliberate diff)', () => {
   const pinned: Record<string, string> = {
-    'offers.json': 'a79d2bd0ebce98e465ab1e959412127475ba97c31ce94d852d2d4b85650923cb',
+    'offers.json': 'be981aafcda1fb68bee320ef980a77a8cd7f308beefd1f5b7d09dfa23ea04f5e',
     'service-manifest.json': 'abafad61614e2815673b5951232d7b25ba0f28dd87500ba9f5aff860a371e522',
     'openapi.json': 'a76868e4b4d33c820c6e259514f630fb96e2f0e49b97da719d4025c8debdb856',
     'discovery-registration.json': '8fc2f283ad01b1fd1710b101e58ae4f05ac4dbe751c54648b105f904593c94fe',
