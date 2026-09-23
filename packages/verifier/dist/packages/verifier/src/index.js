@@ -9,4 +9,4 @@ export { VERIFIER_API_VERSION, classifyBundle, exitCodeFor, indeterminateVerdict
 export { verifyBundleV1, verifyBundleV1Full, computeAnchorPairV1 } from '../../../src/lib/verify-bundle-v1.js';
 export { verifyBundle, computeAnchorPair } from '../../../src/lib/verify-bundle.js';
 export const PACKAGE_NAME = '@pathos-labs/dacs-verifier';
-export const PACKAGE_VERSION = '0.1.0';
+export const PACKAGE_VERSION = '0.2.0';

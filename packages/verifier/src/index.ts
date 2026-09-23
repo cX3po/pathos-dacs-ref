@@ -30,4 +30,4 @@ export type { AttestationBundle, VerifyStep, VerifyVerdict } from '../../../src/
 export type { AttestationBundleV1 } from '../../../src/types/bundle.js';
 
 export const PACKAGE_NAME = '@pathos-labs/dacs-verifier';
-export const PACKAGE_VERSION = '0.1.0';
+export const PACKAGE_VERSION = '0.2.0';
