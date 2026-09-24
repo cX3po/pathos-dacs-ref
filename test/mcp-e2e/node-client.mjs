@@ -6,7 +6,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const EXPECTED_PROTOCOL = '2024-11-05';
-const EXPECTED_SERVER = { name: '@pathos-labs/dacs-verifier', version: '0.1.0' };
+const EXPECTED_SERVER = { name: '@pathos-labs/dacs-verifier', version: '0.2.0' };
 const ROOT = new URL('.', import.meta.url).pathname;
 const DEFAULT_FIXTURE = resolve(ROOT, 'fixture-valid.json');
 const DEFAULT_INDETERMINATE_FIXTURE = resolve(ROOT, 'fixture-indeterminate.json');
