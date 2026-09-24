@@ -4,7 +4,7 @@
   "scope": "@pathos-labs",
   "publishedFromCommit": "637cfb02aa40f0196d39544772cf269ac4923c23",
   "publishedAt": "2026-09-07T23:39:29Z",
-  "note": "The exact published versions of this repository's packages. Later commits may change package sources without a new version; a version listed here names the tarball npm serves, not the tree at main. The conformance implementation manifest is deliberately not the pin record: the fixtures package embeds it byte for byte.",
+  "note": "The exact published versions of this repository's packages. Later commits may change package sources without a new version; a version listed here names the tarball npm serves, not the tree at main. The conformance implementation manifest is deliberately not the pin record: the fixtures package embeds it byte for byte. Per-package publishedFromCommit and publishedAt override the original batch fields above when present.",
   "packages": [
     {
       "name": "@pathos-labs/dacs-jcs",
@@ -26,12 +26,14 @@
     },
     {
       "name": "@pathos-labs/dacs-verifier",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "packages/verifier",
-      "install": "npm install @pathos-labs/dacs-verifier@0.1.0",
-      "tarball": "https://registry.npmjs.org/@pathos-labs/dacs-verifier/-/dacs-verifier-0.1.0.tgz",
-      "shasum": "ac2c84170ab3072ec2eb87f8a208940279eaf562",
-      "integrity": "sha512-+xomjXAo4h+h/SLve8lH4Alo4P8Vz62rWFASN4FeyZTnJUsXAdXTsPCfFE8dUhxGHp1dECB8TxuRJdhkxMGeDg=="
+      "install": "npm install @pathos-labs/dacs-verifier@0.2.0",
+      "tarball": "https://registry.npmjs.org/@pathos-labs/dacs-verifier/-/dacs-verifier-0.2.0.tgz",
+      "shasum": "4db8961cbaacda52c8b0521fe44c59b63e5b7d09",
+      "integrity": "sha512-LLd3jHOhHSKVL//Tv4HmXU5/r49N51qOO3VP3MwVWW1MgRX1AIQN9EBIWkxlPj1Xr/c4963+L+eqMKJ3cv2moQ==",
+      "publishedFromCommit": "42a64cc241dea7783fdc22abb5bfaab5a6a11291",
+      "publishedAt": "2026-09-23T23:48:42.343Z"
     }
   ]
 }

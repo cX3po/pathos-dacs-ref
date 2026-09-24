@@ -45,8 +45,8 @@
         "maxBodyBytes": 1048576,
         "resourceIdBinding": "verify: + first 16 hex of sha256 of the exact request bytes"
       },
-      "fulfilment": "automatic: POST /verify on the d402-gated verify endpoint (src/live/verify-endpoint.mts)",
-      "status": "available-on-testnet"
+      "fulfilment": "self-hosted package: npm install @pathos-labs/dacs-verifier@0.2.0; the d402-gated POST /verify endpoint is source for an operator deployment, not a currently hosted service",
+      "status": "self-hosted package available; hosted endpoint: not deployed"
     },
     {
       "id": "interop-run",
@@ -79,8 +79,8 @@
         "licence": "MIT",
         "support": "issues on the repository for that version"
       },
-      "fulfilment": "npm install @pathos-labs/dacs-verifier@0.1.0 (packages/registry-versions.json records the published versions); the support entitlement is opened by an issue on the repository naming the version",
-      "status": "published: @pathos-labs/dacs-verifier@0.1.0 on npm"
+      "fulfilment": "npm install @pathos-labs/dacs-verifier@0.2.0 (packages/registry-versions.json records the published versions); the support entitlement is opened by an issue on the repository naming the version",
+      "status": "published: @pathos-labs/dacs-verifier@0.2.0 on npm"
     },
     {
       "id": "pr-review",
