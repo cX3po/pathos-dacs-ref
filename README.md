@@ -28,6 +28,16 @@ Status: **77 tests / 72 pass / 5 skipped** (integration tests gated by env vars)
 | M3 GitHub + CI + external-ready docs | ✅ shipped (this commit) |
 | v0.3 — true validator-quorum DAHR + DACS-3 channel | ⏳ roadmap (gated on DACS v2 wire protocol) |
 
+### Used by the DACS standard
+
+The DACS-Standard's own conformance suite is built on this verifier:
+
+- The happy-path and negative-path lifecycle vectors, and `examples/attestation-bundle.json`, are regenerated from the pathos-dacs-ref verifier with real ed25519 signatures — see [conformance/vectors/README.md](https://github.com/DACS-Agent-commerce/DACS-Standard/blob/main/conformance/vectors/README.md).
+- The security vector sets are derived from the threat-to-test matrix published here — see [conformance/vectors/security/README.md](https://github.com/DACS-Agent-commerce/DACS-Standard/blob/main/conformance/vectors/security/README.md).
+- On the §9.5.8 settlement row, this implementation and the independent [mj-deving/dacs-verify](https://github.com/mj-deving/dacs-verify) agree 6/6 on EVM.
+
+If you implement DACS, you can run your verifier against the same vectors and compare results with ours.
+
 ## Try it in two minutes
 
 ```bash
