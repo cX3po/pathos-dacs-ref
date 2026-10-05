@@ -20,7 +20,7 @@ from mcp.client.stdio import stdio_client
 
 
 EXPECTED_PROTOCOL = "2024-11-05"
-EXPECTED_SERVER = {"name": "@pathos-labs/dacs-verifier", "version": "0.1.0"}
+EXPECTED_SERVER = {"name": "@pathos-labs/dacs-verifier", "version": "0.2.0"}
 TIMEOUT_SECONDS = 8.0
 ROOT = Path(__file__).resolve().parent
 
