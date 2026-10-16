@@ -31,7 +31,7 @@ test('shared seed pins the published upstream kit and executes every mapped asse
   assert.ok(!result.ids.includes('cr-nfc-key-collision'));
 });
 
-test('both upstream canonicalizers preserve member names and NFC normalize values', () => {
+test('partner-kit canonicalizer and its reference adapter agree: member names preserved, values NFC-normalized', () => {
   const result = probe(`
     import { jcsCanonical } from './conformance/partner-kit/jcs.mjs';
     import { referenceAdapter } from './conformance/shared-suite/reference-adapter.mjs';
