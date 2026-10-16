@@ -5,17 +5,16 @@
  */
 import { connectDemos, mnemonicFromEnv } from '../demos/connection.js';
 import { config } from 'dotenv';
-import { AMPLE_MESSAGE, jobExitCode, runFaucetTopup, requestFaucet } from './faucet-ample.js';
+import { AMPLE_MESSAGE, jobExitCode, readBalanceDem, runFaucetTopup, requestFaucet } from './faucet-ample.js';
 
 config({ path: process.env.DACS_ENV_PATH ?? '.env' });
 const FAUCET = process.env.DEMOS_FAUCET ?? 'https://faucetbackend.demos.sh';
 
 async function balanceDem(h: Awaited<ReturnType<typeof connectDemos>>): Promise<number | null> {
-  const info = await (h.demos as unknown as { getAddressInfo: (a: string) => Promise<{ balance?: bigint }> })
-    .getAddressInfo(h.address);
-  // Missing data is unreadable, not a zero balance that authorizes a faucet call.
-  if (info?.balance === undefined || info.balance === null) return null;
-  return Number(info.balance) / 1e9;
+  // Raw nodeCall, validated before SDK normalization (error envelopes and missing
+  // balances are unreadable, never a zero balance that authorizes a faucet call).
+  const demos = h.demos as unknown as { nodeCall: (m: string, a: Record<string, unknown>) => Promise<unknown> };
+  return readBalanceDem((m, a) => demos.nodeCall(m, a), h.address);
 }
 
 try {

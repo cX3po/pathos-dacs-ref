@@ -109,3 +109,31 @@ export async function requestFaucet(
     }, timeoutMs, () => controller.abort());
   } catch { return false; }
 }
+
+/**
+ * Raw getAddressInfo payload → DEM balance, or null when unreadable. Validates the
+ * node's response BEFORE SDK normalization: the SDK's `call` turns transport errors
+ * into `{result: 500, response: <error>}` and `getAddressInfo` coalesces a missing
+ * balance to 0n, which would otherwise authorize a faucet request.
+ */
+export function balanceFromAddressInfo(raw: unknown): number | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const info = raw as Record<string, unknown>;
+  if ('result' in info && 'response' in info) return null; // SDK error envelope
+  const b = info.balance;
+  let units: bigint;
+  if (typeof b === 'bigint') units = b;
+  else if (typeof b === 'number' && Number.isSafeInteger(b)) units = BigInt(b);
+  else if (typeof b === 'string' && /^[0-9]{1,40}$/.test(b)) units = BigInt(b);
+  else return null; // missing, null, fractional or malformed balance
+  if (units < 0n) return null;
+  return Number(units) / 1e9;
+}
+
+/** Read the balance through the raw nodeCall so error envelopes stay unreadable. */
+export async function readBalanceDem(
+  nodeCall: (message: string, args: Record<string, unknown>) => Promise<unknown>, address: string,
+): Promise<number | null> {
+  try { return balanceFromAddressInfo(await nodeCall('getAddressInfo', { address })); }
+  catch { return null; }
+}

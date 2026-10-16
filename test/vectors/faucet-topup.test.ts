@@ -177,3 +177,35 @@ for (const stage of ['connect', 'balance', 'request', 'settle'] as const) {
     assert.ok(result.slice(1).every(row => row === 'ample'));
   });
 }
+
+import { balanceFromAddressInfo, readBalanceDem } from '../../src/live/faucet-ample.js';
+
+test('raw getAddressInfo: SDK error envelopes and missing balances are unreadable', async () => {
+  // The SDK call() contract on transport failure; getAddressInfo would coalesce this to 0n.
+  assert.equal(balanceFromAddressInfo({ result: 500, response: new Error('down'), require_reply: false, extra: null }), null);
+  for (const raw of [null, undefined, 'x', 7, [], {}, { balance: null }, { balance: undefined },
+    { balance: '1.5' }, { balance: -1 }, { balance: 1.5 }, { balance: '-3' }, { balance: '' }]) {
+    assert.equal(balanceFromAddressInfo(raw), null, JSON.stringify(raw ?? null));
+  }
+  assert.equal(balanceFromAddressInfo({ balance: '162000000000000' }), 162000);
+  assert.equal(balanceFromAddressInfo({ balance: 0 }), 0);
+  assert.equal(balanceFromAddressInfo({ balance: 5_000_000_000n }), 5);
+});
+
+test('entry-point read path: transport faults are unreadable, so no faucet call and exit 1', async () => {
+  const envelope = async () => ({ result: 500, response: new Error('down'), require_reply: false, extra: null });
+  assert.equal(await readBalanceDem(envelope, 'addr'), null);
+  assert.equal(await readBalanceDem(async () => { throw new Error('boom'); }, 'addr'), null);
+  assert.equal(await readBalanceDem(async (m, a) => (m === 'getAddressInfo' && a.address === 'addr' ? { balance: '2000000000000' } : null), 'addr'), 2000);
+  let requests = 0;
+  const results = await runFaucetTopup({
+    async connect() {
+      return { balance: () => readBalanceDem(envelope, 'addr'), request: async () => { requests++; return true; } };
+    },
+    settle: async () => {},
+    report() {},
+  });
+  assert.equal(requests, 0);
+  assert.ok(results.length > 0 && results.every((r) => r === 'unreadable'));
+  assert.equal(jobExitCode(results), 1);
+});
