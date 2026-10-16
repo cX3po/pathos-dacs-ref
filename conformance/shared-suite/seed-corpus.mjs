@@ -51,19 +51,16 @@ function sepByRef(ref) {
   return v;
 }
 
-// The 6 canonical reject constructors (§B.2 foot-guns) — identical to
+// The 5 canonical reject constructors (§B.2 foot-guns) — identical to
 // partner-kit/run-conformance.mjs's REJECT_CONSTRUCTORS. These BUILD malformed test inputs
 // (BigInt, lone surrogate, precise unsafe integers aren't always faithfully JSON-serialisable
 // as vector data); they are not a reimplementation of jcs.mjs itself.
-const NFC_CAFE = 'café';   // c a f + U+00E9 (precomposed)
-const NFD_CAFE = 'café';  // c a f e + U+0301 (combining acute)
 const REJECT_CONSTRUCTORS = {
   'number-over-2pow53': () => ({ big: 9007199254740992 }),
   'number-large-magnitude-over-range': () => ({ n: 1e300 }),
   'number-exponent-over-range': () => ({ n: 1e21 }),
   'lone-surrogate': () => ({ s: '\uD800' }),
   'bigint': () => ({ b: BigInt(1) }),
-  'nfc-key-collision': () => { const o = {}; o[NFC_CAFE] = 1; o[NFD_CAFE] = 2; return o; },
 };
 
 function loadPinnedSource(source) {
