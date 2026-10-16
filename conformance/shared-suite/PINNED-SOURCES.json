@@ -1,14 +1,14 @@
 {
   "schema": "dacs-shared-suite-source-lock/1",
-  "authority": "DACS-Standard",
-  "status": "proposal-270-seed-lock; replace only with a reviewed DACS-Standard manifest or release",
+  "authority": "PATH-OS proposal seed lock; not DACS-Standard admission",
+  "status": "S245 candidate: partnerKit re-pinned to its exact bytes at repository base c6c0a117ce5ded8362bea12a1c284298dd123524; sig6 retains its historical pin; not Standard admission",
   "sources": {
     "partnerKit": {
       "path": "../partner-kit/vectors.json",
-      "sha256": "a8fb331a5286a4653704e8c2af5a2bf8aee1853a9b8a48364c7c0d524f140bc7",
+      "sha256": "f7c6d0de62b399c746c263fc9ed1f8219f156580952da7fc67f763f8cb4424a3",
       "declared": 49,
       "provenanceRepository": "https://github.com/cX3po/pathos-dacs-ref",
-      "provenanceRevision": "1340ea0ba22002f211a3733c722c7c30bfcf59ee"
+      "provenanceRevision": "c6c0a117ce5ded8362bea12a1c284298dd123524"
     },
     "sig6": {
       "path": "../vectors/dacs-263-sig-value-encoding-v1.json",

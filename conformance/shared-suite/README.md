@@ -119,3 +119,12 @@ at least two genuine implementation adapters exist.
   `SELF-CHECK`. Same-codebase duplicates and wrapper-over-one-impl pairs remain `SELF-CHECK`.
 - The runner, adapter protocol, and report format remain non-normative. Passing is
   interoperability evidence, not certification.
+
+## S245 source reconciliation candidate
+
+The local proposal lock re-pins only `partnerKit` to the public vector bytes at
+repository base `c6c0a117ce5ded8362bea12a1c284298dd123524`, after upstream's
+member-name repair. The SIG-6 source keeps its historical pin. The historical
+proposal lock remains in Git; this candidate does not change Standard authority
+or declare WG adoption. The lock hashes input vectors, not executable modules;
+runner/canonicalizer code must be pinned separately by its repository revision.
