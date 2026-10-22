@@ -1,0 +1,428 @@
+{
+  "completed": {
+    "buyerCopy": {
+      "faultBundleVersion": "1",
+      "jobId": "synthetic-completed",
+      "outcome": "completed",
+      "faultedParty": "none",
+      "listingRef": {
+        "listingId": "synthetic-fault-theater",
+        "version": 1,
+        "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "agreementRef": {
+        "anchor": {
+          "kind": "storage-program",
+          "locator": "synthetic-agreement-not-anchored"
+        },
+        "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "primaryClaim": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63"
+        },
+        {
+          "role": "seller",
+          "bundleHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "primaryClaim": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6"
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "pay-dem",
+          "outcome": "ok",
+          "txRefs": [
+            {
+              "kind": "demos",
+              "txHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "blockNumber": 5
+            }
+          ]
+        }
+      ],
+      "vetRecords": [],
+      "settlementEvidence": [
+        {
+          "anchor": {
+            "kind": "storage-program",
+            "locator": "synthetic-evidence-not-anchored"
+          },
+          "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1792627200000,
+      "anchoredByRole": "buyer",
+      "signatures": [
+        {
+          "party": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63",
+          "algorithm": "ed25519",
+          "value": "yaBKhU_1zwK8e_22j0N0i1f0fZUB6l01eOjCj2Gjra4vecGiAUrwvIJccoynuqsW_5nWxb8O99hxZBHOVfgQBQ"
+        },
+        {
+          "party": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6",
+          "algorithm": "ed25519",
+          "value": "rp86qi-nM2P-shzFLkTIPi8TJEcQS2RowhiURw26vxD7Of5XMZM5WzfJcE6h70Y5B4p5SwpdR3Ppnr690jCUAQ"
+        }
+      ]
+    },
+    "sellerCopy": {
+      "faultBundleVersion": "1",
+      "jobId": "synthetic-completed",
+      "outcome": "completed",
+      "faultedParty": "none",
+      "listingRef": {
+        "listingId": "synthetic-fault-theater",
+        "version": 1,
+        "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "agreementRef": {
+        "anchor": {
+          "kind": "storage-program",
+          "locator": "synthetic-agreement-not-anchored"
+        },
+        "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "primaryClaim": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63"
+        },
+        {
+          "role": "seller",
+          "bundleHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "primaryClaim": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6"
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "pay-dem",
+          "outcome": "ok",
+          "txRefs": [
+            {
+              "kind": "demos",
+              "txHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "blockNumber": 5
+            }
+          ]
+        }
+      ],
+      "vetRecords": [],
+      "settlementEvidence": [
+        {
+          "anchor": {
+            "kind": "storage-program",
+            "locator": "synthetic-evidence-not-anchored"
+          },
+          "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1792627200000,
+      "anchoredByRole": "seller",
+      "signatures": [
+        {
+          "party": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63",
+          "algorithm": "ed25519",
+          "value": "yaBKhU_1zwK8e_22j0N0i1f0fZUB6l01eOjCj2Gjra4vecGiAUrwvIJccoynuqsW_5nWxb8O99hxZBHOVfgQBQ"
+        },
+        {
+          "party": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6",
+          "algorithm": "ed25519",
+          "value": "rp86qi-nM2P-shzFLkTIPi8TJEcQS2RowhiURw26vxD7Of5XMZM5WzfJcE6h70Y5B4p5SwpdR3Ppnr690jCUAQ"
+        }
+      ]
+    }
+  },
+  "selfAbort": {
+    "buyerCopy": {
+      "faultBundleVersion": "1",
+      "jobId": "synthetic-self-abort",
+      "outcome": "aborted-by-self",
+      "faultedParty": "buyer",
+      "listingRef": {
+        "listingId": "synthetic-fault-theater",
+        "version": 1,
+        "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "agreementRef": {
+        "anchor": {
+          "kind": "storage-program",
+          "locator": "synthetic-agreement-not-anchored"
+        },
+        "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "primaryClaim": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63"
+        },
+        {
+          "role": "seller",
+          "bundleHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "primaryClaim": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6"
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "pay-dem",
+          "outcome": "ok",
+          "txRefs": [
+            {
+              "kind": "demos",
+              "txHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "blockNumber": 5
+            }
+          ]
+        }
+      ],
+      "vetRecords": [],
+      "settlementEvidence": [
+        {
+          "anchor": {
+            "kind": "storage-program",
+            "locator": "synthetic-evidence-not-anchored"
+          },
+          "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1792627200000,
+      "anchoredByRole": "buyer",
+      "signatures": [
+        {
+          "party": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63",
+          "algorithm": "ed25519",
+          "value": "ov3pC6gKxRCORy89MlAL3JncqXxZdjo7dw0JRB6ZdoE3v5_6wl7wUeZVslkqrAs6VHojLH9hy1anoBqKtbsnAg"
+        },
+        {
+          "party": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6",
+          "algorithm": "ed25519",
+          "value": "rMawSIDjYW2xLFa440DUYRjkydJw_M9lZVPc5RRUYLbQVI7P2FD-nkIomlO83vQfdPwsLzXxwy1nbco_OiP_CA"
+        }
+      ]
+    },
+    "sellerCopy": {
+      "faultBundleVersion": "1",
+      "jobId": "synthetic-self-abort",
+      "outcome": "aborted-by-other",
+      "faultedParty": "buyer",
+      "listingRef": {
+        "listingId": "synthetic-fault-theater",
+        "version": 1,
+        "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "agreementRef": {
+        "anchor": {
+          "kind": "storage-program",
+          "locator": "synthetic-agreement-not-anchored"
+        },
+        "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "primaryClaim": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63"
+        },
+        {
+          "role": "seller",
+          "bundleHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "primaryClaim": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6"
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "pay-dem",
+          "outcome": "ok",
+          "txRefs": [
+            {
+              "kind": "demos",
+              "txHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "blockNumber": 5
+            }
+          ]
+        }
+      ],
+      "vetRecords": [],
+      "settlementEvidence": [
+        {
+          "anchor": {
+            "kind": "storage-program",
+            "locator": "synthetic-evidence-not-anchored"
+          },
+          "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1792627200000,
+      "anchoredByRole": "seller",
+      "signatures": [
+        {
+          "party": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63",
+          "algorithm": "ed25519",
+          "value": "OE0iJM48cFz_fKsQct_zXX027ftarypmYA-IRLTJO_t7lKUfRXxOD4ss6Ga4I6sLKDGFlV5zKRtMrhVdABqlBA"
+        },
+        {
+          "party": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6",
+          "algorithm": "ed25519",
+          "value": "G8l5O-UBGah29mHdAEAnyLll_Q5dD0a7TXlLUNLvWjwOj2KmOGME_zK3k5zvyyJVIBahoDHI0glh4pB2uosGCQ"
+        }
+      ]
+    }
+  },
+  "relabelled": {
+    "buyerCopy": {
+      "faultBundleVersion": "1",
+      "jobId": "synthetic-relabelled",
+      "outcome": "aborted-by-self",
+      "faultedParty": "buyer",
+      "listingRef": {
+        "listingId": "synthetic-fault-theater",
+        "version": 1,
+        "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "agreementRef": {
+        "anchor": {
+          "kind": "storage-program",
+          "locator": "synthetic-agreement-not-anchored"
+        },
+        "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "primaryClaim": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6"
+        },
+        {
+          "role": "seller",
+          "bundleHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "primaryClaim": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63"
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "pay-dem",
+          "outcome": "ok",
+          "txRefs": [
+            {
+              "kind": "demos",
+              "txHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "blockNumber": 5
+            }
+          ]
+        }
+      ],
+      "vetRecords": [],
+      "settlementEvidence": [
+        {
+          "anchor": {
+            "kind": "storage-program",
+            "locator": "synthetic-evidence-not-anchored"
+          },
+          "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1792627200000,
+      "anchoredByRole": "buyer",
+      "signatures": [
+        {
+          "party": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6",
+          "algorithm": "ed25519",
+          "value": "qRmL8bpcQiQWmRyAjTxu30tfu7kQuVW9w0zcoYU22Csr4e36D4wJj2nu1G8DUxrDCiwC1DRV-Yjuuqq2XosVDA"
+        },
+        {
+          "party": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63",
+          "algorithm": "ed25519",
+          "value": "wBHw5dWSM53kECp1jARW-pF-5Tq8p_GEqKYwf71cxeio5h5FkGswb1ObS5vlvcQnIipRoGRqJOm6gbInG53YBA"
+        }
+      ]
+    },
+    "sellerCopy": {
+      "faultBundleVersion": "1",
+      "jobId": "synthetic-relabelled",
+      "outcome": "aborted-by-other",
+      "faultedParty": "buyer",
+      "listingRef": {
+        "listingId": "synthetic-fault-theater",
+        "version": 1,
+        "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "agreementRef": {
+        "anchor": {
+          "kind": "storage-program",
+          "locator": "synthetic-agreement-not-anchored"
+        },
+        "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "primaryClaim": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6"
+        },
+        {
+          "role": "seller",
+          "bundleHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "primaryClaim": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63"
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "pay-dem",
+          "outcome": "ok",
+          "txRefs": [
+            {
+              "kind": "demos",
+              "txHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "blockNumber": 5
+            }
+          ]
+        }
+      ],
+      "vetRecords": [],
+      "settlementEvidence": [
+        {
+          "anchor": {
+            "kind": "storage-program",
+            "locator": "synthetic-evidence-not-anchored"
+          },
+          "contentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1792627200000,
+      "anchoredByRole": "seller",
+      "signatures": [
+        {
+          "party": "demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6",
+          "algorithm": "ed25519",
+          "value": "U7OfoJ9fbNTFnlD1ztx6Wkp7a2rL92nieSiRO7qd0GaRpigCE7_RdMg3yNF60wj7uxTMXCNKJUBvoWGzMdNUCA"
+        },
+        {
+          "party": "demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63",
+          "algorithm": "ed25519",
+          "value": "5rAstvAoASmC1zNPGM43XWTYMN1PcthxTS_QyVsLfB-A9NCCvF8h41yEB_m8ldk4u8Bc70I8vpAPpNfPCph9CQ"
+        }
+      ]
+    }
+  }
+}
