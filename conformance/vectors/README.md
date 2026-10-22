@@ -15,25 +15,30 @@ plus a `runner.mts` and a `README.md` with its honest scope. Vectors claim
 nothing beyond what they test: no mainnet readiness, no full-DACS conformance,
 no payment execution, no authenticated identity.
 
-## Setup
+## Get the code
 
-From the repository root of `cX3po/pathos-dacs-ref` (Node 20+):
+```sh
+git clone https://github.com/cX3po/pathos-dacs-ref
+cd pathos-dacs-ref
+```
+
+All commands below run from that repository root (Node 20+).
+
+## Validate the vectors offline — no install, no SDK, no network
+
+```sh
+node conformance/vectors/validate-offline.mjs
+```
+
+This zero-dependency check validates every family's `vectors.json` (unique
+names, quoted-clause pins, CD-1 well-formedness of expected amounts, declared
+denial reasons). It needs only Node itself. CI asserts the same checks through
+`test/vectors/mainnet-kit-vectors.test.ts`.
+
+## Full offline verification (installs dev dependencies)
 
 ```sh
 npm ci --no-audit --no-fund
-```
-
-## Verify offline (no dacs-sdk checkout needed)
-
-One-shot, from a clean checkout:
-
-```sh
-npm ci --no-audit --no-fund && npx tsc --noEmit && npx tsx --test test/vectors/mainnet-kit-vectors.test.ts
-```
-
-or step by step:
-
-```sh
 npx tsc --noEmit
 npx tsx --test test/vectors/mainnet-kit-vectors.test.ts
 ```
