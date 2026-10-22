@@ -1,0 +1,143 @@
+{
+  "set": "settlement-rounding-v0.1",
+  "title": "DACS-3 §8.5.2 negotiable price-band bounds: exact half-up rounding, inclusive boundaries, CD-1 canonical refusal",
+  "spec": {
+    "standard": "DACS-Agent-commerce/DACS-Standard",
+    "revision": "4bb9e48a1095ab32c06c25b7c0b52018d3ce4091",
+    "clauses": {
+      "DACS-3 §8.5.2 (negotiable pricing)": "The admissible band is the inclusive interval [bandCenter.amount × (100 − minPct) / 100, bandCenter.amount × (100 + maxPct) / 100]. Each computed bound MUST be rounded half-up to the number of fractional digits of bandCenter.amount in its CD-1 canonical form (CORE §B.2) — NOT to any \"currency precision\" — then canonicalised per CD-1. terms.price.amount, compared as a full-precision CD-1 decimal, MUST be ≥ the lower bound and ≤ the upper bound (boundaries inclusive). A verifier MUST reject the listing if the computed lower bound is ≤ 0. minPct / maxPct are non-negative percentages.",
+      "CORE §B.2 (rule CD-1)": "Every PriceTerm.amount string MUST be in minimal-digit canonical decimal form: no leading zeros (except a single 0 before the decimal point); no trailing zeros after the decimal point; . as the only separator; no + sign; no exponent. Verifiers MUST canonicalise amount per CD-1 before any price-band or price-equality comparison."
+    }
+  },
+  "derivation": "Expected bounds were computed independently from the quoted clause with arbitrary-precision decimal arithmetic (Python decimal, ROUND_HALF_UP, quantized to the fractional digits of the canonical band centre, then CD-1-canonicalised). No expected value was copied from SDK output.",
+  "honestScope": "Negotiation-time band arithmetic only (dacs-sdk src/negotiate/fixedPrice.ts negotiablePriceBand / isNegotiablePriceWithinBand). Not settlement-fee or rail-asset precision (rail.asset.decimals, DACS-4 §9), not an authenticated Listing, not a full §8.5.2 terms validator. One vector (zero refusal) pins an additional SDK guard and is labeled SDK contract, not clause-derived.",
+  "offerExpectations": {
+    "within": "isNegotiablePriceWithinBand returns true (inclusive band)",
+    "outside": "isNegotiablePriceWithinBand returns false",
+    "refused-noncanonical": "the amount violates CD-1, so the comparison MUST be refused rather than normalised (CORE §B.2)",
+    "refused-zero": "SDK declared contract, labeled as such: a zero amount (CD-1 canonical but never a valid positive price) is refused before comparison — an additional SDK guard, not a quoted-clause derivation"
+  },
+  "vectors": [
+    {
+      "name": "half-up-one-fractional-digit",
+      "cite": "DACS-3 §8.5.2: bounds rounded half-up to the fractional digits of the CD-1 band centre; boundaries inclusive",
+      "note": "raw bounds 1.35 / 1.65; one fractional digit (centre 1.5) rounds both half-up to 1.4 / 1.7. The raw lower bound 1.35 is itself OUTSIDE the rounded band.",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "1.5", "currency": "DEM" }, "minPct": 10, "maxPct": 10 },
+      "expect": { "band": { "lower": "1.4", "upper": "1.7" } },
+      "offers": [
+        { "amount": "1.4", "expect": "within" },
+        { "amount": "1.7", "expect": "within" },
+        { "amount": "1.35", "expect": "outside" },
+        { "amount": "1.39999", "expect": "outside" },
+        { "amount": "1.70001", "expect": "outside" },
+        { "amount": "1.40", "expect": "refused-noncanonical" },
+        { "amount": "01.4", "expect": "refused-noncanonical" },
+        { "amount": "1e0", "expect": "refused-noncanonical" }
+      ]
+    },
+    {
+      "name": "zero-amount-comparison-refused-sdk-contract",
+      "cite": "SDK declared contract (labeled, NOT a quoted-clause derivation): isNegotiablePriceWithinBand refuses a zero amount before any band comparison. Zero is CD-1 canonical, so CORE §B.2 does not require this refusal; it is the SDK's own guard, consistent with DACS-3 §8.5.2's requirement that a valid band be strictly positive",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "1.5", "currency": "DEM" }, "minPct": 10, "maxPct": 10 },
+      "expect": { "band": { "lower": "1.4", "upper": "1.7" } },
+      "offers": [
+        { "amount": "0", "expect": "refused-zero" }
+      ]
+    },
+    {
+      "name": "integer-centre-half-up-asymmetry",
+      "cite": "DACS-3 §8.5.2: zero fractional digits in the centre means integer bounds; half-up pulls the lower midpoint UP into the band's exterior and the upper midpoint UP into the band",
+      "note": "centre 15 ±10%: raw 13.5 / 16.5. Half-up gives 14 / 17 — so 13.5 is outside (lower rounded away from it) while 16.5 is within (upper rounded past it). This asymmetry is the observable signature of half-up.",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "15", "currency": "DEM" }, "minPct": 10, "maxPct": 10 },
+      "expect": { "band": { "lower": "14", "upper": "17" } },
+      "offers": [
+        { "amount": "13.5", "expect": "outside" },
+        { "amount": "14", "expect": "within" },
+        { "amount": "16.5", "expect": "within" },
+        { "amount": "17", "expect": "within" },
+        { "amount": "17.5", "expect": "outside" }
+      ]
+    },
+    {
+      "name": "exact-midpoint-both-bounds",
+      "cite": "DACS-3 §8.5.2: each computed bound rounded half-up to the centre's fractional digits (two digits here)",
+      "note": "centre 0.01 ±50%: raw 0.005 / 0.015 are both exact midpoints at two fractional digits; half-up gives 0.01 / 0.02 (lower rounds back onto the centre).",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "0.01", "currency": "DEM" }, "minPct": 50, "maxPct": 50 },
+      "expect": { "band": { "lower": "0.01", "upper": "0.02" } },
+      "offers": [
+        { "amount": "0.009", "expect": "outside" },
+        { "amount": "0.01", "expect": "within" },
+        { "amount": "0.015", "expect": "within" },
+        { "amount": "0.02", "expect": "within" },
+        { "amount": "0.021", "expect": "outside" }
+      ]
+    },
+    {
+      "name": "upper-bound-cd1-canonicalisation",
+      "cite": "DACS-3 §8.5.2: bounds are rounded, then canonicalised per CD-1 (CORE §B.2: no trailing zeros)",
+      "note": "centre 2.4, minPct 0, maxPct 25: raw upper 3.0 at one fractional digit MUST surface as CD-1 canonical \"3\", never \"3.0\". An offer spelled \"3.0\" is refused as noncanonical even though its value is in band.",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "2.4", "currency": "DEM" }, "minPct": 0, "maxPct": 25 },
+      "expect": { "band": { "lower": "2.4", "upper": "3" } },
+      "offers": [
+        { "amount": "2.39", "expect": "outside" },
+        { "amount": "2.4", "expect": "within" },
+        { "amount": "3", "expect": "within" },
+        { "amount": "3.0", "expect": "refused-noncanonical" }
+      ]
+    },
+    {
+      "name": "fractional-percentage-exact",
+      "cite": "DACS-3 §8.5.2: minPct/maxPct are percentages (JSON numbers); 12.5% of 8 is exact, no rounding effect",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "8", "currency": "DEM" }, "minPct": 12.5, "maxPct": 12.5 },
+      "expect": { "band": { "lower": "7", "upper": "9" } },
+      "offers": [
+        { "amount": "6.99", "expect": "outside" },
+        { "amount": "7", "expect": "within" },
+        { "amount": "9", "expect": "within" },
+        { "amount": "9.01", "expect": "outside" }
+      ]
+    },
+    {
+      "name": "wide-asymmetric-integer-band",
+      "cite": "DACS-3 §8.5.2: asymmetric minPct/maxPct; raw lower 3.5 rounds half-up to 4 at zero fractional digits",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "7", "currency": "DEM" }, "minPct": 50, "maxPct": 100 },
+      "expect": { "band": { "lower": "4", "upper": "14" } },
+      "offers": [
+        { "amount": "3.5", "expect": "outside" },
+        { "amount": "4", "expect": "within" },
+        { "amount": "14", "expect": "within" },
+        { "amount": "14.000001", "expect": "outside" }
+      ]
+    },
+    {
+      "name": "noncanonical-centre-refused",
+      "cite": "CORE §B.2 CD-1: no trailing zeros after the decimal point; a noncanonical band centre MUST be refused, not silently normalised",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "1.50", "currency": "DEM" }, "minPct": 10, "maxPct": 10 },
+      "expect": { "refused": true }
+    },
+    {
+      "name": "zero-centre-refused",
+      "cite": "DACS-3 §8.5.2: a computed lower bound ≤ 0 MUST be rejected; a zero centre cannot produce a positive band",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "0", "currency": "DEM" }, "minPct": 10, "maxPct": 10 },
+      "expect": { "refused": true }
+    },
+    {
+      "name": "min-pct-100-refused",
+      "cite": "DACS-3 §8.5.2: lower bound = centre × (100 − 100) / 100 = 0; a verifier MUST reject a computed lower bound ≤ 0",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "1.5", "currency": "DEM" }, "minPct": 100, "maxPct": 10 },
+      "expect": { "refused": true }
+    },
+    {
+      "name": "rounded-lower-bound-zero-refused",
+      "cite": "DACS-3 §8.5.2: the REJECTED quantity is the computed (rounded) lower bound; centre 0.4 − 99% = raw 0.004, half-up at one fractional digit = 0.0 ≤ 0",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "0.4", "currency": "DEM" }, "minPct": 99, "maxPct": 0 },
+      "expect": { "refused": true }
+    },
+    {
+      "name": "negative-min-pct-refused",
+      "cite": "DACS-3 §8.5.2: minPct / maxPct are non-negative percentages; a negative percentage MUST be refused",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "1.5", "currency": "DEM" }, "minPct": -10, "maxPct": 10 },
+      "expect": { "refused": true }
+    }
+  ]
+}

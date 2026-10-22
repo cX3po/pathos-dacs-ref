@@ -1,0 +1,44 @@
+{
+  "set": "rfq-restart-no-dup-v0.1",
+  "title": "RFQ restart and replay: a crashed sender resumes the exact signed packet (byte-structurally compared with the pre-crash spool), and a replayed packet yields a duplicate verdict with revision and transcript unchanged",
+  "spec": {
+    "standard": "DACS-Agent-commerce/DACS-Standard",
+    "revision": "4bb9e48a1095ab32c06c25b7c0b52018d3ce4091",
+    "clauses": {
+      "DACS-3 §8.3.3 (channel message envelope)": "sequence: number — monotonic per channel, starts at 1.",
+      "DACS-3 §8.12 (replay of offers across sessions)": "The channel message envelope includes channelId and sequence (per-channel monotonic). Given CH-6, an offer replayed into a different channel fails signature verification because the channelId differs; replayed in the same channel it duplicates a sequence number and is rejected.",
+      "DACS-3 §8.2 CH-6 (per-session channelId uniqueness)": "The substrate MUST derive a per-session-unique channelId, and an orchestrator MUST reject a session that reuses a channelId from a prior session."
+    },
+    "honestScope": "The quoted clauses prescribe a per-channel monotonic sequence and rejection of a same-channel replayed sequence. They do NOT prescribe a durable outbox, a 'duplicate' verdict string, or an internal revision counter — those are the SDK's restart guarantees (dacs-sdk src/negotiate/durableRfqLifecycle{,StoreFs}.ts) that uphold the clauses, and these vectors pin them as such. Identity, Vet and Listing authority are synthetic fixtures (disposition: verified is asserted, not verified); transport is a local file spool, not the Demos encrypted wire; signatures are local Ed25519 over the SDK envelope hash, not a Demos wire format; the clock is fixed. Packet preservation is asserted by structural comparison of the recovered packet (including its signature value) against the packet durably spooled before the crash; this proves the resumed turn is the identical signed packet, not that no signing call occurred internally."
+  },
+  "derivation": "Expected checkpoints are derived from the quoted clauses where they reach (monotonic sequences 1..3, exactly one packet for one sequence, same-channel replay rejected) and from the SDK's declared restart guarantees where the clauses are silent (duplicate verdict, revision counter, durable outbox reconciliation) — each cite says which. Every lifecycle action runs in a fresh OS process over the durable store, so every expectation is a restart-survival claim.",
+  "fixtures": "Two local roles (buyer, seller) with fresh Ed25519 keys per run; negotiable listing bandCenter 10 USDC ±20%; local file-spool transport; fixed synthetic clock; no network, no testnet, no payment, no Demos wire signatures.",
+  "vectors": [
+    {
+      "name": "crash-after-durable-publish-resumes-exact-packet",
+      "cite": "DACS-3 §8.3.3 (sequence monotonic per channel) means a restarted sender may not emit a new signed turn for an already-used sequence; the SDK's durable-outbox reconciliation upholds this by resuming the exact pre-crash packet, asserted by structural comparison (including the signature value) against the packet spooled before the crash",
+      "scenario": "buyer sends the opening offer with an injected crash (exit 86) after the durable spool write, before acknowledgement; the spooled packet is captured; a fresh buyer process then resumes the outbox",
+      "expect": { "crashExit": 86, "resumeStatus": "ready", "outboxPackets": 1, "packetPreserved": true, "offerDelivered": "ready" }
+    },
+    {
+      "name": "same-packet-replay-is-duplicate-no-state-change",
+      "cite": "DACS-3 §8.12: replayed in the same channel it duplicates a sequence number and is rejected. The SDK surfaces the rejection as a duplicate verdict with its revision counter and the full transcript structurally unchanged (SDK restart-guarantee observables, labeled as such)",
+      "scenario": "a fresh seller process replays the exact offer packet it has already processed; the full pre-replay status is captured for comparison",
+      "expect": { "replayStatus": "duplicate", "revisionUnchanged": true, "transcriptUnchanged": true, "transcriptLength": 1 }
+    },
+    {
+      "name": "full-negotiation-exact-transcript-no-duplicates",
+      "cite": "DACS-3 §8.3.3: sequences are monotonic per channel starting at 1 — after offer, counter and accept (each action in a fresh process) both roles hold exactly the turns offer/counter/accept with sequences 1/2/3, structurally identical transcripts, and one structurally identical dual-signed agreement at the accepted price (agreement finalization observables are SDK surface)",
+      "scenario": "seller counters at 9.5, buyer accepts, both roles finalize the agreement; every action is a fresh OS process over the durable stores",
+      "expect": {
+        "transcriptLength": 3,
+        "turnTypes": ["offer", "counter", "accept"],
+        "sequences": [1, 2, 3],
+        "transcriptsIdentical": true,
+        "agreementSignatures": 2,
+        "agreementsIdentical": true,
+        "acceptedPrice": { "amount": "9.5", "currency": "USDC" }
+      }
+    }
+  ]
+}
