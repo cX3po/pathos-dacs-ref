@@ -15,6 +15,11 @@ plus a `runner.mts` and a `README.md` with its honest scope. Vectors claim
 nothing beyond what they test: no mainnet readiness, no full-DACS conformance,
 no payment execution, no authenticated identity.
 
+This repository's own DACS-3/DACS-4 **implementation** remains out of scope
+for v0.x (see the root README's Scope table). These vector families do not
+change that: they add no implementation here — they pin clause-derived
+expectations and execute them against the external dacs-sdk.
+
 ## Get the code
 
 ```sh
