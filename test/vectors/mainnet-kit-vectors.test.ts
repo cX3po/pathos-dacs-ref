@@ -1,4 +1,4 @@
-// Offline structural checks for the Mainnet Readiness Kit vector families
+// Offline structural checks for the DACS conformance vector families
 // (conformance/vectors/{settlement-rounding,spend-cap-restart,rfq-restart-no-dup}).
 // The checks live in conformance/vectors/validate-offline.mjs — a plain-Node,
 // zero-dependency validator a recipient can run without npm install — and this

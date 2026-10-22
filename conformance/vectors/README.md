@@ -1,4 +1,4 @@
-# Mainnet Readiness Kit — conformance vector families
+# DACS conformance vector families (kit part 1)
 
 Spec-derived DACS conformance vectors with runners that execute the real
 dacs-sdk, in three families:

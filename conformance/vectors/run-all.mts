@@ -1,4 +1,4 @@
-// Runs the three Mainnet Readiness Kit vector families in sequence:
+// Runs the three DACS conformance vector families in sequence:
 // settlement-rounding, spend-cap-restart, rfq-restart-no-dup.
 // Requires DACS_SDK_ROOT (default ~/dacs-sdk) — a local dacs-sdk source
 // checkout with installed dependencies. No network, no testnet, no payment.

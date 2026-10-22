@@ -10,6 +10,7 @@
     }
   },
   "derivation": "Expected bounds were computed independently from the quoted clause with arbitrary-precision decimal arithmetic (Python decimal, ROUND_HALF_UP, quantized to the fractional digits of the canonical band centre, then CD-1-canonicalised). No expected value was copied from SDK output.",
+  "honestScope": "Negotiation-time band arithmetic only (dacs-sdk src/negotiate/fixedPrice.ts negotiablePriceBand / isNegotiablePriceWithinBand). Not settlement-fee or rail-asset precision (rail.asset.decimals, DACS-4 §9), not an authenticated Listing, not a full §8.5.2 terms validator. One vector (zero refusal) pins an additional SDK guard and is labeled SDK contract, not clause-derived.",
   "offerExpectations": {
     "within": "isNegotiablePriceWithinBand returns true (inclusive band)",
     "outside": "isNegotiablePriceWithinBand returns false",

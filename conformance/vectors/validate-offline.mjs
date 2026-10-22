@@ -1,4 +1,4 @@
-// Zero-dependency offline validation of the Mainnet Readiness Kit vector
+// Zero-dependency offline validation of the DACS conformance vector
 // families. Runs with plain Node (no npm install, no dacs-sdk checkout, no
 // network): node conformance/vectors/validate-offline.mjs
 // Exit 0: every structural check passed. Exit 1: failures (each printed).
