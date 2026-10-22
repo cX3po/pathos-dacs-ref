@@ -1,0 +1,74 @@
+{
+  "set": "spend-cap-restart-v0.1",
+  "title": "Wallet spend-authority caps and reservations survive process restart: a fresh process may never see more headroom than the durable state allows",
+  "spec": {
+    "standard": "DACS-Agent-commerce/DACS-Standard",
+    "revision": "4bb9e48a1095ab32c06c25b7c0b52018d3ce4091",
+    "clauses": {
+      "DACS-4 §9.5.1 (retry and recovery of a payment phase)": "Any retry or recovery of a payment phase MUST first check the rail's settlement state using the original (jobId, phaseIndex) / idempotency binding and transaction/provider references. If the payment is final, it MUST resume only the evidence-anchor catch-up and MUST NOT resubmit settlement. If the transaction's established state is submitted, accepted, dropped, or replaced, or its current observation disposition is indeterminate, the handler MUST follow the rail's declared reconciliation semantics and MUST NOT infer a second payment is safe from non-observation alone."
+    },
+    "honestScope": "Wallet spend caps, reservations and denial reasons are an SDK-side surface (dacs-sdk src/rails/walletSpendAuthority.ts, pre-normative): no DACS-Standard clause normatively defines them today. These vectors pin the SDK's own declared policy contract — denial reasons from its published reason enum, cumulative cap strict-greater-than, reserve floor balance < active + requested + minimumReserve — so a process restart can never silently widen spend headroom. The quoted DACS-4 §9.5.1 clause is the Standard-side discipline this surface exists to uphold: state, not process memory, is the authority on what has already been reserved or spent."
+  },
+  "derivation": "Expected statuses and reasons are derived from the SDK's declared policy contract (the WalletSpendPolicy field semantics and the denial-reason enum it publishes), evaluated by hand for each scenario before any run. Every step executes in a fresh OS process sharing only the durable state directory and its integrity key, so each expectation is a restart-survival claim, never an in-memory one.",
+  "fixtures": "Balances, wallet, chain binding, payee and hashes are synthetic; readBalance is a fixture callback; recovery authentication always refuses; no payment rail is imported and nothing signs, sends, or spends.",
+  "vectors": [
+    {
+      "name": "cumulative-cap-denies-across-restart",
+      "cite": "DACS-4 §9.5.1: a fresh process MUST NOT infer headroom from non-observation alone; the durable cumulative total (60) plus the new request (50) exceeds the 100 cap",
+      "policy": { "maximumCumulativeDebit": "100", "minimumReserve": "0", "maximumPerOrderDebit": "100" },
+      "balance": "1000",
+      "steps": [
+        { "reserve": { "id": "first", "amount": "60" }, "expect": { "status": "reserved" } },
+        { "reserve": { "id": "second", "amount": "50" }, "expect": { "status": "denied", "reason": "cumulative-limit" } }
+      ]
+    },
+    {
+      "name": "cumulative-cap-boundary-inclusive",
+      "cite": "SDK policy contract: denial fires only when cumulative + active + requested EXCEEDS maximumCumulativeDebit; reaching the cap exactly (60 + 40 = 100) is allowed",
+      "policy": { "maximumCumulativeDebit": "100", "minimumReserve": "0", "maximumPerOrderDebit": "100" },
+      "balance": "1000",
+      "steps": [
+        { "reserve": { "id": "first", "amount": "60" }, "expect": { "status": "reserved" } },
+        { "reserve": { "id": "second", "amount": "40" }, "expect": { "status": "reserved" } }
+      ]
+    },
+    {
+      "name": "denial-preserves-headroom",
+      "cite": "SDK policy contract: a denied reservation reserves nothing; after 60 reserved and 50 denied, a fresh process can still reserve the remaining 40",
+      "policy": { "maximumCumulativeDebit": "100", "minimumReserve": "0", "maximumPerOrderDebit": "100" },
+      "balance": "1000",
+      "steps": [
+        { "reserve": { "id": "first", "amount": "60" }, "expect": { "status": "reserved" } },
+        { "reserve": { "id": "second", "amount": "50" }, "expect": { "status": "denied", "reason": "cumulative-limit" } },
+        { "reserve": { "id": "third", "amount": "40" }, "expect": { "status": "reserved" } }
+      ]
+    },
+    {
+      "name": "minimum-reserve-floor-denies",
+      "cite": "SDK policy contract: denial when balance < active + requested + minimumReserve (150 < 0 + 60 + 100)",
+      "policy": { "maximumCumulativeDebit": "1000", "minimumReserve": "100", "maximumPerOrderDebit": "100" },
+      "balance": "150",
+      "steps": [
+        { "reserve": { "id": "first", "amount": "60" }, "expect": { "status": "denied", "reason": "insufficient-reserve" } }
+      ]
+    },
+    {
+      "name": "minimum-reserve-boundary",
+      "cite": "SDK policy contract: the floor comparison is strict less-than; balance exactly equal to requested + minimumReserve (160 = 60 + 100) is allowed",
+      "policy": { "maximumCumulativeDebit": "1000", "minimumReserve": "100", "maximumPerOrderDebit": "100" },
+      "balance": "160",
+      "steps": [
+        { "reserve": { "id": "first", "amount": "60" }, "expect": { "status": "reserved" } }
+      ]
+    },
+    {
+      "name": "per-order-limit-denies",
+      "cite": "SDK policy contract: a single reservation above maximumPerOrderDebit is denied regardless of remaining cumulative headroom",
+      "policy": { "maximumCumulativeDebit": "1000", "minimumReserve": "0", "maximumPerOrderDebit": "100" },
+      "balance": "1000",
+      "steps": [
+        { "reserve": { "id": "first", "amount": "150" }, "expect": { "status": "denied", "reason": "per-order-limit" } }
+      ]
+    }
+  ]
+}
