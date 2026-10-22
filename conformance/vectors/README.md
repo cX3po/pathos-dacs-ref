@@ -25,6 +25,14 @@ npm ci --no-audit --no-fund
 
 ## Verify offline (no dacs-sdk checkout needed)
 
+One-shot, from a clean checkout:
+
+```sh
+npm ci --no-audit --no-fund && npx tsc --noEmit && npx tsx --test test/vectors/mainnet-kit-vectors.test.ts
+```
+
+or step by step:
+
 ```sh
 npx tsc --noEmit
 npx tsx --test test/vectors/mainnet-kit-vectors.test.ts
