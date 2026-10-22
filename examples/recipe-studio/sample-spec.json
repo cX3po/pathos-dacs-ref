@@ -1,0 +1,1 @@
+{"format":"json","successJsonPath":"$.items[?@.eligible == true]","dataMap":{"selected":"$.items[?@.eligible == true]"}}

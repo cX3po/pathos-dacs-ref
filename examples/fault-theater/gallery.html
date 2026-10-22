@@ -1,0 +1,659 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Fault Theater — synthetic local gallery</title><style>body{font:18px system-ui;max-width:960px;margin:2rem auto;padding:1rem;background:#101720;color:#e6edf3}td,th{text-align:left;padding:.6rem;border-bottom:1px solid #506070}pre{white-space:pre-wrap;overflow-wrap:anywhere}summary{cursor:pointer}</style><h1>Fault Theater</h1><p>Offline synthetic fixtures. No live-chain claim.</p><p>Synthetic pinned keys and independent per-job role map; synthetic authoritative absence when invoked. Copy signatures only: no identity, agreement, evidence resolution, chain, lifecycle or finality verification.</p><p>Signed role labels are producer assertions. The independent role map keeps a self-abort from becoming counterparty fault.</p><table><tr><th>Scenario</th><th>Counterparty fault rate</th><th>Jobs admitted</th></tr><tr><td>original</td><td>0</td><td>1</td></tr><tr><td>authenticated</td><td>0</td><td>1</td></tr><tr><td>untrusted</td><td>1</td><td>1</td></tr><tr><td>unknown</td><td>null</td><td>0</td></tr></table><h2>Copy validation and tampering</h2><table><tr><td>completed/buyer</td><td>valid</td><td>Ed25519 signatures verified</td></tr><tr><td>completed/seller</td><td>valid</td><td>Ed25519 signatures verified</td></tr><tr><td>selfAbort/buyer</td><td>valid</td><td>Ed25519 signatures verified</td></tr><tr><td>selfAbort/seller</td><td>valid</td><td>Ed25519 signatures verified</td></tr><tr><td>relabelled/buyer</td><td>valid</td><td>Ed25519 signatures verified</td></tr><tr><td>relabelled/seller</td><td>valid</td><td>Ed25519 signatures verified</td></tr><tr><td>finality-removed</td><td>invalid</td><td>not an attestation bundle</td></tr><tr><td>chain-identity-replaced</td><td>invalid</td><td>not an attestation bundle</td></tr><tr><td>content-changed</td><td>invalid</td><td>faultedParty is not permitted for outcome and anchoredByRole</td></tr><tr><td>vet-pass-forged</td><td>invalid</td><td>signature by demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63 failed verification</td></tr><tr><td>role-signature-broken</td><td>invalid</td><td>signature by demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63 failed verification</td></tr></table><details><summary>Signed fixtures and full local report</summary><pre>{
+  &quot;mode&quot;: &quot;offline-synthetic&quot;,
+  &quot;trust&quot;: &quot;Synthetic pinned keys and independent per-job role map; synthetic authoritative absence when invoked. Copy signatures only: no identity, agreement, evidence resolution, chain, lifecycle or finality verification.&quot;,
+  &quot;sdkCommit&quot;: &quot;557f417a77d6e0834a01a95524110e9aa2c483d9&quot;,
+  &quot;claims&quot;: {
+    &quot;buyer&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+    &quot;seller&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+  },
+  &quot;signed&quot;: {
+    &quot;completed&quot;: {
+      &quot;buyerCopy&quot;: {
+        &quot;faultBundleVersion&quot;: &quot;1&quot;,
+        &quot;jobId&quot;: &quot;synthetic-completed&quot;,
+        &quot;outcome&quot;: &quot;completed&quot;,
+        &quot;faultedParty&quot;: &quot;none&quot;,
+        &quot;listingRef&quot;: {
+          &quot;listingId&quot;: &quot;synthetic-fault-theater&quot;,
+          &quot;version&quot;: 1,
+          &quot;contentHash&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;
+        },
+        &quot;agreementRef&quot;: {
+          &quot;anchor&quot;: {
+            &quot;kind&quot;: &quot;storage-program&quot;,
+            &quot;locator&quot;: &quot;synthetic-agreement-not-anchored&quot;
+          },
+          &quot;contentHash&quot;: &quot;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&quot;
+        },
+        &quot;parties&quot;: [
+          {
+            &quot;role&quot;: &quot;buyer&quot;,
+            &quot;bundleHash&quot;: &quot;dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;
+          },
+          {
+            &quot;role&quot;: &quot;seller&quot;,
+            &quot;bundleHash&quot;: &quot;eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+          }
+        ],
+        &quot;phaseSummary&quot;: [
+          {
+            &quot;index&quot;: 0,
+            &quot;kind&quot;: &quot;pay-dem&quot;,
+            &quot;outcome&quot;: &quot;ok&quot;,
+            &quot;txRefs&quot;: [
+              {
+                &quot;kind&quot;: &quot;demos&quot;,
+                &quot;txHash&quot;: &quot;ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff&quot;,
+                &quot;blockNumber&quot;: 5
+              }
+            ]
+          }
+        ],
+        &quot;vetRecords&quot;: [],
+        &quot;settlementEvidence&quot;: [
+          {
+            &quot;anchor&quot;: {
+              &quot;kind&quot;: &quot;storage-program&quot;,
+              &quot;locator&quot;: &quot;synthetic-evidence-not-anchored&quot;
+            },
+            &quot;contentHash&quot;: &quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;
+          }
+        ],
+        &quot;recipeRegistryVersion&quot;: 1,
+        &quot;railRegistryVersion&quot;: 1,
+        &quot;finalisedAt&quot;: 1792627200000,
+        &quot;anchoredByRole&quot;: &quot;buyer&quot;,
+        &quot;signatures&quot;: [
+          {
+            &quot;party&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;yaBKhU_1zwK8e_22j0N0i1f0fZUB6l01eOjCj2Gjra4vecGiAUrwvIJccoynuqsW_5nWxb8O99hxZBHOVfgQBQ&quot;
+          },
+          {
+            &quot;party&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;rp86qi-nM2P-shzFLkTIPi8TJEcQS2RowhiURw26vxD7Of5XMZM5WzfJcE6h70Y5B4p5SwpdR3Ppnr690jCUAQ&quot;
+          }
+        ]
+      },
+      &quot;sellerCopy&quot;: {
+        &quot;faultBundleVersion&quot;: &quot;1&quot;,
+        &quot;jobId&quot;: &quot;synthetic-completed&quot;,
+        &quot;outcome&quot;: &quot;completed&quot;,
+        &quot;faultedParty&quot;: &quot;none&quot;,
+        &quot;listingRef&quot;: {
+          &quot;listingId&quot;: &quot;synthetic-fault-theater&quot;,
+          &quot;version&quot;: 1,
+          &quot;contentHash&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;
+        },
+        &quot;agreementRef&quot;: {
+          &quot;anchor&quot;: {
+            &quot;kind&quot;: &quot;storage-program&quot;,
+            &quot;locator&quot;: &quot;synthetic-agreement-not-anchored&quot;
+          },
+          &quot;contentHash&quot;: &quot;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&quot;
+        },
+        &quot;parties&quot;: [
+          {
+            &quot;role&quot;: &quot;buyer&quot;,
+            &quot;bundleHash&quot;: &quot;dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;
+          },
+          {
+            &quot;role&quot;: &quot;seller&quot;,
+            &quot;bundleHash&quot;: &quot;eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+          }
+        ],
+        &quot;phaseSummary&quot;: [
+          {
+            &quot;index&quot;: 0,
+            &quot;kind&quot;: &quot;pay-dem&quot;,
+            &quot;outcome&quot;: &quot;ok&quot;,
+            &quot;txRefs&quot;: [
+              {
+                &quot;kind&quot;: &quot;demos&quot;,
+                &quot;txHash&quot;: &quot;ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff&quot;,
+                &quot;blockNumber&quot;: 5
+              }
+            ]
+          }
+        ],
+        &quot;vetRecords&quot;: [],
+        &quot;settlementEvidence&quot;: [
+          {
+            &quot;anchor&quot;: {
+              &quot;kind&quot;: &quot;storage-program&quot;,
+              &quot;locator&quot;: &quot;synthetic-evidence-not-anchored&quot;
+            },
+            &quot;contentHash&quot;: &quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;
+          }
+        ],
+        &quot;recipeRegistryVersion&quot;: 1,
+        &quot;railRegistryVersion&quot;: 1,
+        &quot;finalisedAt&quot;: 1792627200000,
+        &quot;anchoredByRole&quot;: &quot;seller&quot;,
+        &quot;signatures&quot;: [
+          {
+            &quot;party&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;yaBKhU_1zwK8e_22j0N0i1f0fZUB6l01eOjCj2Gjra4vecGiAUrwvIJccoynuqsW_5nWxb8O99hxZBHOVfgQBQ&quot;
+          },
+          {
+            &quot;party&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;rp86qi-nM2P-shzFLkTIPi8TJEcQS2RowhiURw26vxD7Of5XMZM5WzfJcE6h70Y5B4p5SwpdR3Ppnr690jCUAQ&quot;
+          }
+        ]
+      }
+    },
+    &quot;selfAbort&quot;: {
+      &quot;buyerCopy&quot;: {
+        &quot;faultBundleVersion&quot;: &quot;1&quot;,
+        &quot;jobId&quot;: &quot;synthetic-self-abort&quot;,
+        &quot;outcome&quot;: &quot;aborted-by-self&quot;,
+        &quot;faultedParty&quot;: &quot;buyer&quot;,
+        &quot;listingRef&quot;: {
+          &quot;listingId&quot;: &quot;synthetic-fault-theater&quot;,
+          &quot;version&quot;: 1,
+          &quot;contentHash&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;
+        },
+        &quot;agreementRef&quot;: {
+          &quot;anchor&quot;: {
+            &quot;kind&quot;: &quot;storage-program&quot;,
+            &quot;locator&quot;: &quot;synthetic-agreement-not-anchored&quot;
+          },
+          &quot;contentHash&quot;: &quot;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&quot;
+        },
+        &quot;parties&quot;: [
+          {
+            &quot;role&quot;: &quot;buyer&quot;,
+            &quot;bundleHash&quot;: &quot;dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;
+          },
+          {
+            &quot;role&quot;: &quot;seller&quot;,
+            &quot;bundleHash&quot;: &quot;eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+          }
+        ],
+        &quot;phaseSummary&quot;: [
+          {
+            &quot;index&quot;: 0,
+            &quot;kind&quot;: &quot;pay-dem&quot;,
+            &quot;outcome&quot;: &quot;ok&quot;,
+            &quot;txRefs&quot;: [
+              {
+                &quot;kind&quot;: &quot;demos&quot;,
+                &quot;txHash&quot;: &quot;ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff&quot;,
+                &quot;blockNumber&quot;: 5
+              }
+            ]
+          }
+        ],
+        &quot;vetRecords&quot;: [],
+        &quot;settlementEvidence&quot;: [
+          {
+            &quot;anchor&quot;: {
+              &quot;kind&quot;: &quot;storage-program&quot;,
+              &quot;locator&quot;: &quot;synthetic-evidence-not-anchored&quot;
+            },
+            &quot;contentHash&quot;: &quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;
+          }
+        ],
+        &quot;recipeRegistryVersion&quot;: 1,
+        &quot;railRegistryVersion&quot;: 1,
+        &quot;finalisedAt&quot;: 1792627200000,
+        &quot;anchoredByRole&quot;: &quot;buyer&quot;,
+        &quot;signatures&quot;: [
+          {
+            &quot;party&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;ov3pC6gKxRCORy89MlAL3JncqXxZdjo7dw0JRB6ZdoE3v5_6wl7wUeZVslkqrAs6VHojLH9hy1anoBqKtbsnAg&quot;
+          },
+          {
+            &quot;party&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;rMawSIDjYW2xLFa440DUYRjkydJw_M9lZVPc5RRUYLbQVI7P2FD-nkIomlO83vQfdPwsLzXxwy1nbco_OiP_CA&quot;
+          }
+        ]
+      },
+      &quot;sellerCopy&quot;: {
+        &quot;faultBundleVersion&quot;: &quot;1&quot;,
+        &quot;jobId&quot;: &quot;synthetic-self-abort&quot;,
+        &quot;outcome&quot;: &quot;aborted-by-other&quot;,
+        &quot;faultedParty&quot;: &quot;buyer&quot;,
+        &quot;listingRef&quot;: {
+          &quot;listingId&quot;: &quot;synthetic-fault-theater&quot;,
+          &quot;version&quot;: 1,
+          &quot;contentHash&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;
+        },
+        &quot;agreementRef&quot;: {
+          &quot;anchor&quot;: {
+            &quot;kind&quot;: &quot;storage-program&quot;,
+            &quot;locator&quot;: &quot;synthetic-agreement-not-anchored&quot;
+          },
+          &quot;contentHash&quot;: &quot;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&quot;
+        },
+        &quot;parties&quot;: [
+          {
+            &quot;role&quot;: &quot;buyer&quot;,
+            &quot;bundleHash&quot;: &quot;dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;
+          },
+          {
+            &quot;role&quot;: &quot;seller&quot;,
+            &quot;bundleHash&quot;: &quot;eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+          }
+        ],
+        &quot;phaseSummary&quot;: [
+          {
+            &quot;index&quot;: 0,
+            &quot;kind&quot;: &quot;pay-dem&quot;,
+            &quot;outcome&quot;: &quot;ok&quot;,
+            &quot;txRefs&quot;: [
+              {
+                &quot;kind&quot;: &quot;demos&quot;,
+                &quot;txHash&quot;: &quot;ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff&quot;,
+                &quot;blockNumber&quot;: 5
+              }
+            ]
+          }
+        ],
+        &quot;vetRecords&quot;: [],
+        &quot;settlementEvidence&quot;: [
+          {
+            &quot;anchor&quot;: {
+              &quot;kind&quot;: &quot;storage-program&quot;,
+              &quot;locator&quot;: &quot;synthetic-evidence-not-anchored&quot;
+            },
+            &quot;contentHash&quot;: &quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;
+          }
+        ],
+        &quot;recipeRegistryVersion&quot;: 1,
+        &quot;railRegistryVersion&quot;: 1,
+        &quot;finalisedAt&quot;: 1792627200000,
+        &quot;anchoredByRole&quot;: &quot;seller&quot;,
+        &quot;signatures&quot;: [
+          {
+            &quot;party&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;OE0iJM48cFz_fKsQct_zXX027ftarypmYA-IRLTJO_t7lKUfRXxOD4ss6Ga4I6sLKDGFlV5zKRtMrhVdABqlBA&quot;
+          },
+          {
+            &quot;party&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;G8l5O-UBGah29mHdAEAnyLll_Q5dD0a7TXlLUNLvWjwOj2KmOGME_zK3k5zvyyJVIBahoDHI0glh4pB2uosGCQ&quot;
+          }
+        ]
+      }
+    },
+    &quot;relabelled&quot;: {
+      &quot;buyerCopy&quot;: {
+        &quot;faultBundleVersion&quot;: &quot;1&quot;,
+        &quot;jobId&quot;: &quot;synthetic-relabelled&quot;,
+        &quot;outcome&quot;: &quot;aborted-by-self&quot;,
+        &quot;faultedParty&quot;: &quot;buyer&quot;,
+        &quot;listingRef&quot;: {
+          &quot;listingId&quot;: &quot;synthetic-fault-theater&quot;,
+          &quot;version&quot;: 1,
+          &quot;contentHash&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;
+        },
+        &quot;agreementRef&quot;: {
+          &quot;anchor&quot;: {
+            &quot;kind&quot;: &quot;storage-program&quot;,
+            &quot;locator&quot;: &quot;synthetic-agreement-not-anchored&quot;
+          },
+          &quot;contentHash&quot;: &quot;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&quot;
+        },
+        &quot;parties&quot;: [
+          {
+            &quot;role&quot;: &quot;buyer&quot;,
+            &quot;bundleHash&quot;: &quot;eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+          },
+          {
+            &quot;role&quot;: &quot;seller&quot;,
+            &quot;bundleHash&quot;: &quot;dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;
+          }
+        ],
+        &quot;phaseSummary&quot;: [
+          {
+            &quot;index&quot;: 0,
+            &quot;kind&quot;: &quot;pay-dem&quot;,
+            &quot;outcome&quot;: &quot;ok&quot;,
+            &quot;txRefs&quot;: [
+              {
+                &quot;kind&quot;: &quot;demos&quot;,
+                &quot;txHash&quot;: &quot;ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff&quot;,
+                &quot;blockNumber&quot;: 5
+              }
+            ]
+          }
+        ],
+        &quot;vetRecords&quot;: [],
+        &quot;settlementEvidence&quot;: [
+          {
+            &quot;anchor&quot;: {
+              &quot;kind&quot;: &quot;storage-program&quot;,
+              &quot;locator&quot;: &quot;synthetic-evidence-not-anchored&quot;
+            },
+            &quot;contentHash&quot;: &quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;
+          }
+        ],
+        &quot;recipeRegistryVersion&quot;: 1,
+        &quot;railRegistryVersion&quot;: 1,
+        &quot;finalisedAt&quot;: 1792627200000,
+        &quot;anchoredByRole&quot;: &quot;buyer&quot;,
+        &quot;signatures&quot;: [
+          {
+            &quot;party&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;qRmL8bpcQiQWmRyAjTxu30tfu7kQuVW9w0zcoYU22Csr4e36D4wJj2nu1G8DUxrDCiwC1DRV-Yjuuqq2XosVDA&quot;
+          },
+          {
+            &quot;party&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;wBHw5dWSM53kECp1jARW-pF-5Tq8p_GEqKYwf71cxeio5h5FkGswb1ObS5vlvcQnIipRoGRqJOm6gbInG53YBA&quot;
+          }
+        ]
+      },
+      &quot;sellerCopy&quot;: {
+        &quot;faultBundleVersion&quot;: &quot;1&quot;,
+        &quot;jobId&quot;: &quot;synthetic-relabelled&quot;,
+        &quot;outcome&quot;: &quot;aborted-by-other&quot;,
+        &quot;faultedParty&quot;: &quot;buyer&quot;,
+        &quot;listingRef&quot;: {
+          &quot;listingId&quot;: &quot;synthetic-fault-theater&quot;,
+          &quot;version&quot;: 1,
+          &quot;contentHash&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;
+        },
+        &quot;agreementRef&quot;: {
+          &quot;anchor&quot;: {
+            &quot;kind&quot;: &quot;storage-program&quot;,
+            &quot;locator&quot;: &quot;synthetic-agreement-not-anchored&quot;
+          },
+          &quot;contentHash&quot;: &quot;bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&quot;
+        },
+        &quot;parties&quot;: [
+          {
+            &quot;role&quot;: &quot;buyer&quot;,
+            &quot;bundleHash&quot;: &quot;eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+          },
+          {
+            &quot;role&quot;: &quot;seller&quot;,
+            &quot;bundleHash&quot;: &quot;dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd&quot;,
+            &quot;primaryClaim&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;
+          }
+        ],
+        &quot;phaseSummary&quot;: [
+          {
+            &quot;index&quot;: 0,
+            &quot;kind&quot;: &quot;pay-dem&quot;,
+            &quot;outcome&quot;: &quot;ok&quot;,
+            &quot;txRefs&quot;: [
+              {
+                &quot;kind&quot;: &quot;demos&quot;,
+                &quot;txHash&quot;: &quot;ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff&quot;,
+                &quot;blockNumber&quot;: 5
+              }
+            ]
+          }
+        ],
+        &quot;vetRecords&quot;: [],
+        &quot;settlementEvidence&quot;: [
+          {
+            &quot;anchor&quot;: {
+              &quot;kind&quot;: &quot;storage-program&quot;,
+              &quot;locator&quot;: &quot;synthetic-evidence-not-anchored&quot;
+            },
+            &quot;contentHash&quot;: &quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;
+          }
+        ],
+        &quot;recipeRegistryVersion&quot;: 1,
+        &quot;railRegistryVersion&quot;: 1,
+        &quot;finalisedAt&quot;: 1792627200000,
+        &quot;anchoredByRole&quot;: &quot;seller&quot;,
+        &quot;signatures&quot;: [
+          {
+            &quot;party&quot;: &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;U7OfoJ9fbNTFnlD1ztx6Wkp7a2rL92nieSiRO7qd0GaRpigCE7_RdMg3yNF60wj7uxTMXCNKJUBvoWGzMdNUCA&quot;
+          },
+          {
+            &quot;party&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+            &quot;algorithm&quot;: &quot;ed25519&quot;,
+            &quot;value&quot;: &quot;5rAstvAoASmC1zNPGM43XWTYMN1PcthxTS_QyVsLfB-A9NCCvF8h41yEB_m8ldk4u8Bc70I8vpAPpNfPCph9CQ&quot;
+          }
+        ]
+      }
+    }
+  },
+  &quot;rows&quot;: [
+    {
+      &quot;name&quot;: &quot;completed/buyer&quot;,
+      &quot;expected&quot;: &quot;valid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: true,
+        &quot;signers&quot;: [
+          &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+          &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+        ],
+        &quot;fullySigned&quot;: true,
+        &quot;abortStanding&quot;: false
+      }
+    },
+    {
+      &quot;name&quot;: &quot;completed/seller&quot;,
+      &quot;expected&quot;: &quot;valid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: true,
+        &quot;signers&quot;: [
+          &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+          &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+        ],
+        &quot;fullySigned&quot;: true,
+        &quot;abortStanding&quot;: false
+      }
+    },
+    {
+      &quot;name&quot;: &quot;selfAbort/buyer&quot;,
+      &quot;expected&quot;: &quot;valid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: true,
+        &quot;signers&quot;: [
+          &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+          &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+        ],
+        &quot;fullySigned&quot;: true,
+        &quot;abortStanding&quot;: false
+      }
+    },
+    {
+      &quot;name&quot;: &quot;selfAbort/seller&quot;,
+      &quot;expected&quot;: &quot;valid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: true,
+        &quot;signers&quot;: [
+          &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+          &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;
+        ],
+        &quot;fullySigned&quot;: true,
+        &quot;abortStanding&quot;: false
+      }
+    },
+    {
+      &quot;name&quot;: &quot;relabelled/buyer&quot;,
+      &quot;expected&quot;: &quot;valid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: true,
+        &quot;signers&quot;: [
+          &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;,
+          &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;
+        ],
+        &quot;fullySigned&quot;: true,
+        &quot;abortStanding&quot;: false
+      }
+    },
+    {
+      &quot;name&quot;: &quot;relabelled/seller&quot;,
+      &quot;expected&quot;: &quot;valid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: true,
+        &quot;signers&quot;: [
+          &quot;demos:0x6233bc96687e56f66907739e088e6adb6e5aa18479c8b417f659475e52c7efc6&quot;,
+          &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;
+        ],
+        &quot;fullySigned&quot;: true,
+        &quot;abortStanding&quot;: false
+      }
+    },
+    {
+      &quot;name&quot;: &quot;finality-removed&quot;,
+      &quot;expected&quot;: &quot;invalid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: false,
+        &quot;reason&quot;: &quot;not an attestation bundle&quot;
+      }
+    },
+    {
+      &quot;name&quot;: &quot;chain-identity-replaced&quot;,
+      &quot;expected&quot;: &quot;invalid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: false,
+        &quot;reason&quot;: &quot;not an attestation bundle&quot;
+      }
+    },
+    {
+      &quot;name&quot;: &quot;content-changed&quot;,
+      &quot;expected&quot;: &quot;invalid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: false,
+        &quot;reason&quot;: &quot;faultedParty is not permitted for outcome and anchoredByRole&quot;
+      }
+    },
+    {
+      &quot;name&quot;: &quot;vet-pass-forged&quot;,
+      &quot;expected&quot;: &quot;invalid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: false,
+        &quot;reason&quot;: &quot;signature by demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63 failed verification&quot;
+      }
+    },
+    {
+      &quot;name&quot;: &quot;role-signature-broken&quot;,
+      &quot;expected&quot;: &quot;invalid&quot;,
+      &quot;result&quot;: {
+        &quot;valid&quot;: false,
+        &quot;reason&quot;: &quot;signature by demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63 failed verification&quot;
+      }
+    }
+  ],
+  &quot;comparison&quot;: {
+    &quot;original&quot;: {
+      &quot;derivationVersion&quot;: &quot;1&quot;,
+      &quot;partyPrimaryClaim&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+      &quot;windowStart&quot;: 1792627199999,
+      &quot;windowEnd&quot;: 1792627200001,
+      &quot;bundleCount&quot;: 1,
+      &quot;metrics&quot;: {
+        &quot;completionRate&quot;: 0,
+        &quot;counterpartyFaultRate&quot;: 0,
+        &quot;counterpartyAdjustedCompletionRate&quot;: 0,
+        &quot;averageBuyerRating&quot;: null,
+        &quot;averageSellerRating&quot;: null,
+        &quot;observedTransactionalVolume&quot;: [],
+        &quot;transactionCountByCurrency&quot;: []
+      },
+      &quot;computedAt&quot;: 1792627200001,
+      &quot;windowingBasis&quot;: &quot;finalisedAt&quot;,
+      &quot;bundleRefs&quot;: [
+        {
+          &quot;anchor&quot;: {
+            &quot;kind&quot;: &quot;storage-program&quot;,
+            &quot;locator&quot;: &quot;stor-2850137ae04338833948071c6334d19fba2aaef84f5f3960f9e09304f728c180&quot;
+          },
+          &quot;contentHash&quot;: &quot;2cb67bc172c4f529d4101a738f49660a5cb05b4fa1889786bbfe5e766a2561d5&quot;
+        }
+      ]
+    },
+    &quot;authenticated&quot;: {
+      &quot;derivationVersion&quot;: &quot;1&quot;,
+      &quot;partyPrimaryClaim&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+      &quot;windowStart&quot;: 1792627199999,
+      &quot;windowEnd&quot;: 1792627200001,
+      &quot;bundleCount&quot;: 1,
+      &quot;metrics&quot;: {
+        &quot;completionRate&quot;: 0,
+        &quot;counterpartyFaultRate&quot;: 0,
+        &quot;counterpartyAdjustedCompletionRate&quot;: 0,
+        &quot;averageBuyerRating&quot;: null,
+        &quot;averageSellerRating&quot;: null,
+        &quot;observedTransactionalVolume&quot;: [],
+        &quot;transactionCountByCurrency&quot;: []
+      },
+      &quot;computedAt&quot;: 1792627200001,
+      &quot;windowingBasis&quot;: &quot;finalisedAt&quot;,
+      &quot;bundleRefs&quot;: [
+        {
+          &quot;anchor&quot;: {
+            &quot;kind&quot;: &quot;storage-program&quot;,
+            &quot;locator&quot;: &quot;stor-301b7ea5e014406edfe076562481a0e34ad5aad89824c71d4aeeebb0e29bbac6&quot;
+          },
+          &quot;contentHash&quot;: &quot;1ff69707bc38a698fec6fdf2ab32021e82e43886e68266c97647f8684d972e68&quot;
+        }
+      ]
+    },
+    &quot;untrusted&quot;: {
+      &quot;derivationVersion&quot;: &quot;1&quot;,
+      &quot;partyPrimaryClaim&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+      &quot;windowStart&quot;: 1792627199999,
+      &quot;windowEnd&quot;: 1792627200001,
+      &quot;bundleCount&quot;: 1,
+      &quot;metrics&quot;: {
+        &quot;completionRate&quot;: 0,
+        &quot;counterpartyFaultRate&quot;: 1,
+        &quot;counterpartyAdjustedCompletionRate&quot;: null,
+        &quot;averageBuyerRating&quot;: null,
+        &quot;averageSellerRating&quot;: null,
+        &quot;observedTransactionalVolume&quot;: [],
+        &quot;transactionCountByCurrency&quot;: []
+      },
+      &quot;computedAt&quot;: 1792627200001,
+      &quot;windowingBasis&quot;: &quot;finalisedAt&quot;,
+      &quot;bundleRefs&quot;: [
+        {
+          &quot;anchor&quot;: {
+            &quot;kind&quot;: &quot;storage-program&quot;,
+            &quot;locator&quot;: &quot;stor-4ede77e0c288c4909c8f9ff5bc4a0912d68080c51b10d9c626874ca47abfc29f&quot;
+          },
+          &quot;contentHash&quot;: &quot;5b048eab9b7df38f578da58a4d031a3e40c0887e84b0a82374bbfcf82b522fb4&quot;
+        }
+      ]
+    },
+    &quot;unknown&quot;: {
+      &quot;derivationVersion&quot;: &quot;1&quot;,
+      &quot;partyPrimaryClaim&quot;: &quot;demos:0x6bc7aaaf0eeb00febc7a3c231c6a0c76a800518ad2b0acf261441da8c6f8db63&quot;,
+      &quot;windowStart&quot;: 1792627199999,
+      &quot;windowEnd&quot;: 1792627200001,
+      &quot;bundleCount&quot;: 0,
+      &quot;metrics&quot;: {
+        &quot;completionRate&quot;: null,
+        &quot;counterpartyFaultRate&quot;: null,
+        &quot;counterpartyAdjustedCompletionRate&quot;: null,
+        &quot;averageBuyerRating&quot;: null,
+        &quot;averageSellerRating&quot;: null,
+        &quot;observedTransactionalVolume&quot;: [],
+        &quot;transactionCountByCurrency&quot;: []
+      },
+      &quot;computedAt&quot;: 1792627200001,
+      &quot;windowingBasis&quot;: &quot;finalisedAt&quot;,
+      &quot;bundleRefs&quot;: []
+    }
+  }
+}</pre></details>
