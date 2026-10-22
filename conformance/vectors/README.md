@@ -40,7 +40,10 @@ names, quoted-clause pins, CD-1 well-formedness of expected amounts, declared
 denial reasons). It needs only Node itself. CI asserts the same checks through
 `test/vectors/mainnet-kit-vectors.test.ts`.
 
-## Full offline verification (installs dev dependencies)
+## Full verification (no SDK needed; the install step uses the npm registry)
+
+`npm ci` downloads dev dependencies from the npm registry (network required
+for this step only); the typecheck and test then run offline:
 
 ```sh
 npm ci --no-audit --no-fund
