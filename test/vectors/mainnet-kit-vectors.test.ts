@@ -58,9 +58,11 @@ test("settlement-rounding: expected bands and offer amounts respect CD-1 where r
       assert.equal(vector.expect.refused, true, `${vector.name}: either a band or an explicit refusal`);
     }
     for (const offer of vector.offers ?? []) {
-      assert.ok(["within", "outside", "refused-noncanonical"].includes(offer.expect), `${vector.name}/${offer.amount}: known offer expectation`);
+      assert.ok(["within", "outside", "refused-noncanonical", "refused-zero"].includes(offer.expect), `${vector.name}/${offer.amount}: known offer expectation`);
       if (offer.expect === "refused-noncanonical") {
-        assert.ok(!CD1.test(offer.amount) || offer.amount === "0", `${vector.name}/${offer.amount}: a refused offer must actually violate CD-1 (or be zero)`);
+        assert.ok(!CD1.test(offer.amount), `${vector.name}/${offer.amount}: a noncanonical refusal must actually violate CD-1`);
+      } else if (offer.expect === "refused-zero") {
+        assert.equal(offer.amount, "0", `${vector.name}/${offer.amount}: refused-zero is exactly the zero amount`);
       } else {
         assert.match(offer.amount, CD1, `${vector.name}/${offer.amount}: a compared offer must be CD-1 canonical`);
         assert.notEqual(offer.amount, "0", `${vector.name}/${offer.amount}: zero is never comparable`);

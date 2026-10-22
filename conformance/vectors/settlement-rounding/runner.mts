@@ -20,7 +20,7 @@ function sdkCommit(root: string): string {
   }
 }
 
-interface Offer { amount: string; expect: "within" | "outside" | "refused-noncanonical" }
+interface Offer { amount: string; expect: "within" | "outside" | "refused-noncanonical" | "refused-zero" }
 interface Vector {
   name: string;
   cite: string;
@@ -78,7 +78,7 @@ async function main(): Promise<number> {
           failures.push(`${vector.name}/${offer.amount}: expected ${offer.expect}, got ${result}`);
         }
       } catch (error) {
-        if (offer.expect !== "refused-noncanonical") {
+        if (offer.expect !== "refused-noncanonical" && offer.expect !== "refused-zero") {
           failures.push(`${vector.name}/${offer.amount}: unexpected refusal: ${(error as Error).message}`);
         }
       }

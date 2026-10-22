@@ -99,12 +99,19 @@ function runStep(root: string, vector: Vector, step: Step): Promise<{ pid: numbe
     });
     let output = "";
     let errors = "";
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("worker hard deadline exceeded")); }, 30_000);
-    child.stdout.on("data", (chunk) => { output += chunk; if (output.length > 65_536) child.kill("SIGKILL"); });
+    let timedOut = false;
+    let oversized = false;
+    // On timeout only flag and kill; settle in 'close' so the child has fully
+    // exited before the caller's temp-directory cleanup can run.
+    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, 30_000);
+    child.stdout.on("data", (chunk) => { output += chunk; if (output.length > 65_536) { oversized = true; child.kill("SIGKILL"); } });
     child.stderr.on("data", (chunk) => { errors = (errors + chunk).slice(0, 4_096); });
+    child.stdin.on("error", () => { /* child exited before reading stdin; surfaced via exit code */ });
     child.on("error", (error) => { clearTimeout(timer); reject(error); });
     child.on("close", (code) => {
       clearTimeout(timer);
+      if (oversized) return reject(new Error("worker output bound exceeded"));
+      if (timedOut) return reject(new Error("worker hard deadline exceeded"));
       if (code !== 0) return reject(new Error(`worker failed (${code}): ${errors}`));
       try { resolveResult(JSON.parse(output)); } catch { reject(new Error("invalid worker result")); }
     });
@@ -114,10 +121,12 @@ function runStep(root: string, vector: Vector, step: Step): Promise<{ pid: numbe
 
 async function main(): Promise<number> {
   const doc = JSON.parse(readFileSync(join(here, "vectors.json"), "utf8")) as { set: string; vectors: Vector[] };
-  if (!existsSync(join(SDK_ROOT, "src/rails/walletSpendAuthority.ts"))) {
-    console.error(`SETUP ERROR: no SDK wallet spend-authority module under ${SDK_ROOT}.`);
-    console.error("Set DACS_SDK_ROOT to a trusted dacs-sdk source checkout with installed dependencies.");
-    return 2;
+  for (const module of ["src/rails/walletSpendAuthority.ts", "src/rails/walletSpendAuthorityFs.ts"]) {
+    if (!existsSync(join(SDK_ROOT, module))) {
+      console.error(`SETUP ERROR: no SDK module ${module} under ${SDK_ROOT}.`);
+      console.error("Set DACS_SDK_ROOT to a trusted dacs-sdk source checkout with installed dependencies.");
+      return 2;
+    }
   }
   let sdkCommit = "unknown (not a git checkout)";
   try {
@@ -127,10 +136,16 @@ async function main(): Promise<number> {
   const failures: string[] = [];
   const processes: { vector: string; pids: number[] }[] = [];
   for (const vector of doc.vectors) {
-    const root = await mkdtemp(join(tmpdir(), "dacs-spend-vector-"));
+    let root: string;
+    try {
+      root = await mkdtemp(join(tmpdir(), "dacs-spend-vector-"));
+      await writeFile(join(root, "integrity.key"), randomBytes(32), { mode: 0o600, flag: "wx" });
+    } catch (error) {
+      console.error(`SETUP ERROR: cannot create a temporary run directory: ${(error as Error).message}`);
+      return 2;
+    }
     const pids: number[] = [];
     try {
-      await writeFile(join(root, "integrity.key"), randomBytes(32), { mode: 0o600, flag: "wx" });
       for (const [index, step] of vector.steps.entries()) {
         const result = await runStep(root, vector, step);
         pids.push(result.pid);

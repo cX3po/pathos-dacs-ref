@@ -6,7 +6,7 @@
 // Requires a local SDK source checkout: DACS_SDK_ROOT (default ~/dacs-sdk).
 // Exit 0: every vector matched. Exit 1: at least one mismatch. Exit 2: setup error.
 import { generateKeyPairSync, randomBytes, randomUUID, sign, verify } from "node:crypto";
-import { mkdir, mkdtemp, open, link, unlink, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, link, unlink, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import { readFileSync, existsSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join, dirname, resolve } from "node:path";
@@ -80,6 +80,22 @@ async function durableOnce(path: string, bytes: string, fault?: string): Promise
 }
 
 interface WorkerConfig { root: string; role: Role; action: string; amount?: string; packet?: unknown; fault?: string }
+
+// Order-insensitive structural equality: JSON-shaped values compare by keys
+// and values, never by object insertion order.
+function deepEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length
+      && left.every((entry, index) => deepEqual(entry, right[index]));
+  }
+  if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) return false;
+  const leftKeys = Object.keys(left as object).sort();
+  const rightKeys = Object.keys(right as object).sort();
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => key === rightKeys[index]
+      && deepEqual((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]));
+}
 
 async function worker(): Promise<void> {
   let input = "";
@@ -189,13 +205,24 @@ function runChild(config: WorkerConfig, expectedExit = 0): Promise<WorkerResult 
       stdio: ["pipe", "pipe", "pipe"],
     });
     const chunks: Buffer[] = [];
+    let size = 0;
     let errors = "";
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("worker hard deadline exceeded")); }, 30_000);
-    child.stdout.on("data", (chunk) => chunks.push(chunk));
+    let timedOut = false;
+    let oversized = false;
+    // On timeout only flag and kill; settle in 'close' so the child has fully
+    // exited before any caller-side cleanup can run.
+    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, 30_000);
+    child.stdout.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > 262_144) { oversized = true; child.kill("SIGKILL"); } else chunks.push(chunk);
+    });
     child.stderr.on("data", (chunk) => { errors = (errors + chunk).slice(0, 4_096); });
+    child.stdin.on("error", () => { /* child exited before reading stdin; surfaced via exit code */ });
     child.once("error", (error) => { clearTimeout(timer); reject(error); });
     child.once("close", (code) => {
       clearTimeout(timer);
+      if (oversized) return reject(new Error("worker output bound exceeded"));
+      if (timedOut) return reject(new Error("worker hard deadline exceeded"));
       if (code !== expectedExit) return reject(new Error(`worker exit=${code}, expected ${expectedExit}: ${errors}`));
       if (expectedExit !== 0) return resolveResult({ pid: child.pid, exit: code ?? -1 });
       try { resolveResult(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch { reject(new Error("invalid worker result")); }
@@ -206,10 +233,13 @@ function runChild(config: WorkerConfig, expectedExit = 0): Promise<WorkerResult 
 
 async function main(): Promise<number> {
   const doc = JSON.parse(readFileSync(join(here, "vectors.json"), "utf8")) as { set: string; vectors: { name: string; expect: Record<string, unknown> }[] };
-  if (!existsSync(join(SDK_ROOT, "src/negotiate/durableRfqLifecycle.ts"))) {
-    console.error(`SETUP ERROR: no SDK durable RFQ lifecycle module under ${SDK_ROOT}.`);
-    console.error("Set DACS_SDK_ROOT to a trusted dacs-sdk source checkout with installed dependencies.");
-    return 2;
+  const requiredModules = ["src/negotiate/durableRfqLifecycle.ts", "src/negotiate/durableRfqLifecycleStoreFs.ts", "src/canonical/index.ts"];
+  for (const module of requiredModules) {
+    if (!existsSync(join(SDK_ROOT, module))) {
+      console.error(`SETUP ERROR: no SDK module ${module} under ${SDK_ROOT}.`);
+      console.error("Set DACS_SDK_ROOT to a trusted dacs-sdk source checkout with installed dependencies.");
+      return 2;
+    }
   }
   let sdkCommit = "unknown (not a git checkout)";
   try {
@@ -225,7 +255,13 @@ async function main(): Promise<number> {
     if (JSON.stringify(got) !== JSON.stringify(want)) failures.push(`${vector}/${field}: expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
   };
 
-  const root = await mkdtemp(join(tmpdir(), "dacs-rfq-vector-"));
+  let root: string;
+  try {
+    root = await mkdtemp(join(tmpdir(), "dacs-rfq-vector-"));
+  } catch (error) {
+    console.error(`SETUP ERROR: cannot create a temporary run directory: ${(error as Error).message}`);
+    return 2;
+  }
   const pids: (number | undefined)[] = [];
   try {
     for (const role of ROLES) {
@@ -251,11 +287,18 @@ async function main(): Promise<number> {
     const v1 = expectFor("crash-after-durable-publish-resumes-exact-packet");
     const crashed = await runChild({ root, role: "buyer", action: "offer", fault: "crash-after-publish" }, v1.crashExit as number);
     pids.push(crashed.pid);
+    // Capture the packet the crashed process durably spooled BEFORE resuming,
+    // so packet preservation is proven against pre-crash bytes, not SDK output.
+    const spool = (await readdir(join(root, "buyer", "mailbox"))).filter((name) => name.endsWith(".json"));
+    if (spool.length !== 1) throw new Error(`expected exactly one pre-crash spool packet, found ${spool.length}`);
+    const preCrashPacket = JSON.parse((await readFile(join(root, "buyer", "mailbox", spool[0]!))).toString()) as { packetId: string; message?: { signature?: string } };
     const resumed = await call("buyer", "resume");
     check("crash-after-durable-publish-resumes-exact-packet", "resumeStatus", resumed.status, v1.resumeStatus);
     check("crash-after-durable-publish-resumes-exact-packet", "outboxPackets", resumed.packets?.length, v1.outboxPackets);
-    const offer = resumed.packets?.[0];
+    const offer = resumed.packets?.[0] as (typeof preCrashPacket & { packetId: string }) | undefined;
     if (!offer) throw new Error("no recovered offer packet; cannot continue");
+    check("crash-after-durable-publish-resumes-exact-packet", "packetPreserved",
+      deepEqual(offer, preCrashPacket), v1.packetPreserved);
     const delivered = await call("seller", "receive", { packet: offer });
     check("crash-after-durable-publish-resumes-exact-packet", "offerDelivered", delivered.status, v1.offerDelivered);
 
@@ -265,6 +308,8 @@ async function main(): Promise<number> {
     const replay = await call("seller", "receive", { packet: offer });
     check("same-packet-replay-is-duplicate-no-state-change", "replayStatus", replay.status, v2.replayStatus);
     check("same-packet-replay-is-duplicate-no-state-change", "revisionUnchanged", replay.revision === before.revision, v2.revisionUnchanged);
+    check("same-packet-replay-is-duplicate-no-state-change", "transcriptUnchanged",
+      deepEqual(replay.transcript, before.transcript), v2.transcriptUnchanged);
     check("same-packet-replay-is-duplicate-no-state-change", "transcriptLength", replay.transcript?.length, v2.transcriptLength);
 
     // Vector 3 — full negotiation: exact transcript, identical dual-signed agreement.
@@ -278,13 +323,17 @@ async function main(): Promise<number> {
     await call("buyer", "receive", { packet: contribution.packets?.at(-1) });
     const buyer = await call("buyer", "status");
     const seller = await call("seller", "status");
-    check("full-negotiation-exact-transcript-no-duplicates", "transcriptLength", buyer.transcript?.length, v3.transcriptLength);
+    const turns = (buyer.transcript ?? []) as { type: string; sequence: number }[];
+    check("full-negotiation-exact-transcript-no-duplicates", "transcriptLength", turns.length, v3.transcriptLength);
+    check("full-negotiation-exact-transcript-no-duplicates", "turnTypes", turns.map((turn) => turn.type), v3.turnTypes);
+    check("full-negotiation-exact-transcript-no-duplicates", "sequences", turns.map((turn) => turn.sequence), v3.sequences);
     check("full-negotiation-exact-transcript-no-duplicates", "transcriptsIdentical",
-      JSON.stringify(buyer.transcript) === JSON.stringify(seller.transcript), v3.transcriptsIdentical);
+      deepEqual(buyer.transcript, seller.transcript), v3.transcriptsIdentical);
     check("full-negotiation-exact-transcript-no-duplicates", "agreementSignatures", buyer.agreement?.signatures.length, v3.agreementSignatures);
     check("full-negotiation-exact-transcript-no-duplicates", "agreementsIdentical",
-      JSON.stringify(buyer.agreement) === JSON.stringify(seller.agreement), v3.agreementsIdentical);
-    check("full-negotiation-exact-transcript-no-duplicates", "acceptedPrice", buyer.agreement?.terms.price, v3.acceptedPrice);
+      deepEqual(buyer.agreement, seller.agreement), v3.agreementsIdentical);
+    check("full-negotiation-exact-transcript-no-duplicates", "acceptedPrice",
+      deepEqual(buyer.agreement?.terms.price, v3.acceptedPrice), true);
     if (new Set(pids).size !== pids.length) failures.push("lifecycle actions shared a process; restart semantics were not exercised");
   } catch (error) {
     failures.push(`setup/flow: ${(error as Error).message}`);

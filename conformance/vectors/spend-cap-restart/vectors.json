@@ -14,7 +14,7 @@
   "vectors": [
     {
       "name": "cumulative-cap-denies-across-restart",
-      "cite": "DACS-4 §9.5.1: a fresh process MUST NOT infer headroom from non-observation alone; the durable cumulative total (60) plus the new request (50) exceeds the 100 cap",
+      "cite": "SDK restart-survival guarantee upholding DACS-4 §9.5.1's discipline (durable state, not process memory, is the authority on prior commitments): the durable cumulative total (60) plus the new request (50) exceeds the 100 cap, so a fresh process is denied with the SDK's declared cumulative-limit reason",
       "policy": { "maximumCumulativeDebit": "100", "minimumReserve": "0", "maximumPerOrderDebit": "100" },
       "balance": "1000",
       "steps": [

@@ -13,7 +13,8 @@
   "offerExpectations": {
     "within": "isNegotiablePriceWithinBand returns true (inclusive band)",
     "outside": "isNegotiablePriceWithinBand returns false",
-    "refused-noncanonical": "the amount violates CD-1 (or is zero), so the comparison MUST be refused rather than answered"
+    "refused-noncanonical": "the amount violates CD-1, so the comparison MUST be refused rather than normalised (CORE §B.2)",
+    "refused-zero": "SDK declared contract, labeled as such: a zero amount (CD-1 canonical but never a valid positive price) is refused before comparison — an additional SDK guard, not a quoted-clause derivation"
   },
   "vectors": [
     {
@@ -30,8 +31,16 @@
         { "amount": "1.70001", "expect": "outside" },
         { "amount": "1.40", "expect": "refused-noncanonical" },
         { "amount": "01.4", "expect": "refused-noncanonical" },
-        { "amount": "1e0", "expect": "refused-noncanonical" },
-        { "amount": "0", "expect": "refused-noncanonical" }
+        { "amount": "1e0", "expect": "refused-noncanonical" }
+      ]
+    },
+    {
+      "name": "zero-amount-comparison-refused-sdk-contract",
+      "cite": "SDK declared contract (labeled, NOT a quoted-clause derivation): isNegotiablePriceWithinBand refuses a zero amount before any band comparison. Zero is CD-1 canonical, so CORE §B.2 does not require this refusal; it is the SDK's own guard, consistent with DACS-3 §8.5.2's requirement that a valid band be strictly positive",
+      "pricing": { "kind": "negotiable", "bandCenter": { "amount": "1.5", "currency": "DEM" }, "minPct": 10, "maxPct": 10 },
+      "expect": { "band": { "lower": "1.4", "upper": "1.7" } },
+      "offers": [
+        { "amount": "0", "expect": "refused-zero" }
       ]
     },
     {

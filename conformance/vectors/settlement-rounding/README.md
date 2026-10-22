@@ -10,6 +10,8 @@ DACS-Standard revision `4bb9e48a1095ab32c06c25b7c0b52018d3ce4091`.
 Expected values were derived independently from the quoted clause with
 arbitrary-precision decimal arithmetic (half-up, quantized to the centre's
 fractional digits, then CD-1-canonicalised) — never copied from SDK output.
+One vector (`zero-amount-comparison-refused-sdk-contract`) pins an additional
+SDK guard and is explicitly labeled as SDK contract, not clause-derived.
 
 ## Run
 
