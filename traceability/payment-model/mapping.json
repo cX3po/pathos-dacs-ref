@@ -1,0 +1,1561 @@
+{
+  "spec_commit": "4bb9e48a1095ab32c06c25b7c0b52018d3ce4091",
+  "spec_sha256": "8dec25b08f7eb896699d97a8449be71ec6ae293bf9e796f78cd5d8c0ccfe1f16",
+  "model_sha256": "7bc52aabbefbeb48f8dacf64f96e31a22d8c2f46a410ffd45b3219663de99935",
+  "elements": {
+    "field:calls": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "field:cancelled": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "field:delivery": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "### 9.9 Pipeline composition",
+          "lines": [
+            965,
+            968
+          ],
+          "sha256": "b1776d90d182a0e208e4e0ae023cf7d8004586c3ffb7009ad7207622c36f341e",
+          "clause_id": "9.9"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Pay-then-deliver PIPE-3 gate abstracts ok:true as authenticated inclusion; no actual handler, deliverable verification or alternative phase ordering is modelled."
+    },
+    "field:effects": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "field:intent": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "field:journal": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "field:proof": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "field:read": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "field:refunds": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "field:releases": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "field:reserved": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "field:reset": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "field:truth": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "field:workers": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "invariant:cancel_after_intent_requires_nonexecution_proof": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "invariant:crash_recovery_preserves_durable_facts": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "invariant:delivery_requires_verified_payment": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "### 9.9 Pipeline composition",
+          "lines": [
+            965,
+            968
+          ],
+          "sha256": "b1776d90d182a0e208e4e0ae023cf7d8004586c3ffb7009ad7207622c36f341e",
+          "clause_id": "9.9"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Pay-then-deliver PIPE-3 gate abstracts ok:true as authenticated inclusion; no actual handler, deliverable verification or alternative phase ordering is modelled."
+    },
+    "invariant:idempotent_recovery_effects": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "invariant:no_double_payment": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "invariant:no_rebroadcast_on_unknown_outcome": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "invariant:release_requires_delivery_or_nonexecution_proof": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:journal:deal": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "state:journal:delivered": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "### 9.9 Pipeline composition",
+          "lines": [
+            965,
+            968
+          ],
+          "sha256": "b1776d90d182a0e208e4e0ae023cf7d8004586c3ffb7009ad7207622c36f341e",
+          "clause_id": "9.9"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Pay-then-deliver PIPE-3 gate abstracts ok:true as authenticated inclusion; no actual handler, deliverable verification or alternative phase ordering is modelled."
+    },
+    "state:journal:intent": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "state:journal:observed": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "state:journal:refund_pending": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:journal:refunded": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:journal:release_pending": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:journal:released": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:journal:reserved": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:journal:signed": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "state:read:ERROR": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "state:read:MISSING": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "state:read:STALE": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "state:read:failed_proven": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "state:read:included": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Abstracts terminal included/failed distinction of \u00a79.5.9; omits authenticated BFT proof, transaction identity, amount, payee and evidence anchoring."
+    },
+    "state:read:none": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "state:truth:failed": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Abstracts terminal included/failed distinction of \u00a79.5.9; omits authenticated BFT proof, transaction identity, amount, payee and evidence anchoring."
+    },
+    "state:truth:included": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Abstracts terminal included/failed distinction of \u00a79.5.9; omits authenticated BFT proof, transaction identity, amount, payee and evidence anchoring."
+    },
+    "state:truth:none": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "state:truth:unresolved": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "state:worker:armed": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "state:worker:deal": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "state:worker:delivered": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "### 9.9 Pipeline composition",
+          "lines": [
+            965,
+            968
+          ],
+          "sha256": "b1776d90d182a0e208e4e0ae023cf7d8004586c3ffb7009ad7207622c36f341e",
+          "clause_id": "9.9"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Pay-then-deliver PIPE-3 gate abstracts ok:true as authenticated inclusion; no actual handler, deliverable verification or alternative phase ordering is modelled."
+    },
+    "state:worker:delivery_ack": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "state:worker:down": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "state:worker:idle": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "state:worker:intent": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "state:worker:observed": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "state:worker:refund_ack": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:worker:refund_pending": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:worker:release_ack": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:worker:release_pending": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:worker:reserved": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "state:worker:signed": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "transition:acquire": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "transition:broadcast.failed": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Abstracts terminal included/failed distinction of \u00a79.5.9; omits authenticated BFT proof, transaction identity, amount, payee and evidence anchoring."
+    },
+    "transition:broadcast.included": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Abstracts terminal included/failed distinction of \u00a79.5.9; omits authenticated BFT proof, transaction identity, amount, payee and evidence anchoring."
+    },
+    "transition:broadcast.intent": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "transition:broadcast.unresolved": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "transition:cancel": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "transition:cancel.fence": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "transition:chain.final_failure": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Abstracts terminal included/failed distinction of \u00a79.5.9; omits authenticated BFT proof, transaction identity, amount, payee and evidence anchoring."
+    },
+    "transition:chain.late_inclusion": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Abstracts terminal included/failed distinction of \u00a79.5.9; omits authenticated BFT proof, transaction identity, amount, payee and evidence anchoring."
+    },
+    "transition:chain.reset": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "transition:crash": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "transition:deliver.ack": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "transition:deliver.effect": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "### 9.9 Pipeline composition",
+          "lines": [
+            965,
+            968
+          ],
+          "sha256": "b1776d90d182a0e208e4e0ae023cf7d8004586c3ffb7009ad7207622c36f341e",
+          "clause_id": "9.9"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Pay-then-deliver PIPE-3 gate abstracts ok:true as authenticated inclusion; no actual handler, deliverable verification or alternative phase ordering is modelled."
+    },
+    "transition:deliver.recover_ack": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "transition:observe.ERROR": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "transition:observe.MISSING": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "transition:observe.STALE": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "transition:observe.failed_proven": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local scheduling, accounting or oracle abstraction; no exact normative counterpart in the cited native payment procedure."
+    },
+    "transition:observe.included": {
+      "kind": "partial",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Abstracts terminal included/failed distinction of \u00a79.5.9; omits authenticated BFT proof, transaction identity, amount, payee and evidence anchoring."
+    },
+    "transition:refund.ack": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "transition:refund.effect": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "transition:refund.intent": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "transition:release.ack": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "transition:release.effect": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "transition:release.intent": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "transition:reserve": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.7.1 Refunds and partial refunds",
+          "lines": [
+            911,
+            916
+          ],
+          "sha256": "f191d91038d7601aa4b5d7e055e4ef5e71bbb891a24bb82fcadb29367ea072cd",
+          "clause_id": "9.7.1"
+        },
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local reservation-budget bookkeeping, not an on-chain refund or SettlementAmendment. AMEND-2 does not authorize this model operation."
+    },
+    "transition:restart": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "transition:retry.reconcile": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Stronger local safety or environment assumption. Native included/failed/RPC rules do not define this oracle, stale cache or retry algorithm; unknown is not fabricated terminal failure."
+    },
+    "transition:sign": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "transition:sign.reject": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "transition:throw": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "transition:timeout": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    },
+    "transition:yield_lease": {
+      "kind": "assumption",
+      "refs": [
+        {
+          "section": "#### 9.5.9 pay-dem",
+          "lines": [
+            646,
+            662
+          ],
+          "sha256": "8be2cdfc85b75467e748850611166c1791f60e51c1295cbfab7580e41f2ebd5b",
+          "clause_id": "9.5.9"
+        }
+      ],
+      "rationale": "Local durable journal/worker/fencing assumption. Native procedure has submit/inclusion steps but does not prescribe these microstates or prove their durability."
+    }
+  }
+}

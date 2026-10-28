@@ -160,3 +160,5 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for review style + how to file issues.
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
+
+Offline payment-model interpretation inventory: [traceability/payment-model](traceability/payment-model/README.md).
