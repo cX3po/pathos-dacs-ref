@@ -49,11 +49,23 @@ class NegativeControls(unittest.TestCase):
 
     def test_wrong_commit_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:
-            for args in [('init', '-q'), ('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
-                                        'commit', '-q', '--allow-empty', '-m', 'synthetic fixture')]:
-                subprocess.run(['git', '-C', directory, *args], check=True, capture_output=True)
             with self.assertRaisesRegex(ValueError, 'commit differs'):
-                check.load_spec(directory, self.mapping)
+                check.load_spec(directory, self.mapping,
+                                revision_reader=lambda root: (root, '0' * 40))
+
+    def test_missing_checkout_is_refused(self):
+        def missing_checkout(root):
+            raise subprocess.CalledProcessError(128, ['git', 'rev-parse'])
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(subprocess.CalledProcessError) as caught:
+                check.load_spec(directory, self.mapping, revision_reader=missing_checkout)
+            self.assertEqual(caught.exception.returncode, 128)
+
+    def test_wrong_checkout_root_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, 'checkout root'):
+                check.load_spec(directory, self.mapping,
+                                revision_reader=lambda root: (root.parent, check.PIN))
 
     def test_wrong_clause_id_is_refused(self):
         bad = deepcopy(self.mapping)

@@ -17,15 +17,21 @@ PIN = '4bb9e48a1095ab32c06c25b7c0b52018d3ce4091'
 URL = f'https://github.com/DACS-Agent-commerce/DACS-Standard/blob/{PIN}/spec/DACS-4-SETTLE.md'
 
 
-def load_spec(spec_dir, mapping):
-    """Read only mapped chapter bytes from an exact local Git checkout."""
-    root = Path(spec_dir).resolve(strict=True)
+def checkout_revision(root):
+    """Return the checkout root and HEAD using the real Git reader."""
     def git(*args):
         return subprocess.run(['git', '-C', str(root), *args], check=True,
                               capture_output=True, text=True, timeout=30).stdout.strip()
-    if Path(git('rev-parse', '--show-toplevel')).resolve() != root:
+    return Path(git('rev-parse', '--show-toplevel')).resolve(), git('rev-parse', 'HEAD')
+
+
+def load_spec(spec_dir, mapping, *, revision_reader=checkout_revision):
+    """Read only mapped chapter bytes from an exact local Git checkout."""
+    root = Path(spec_dir).resolve(strict=True)
+    checkout_root, revision = revision_reader(root)
+    if checkout_root != root:
         raise ValueError('--spec-dir must be the checkout root')
-    if git('rev-parse', 'HEAD') != PIN or mapping['spec_commit'] != PIN:
+    if revision != PIN or mapping['spec_commit'] != PIN:
         raise ValueError('specification commit differs from the required pin')
     chapter = root / 'spec/DACS-4-SETTLE.md'
     if chapter.is_symlink() or chapter.resolve() != root / 'spec/DACS-4-SETTLE.md':
